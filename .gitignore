@@ -16,6 +16,7 @@ backend/logs/
 node_modules/
 frontend/dist/
 *.local
+*.tsbuildinfo
 
 # pnpm 项目内存储仓库（.npmrc 指定，仅为绕开沙箱；不入版本库）
 .pnpm-store/
