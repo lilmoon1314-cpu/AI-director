@@ -1,0 +1,62 @@
+# frontend/ARCHITECTURE.md — 前端架构
+
+> React 18 + TypeScript + Vite 单页应用。API 类型由后端 OpenAPI schema 自动生成。
+
+## 1. 技术栈
+
+React 18 / TypeScript 5 / Vite 5 / AntV G6 5.x / Zustand / Tailwind CSS + shadcn/ui。
+
+## 2. 目录结构与分层
+
+```
+frontend/src/
+├── api/                # openapi-typescript 生成的类型 + 轻量请求客户端
+├── stores/             # Zustand 全局状态
+│   ├── graphStore      # 节点/边数据 + 图数据加载
+│   ├── perspectiveStore# 当前视角（author/character/audience + character_id）
+│   ├── selectionStore  # 选中实体/关系、详情面板状态
+│   └── agentStore      # 对话消息、草案、确认流程
+├── views/
+│   └── Workbench       # 图谱工作台（主视图，聚合图 + 侧栏 + 面板）
+├── components/
+│   ├── graph/          # GraphCanvas（G6 封装：布局/交互/缩放/拖拽）
+│   ├── entity-selector/# @ 触发的实体搜索选择器（含视角可见性提示）
+│   ├── entity-panel/   # 实体/关系详情（资产缩略图、编辑表单）
+│   ├── agent-panel/    # 对话面板（SSE 渲染 + 草案确认 UI）
+│   └── ui/             # shadcn/ui 通用组件
+└── lib/                # 工具（格式化、防抖等）
+```
+
+数据流（单向）：API → stores → selector 订阅 → 组件渲染；用户操作 → stores action → API → store 更新。
+
+## 3. 状态管理设计
+
+| store | 状态 | 更新来源 |
+|-------|------|----------|
+| graphStore | nodes/edges/loading | 视角切换、CRUD 完成后按需刷新 |
+| perspectiveStore | perspective/character_id | 视角切换控件（切换即触发 graphStore 重载） |
+| selectionStore | 选中 id、面板开合 | 图节点点击 |
+| agentStore | 消息列表、流式缓冲、草案 | SSE 流、propose/confirm |
+
+## 4. 渲染性能策略
+
+- G6 Graph 实例**单例**（Workbench 挂载时创建、卸载时销毁）；数据变更走 G6 数据 API 增量更新，禁止整图重建。
+- 视角切换是唯一允许全量替换 nodes/edges 的场景。
+- 高频交互（拖拽/缩放/hover）状态隔离在 GraphCanvas 内部（局部 state/ref），不进全局 store。
+- 资产缩略图懒加载（viewport 内加载）。
+
+对应硬约束见 [frontend/CONSTRAINTS.md](./CONSTRAINTS.md)「渲染性能」。
+
+## 5. 组件生命周期管理
+
+- GraphCanvas：`useEffect` 创建 G6 实例 → 订阅 store 变化同步数据 → 卸载时 `graph.destroy()` 释放。
+- SSE 连接：组件卸载即 AbortController 中断，避免泄漏。
+- 实体选择器：输入防抖（300ms）后调用检索 API。
+
+## 6. 视觉规范
+
+见 [frontend/CONSTRAINTS.md](./CONSTRAINTS.md)「视觉」小节（修改 UI 前必读）。
+
+## 7. API 契约
+
+见 [frontend/CONSTRAINTS.md](./CONSTRAINTS.md)「API 契约」小节；类型生成流程见本文件 §2「api/」说明。

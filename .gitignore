@@ -1,0 +1,30 @@
+# ===== Python（后端）=====
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+uv.lock.tmp
+
+# 运行时数据与密钥（不入版本库）
+backend/.env
+backend/data/
+backend/logs/
+
+# ===== Node（前端）=====
+node_modules/
+frontend/dist/
+*.local
+
+# pnpm 项目内存储仓库（.npmrc 指定，仅为绕开沙箱；不入版本库）
+.pnpm-store/
+
+# 本地临时工具（tools/make.exe 等历史遗留；命令入口已由 scripts/task.py 承担）
+tools/
+
+# ===== 环境与编辑器 =====
+.DS_Store
+Thumbs.db
+.idea/
+*.swp

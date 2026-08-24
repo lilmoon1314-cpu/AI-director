@@ -1,0 +1,64 @@
+[project]
+name = "ai-director-backend"
+version = "0.1.0"
+description = "影视多智能体协作平台 — 后端（FastAPI 模块化单体）"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.30,<1.0",
+    "pydantic>=2.7,<3.0",
+    "pydantic-settings>=2.3,<3.0",
+    "sqlalchemy[asyncio]>=2.0.30,<3.0",
+    "aiosqlite>=0.20,<1.0",
+    "alembic>=1.13,<2.0",
+    "openai>=1.30,<2.0",
+    "markdown-it-py>=3.0,<4.0",
+    "pyyaml>=6.0,<7.0",
+    "python-multipart>=0.0.9,<1.0",
+    "psutil>=5.9,<7.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2,<9.0",
+    "pytest-asyncio>=0.23,<2.0",
+    "httpx>=0.27,<1.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "import-linter>=2.0,<3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "unit: L1 单元测试（模块内，依赖 mock）",
+    "integration: L2 集成测试（真实 DB 全链路）",
+    "e2e: L3 端到端测试（跨组件公开接口）",
+    "architecture: 架构约束可执行检查",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+exclude = ["tests/", "migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["psutil"]
+ignore_missing_imports = true
+
+# 模块边界契约：随 F02+ 领域模块落地逐条登记（见 docs/architecture_checks.md）
+[tool.importlinter]
+root_packages = ["app"]
