@@ -21,6 +21,7 @@
 2. 测试文档 `docs/tests/FXX_<name>.md` 就位，层级矩阵中所有"必须"状态为 pass
 3. 必须层级测试全部通过（验证命令见 features.md）
 4. `make check` 通过
+5. 变异测试达标（§9：定向 mutmut kill rate ≥ 85%，存活变异体已分析归档；工具随 F04 落地，自 F04 起生效）
 
 ## 3. 目录结构
 
@@ -65,11 +66,14 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 | L3 E2E | E1: <场景>（跨组件理由） | tests/e2e/xxx.py | 必须/不适用 | pending |
 
 ## 用例说明
-- U1: <前置/动作/预期>
+- U1: <前置/动作/预期>（设计依据：<等价类：有效 / 无效-xxx | 边界值：xxx>）
 - I1: ...
 
+## 变异测试结果（用例实现完成后填写；自 F04 起）
+- scope（被测模块）/ kill rate / 存活变异体逐一分析（补用例或等价性登记）
+
 ## 验收判定
-所有"必须"层级通过 + 状态列全 pass + make check 通过 → 功能完成。
+所有"必须"层级通过 + 状态列全 pass + 变异测试达标（§9，自 F04 起）+ make check 通过 → 功能完成。
 ```
 
 状态列规则：与 features.md 相同，仅在验证命令通过后更新为 `pass`。
@@ -83,5 +87,29 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 ## 7. 内存回归守卫
 
 - 运行侧（**已就位**）：core observability 后台线程低频采样 RSS / CPU 写入 `logs/metrics.jsonl`（运行期资源趋势分析）。
-- 测试侧（**计划，F02 落地**）：conftest.py 将提供 e2e 级 fixture——用例执行前后采样进程 RSS，增长超阈值（config: `memory_guard_threshold_mb`）即失败。
+- 测试侧（**已就位**，F02 落地）：conftest.py 提供 e2e 级 fixture——用例执行前后采样进程 RSS，增长超阈值（config: `memory_guard_threshold_mb`）即失败。
 - 规则：文档描述机制必须区分「已就位 / 计划（FXX）」双态，禁止把计划写成现状（错误模式 E01，见 docs/lessons.md）。
+
+## 8. 用例设计方法（等价类划分 + 边界值分析）
+
+> AGENTS.md 工作规则强制项；测试文档的用例清单必须按本节方法设计并逐用例标注设计依据。自 F04 起生效。
+
+- **等价类划分**：每个输入/校验维度先划分有效与无效等价类，每类至少一个用例：
+    - 示例（关系创建 source/target 维度）：有效（端点存在且非自环）；无效（source 缺失、target 缺失、source == target 自环）。
+    - 示例（known_by 维度）：有效（成员均为 character）；无效（成员缺失、成员非 character、列表含重复）。
+- **边界值分析**：数值与长度约束取边界与两侧邻界：
+    - 0-1 标度字段（trust/intimacy/dependency/resentment）：0、1（边界上）、0.01、0.99（紧邻内侧）、-0.01、1.01（紧邻外侧）。
+    - `min_length=1` / `max_length` 字段：空串、1、上限、上限+1。
+    - 列表字段：空、单元素、多元素、含重复元素。
+- **参数化强制**：同一断言逻辑的等价类/边界值用例一律用 `@pytest.mark.parametrize` 实现为参数化测试（用例 id 标注设计依据），禁止复制粘贴同构测试函数。
+- 测试文档「用例说明」按 §5 模板为每个用例标注设计依据，例：`I8 参数化: 0-1 标度越界（边界值：trust∈{-0.01, 1.01} 均 422）`。
+
+## 9. 变异测试（mutmut）
+
+> 状态：**计划（F04 落地）**——F04 开工首任务安装 mutmut（dev 依赖）并提供 `python scripts/task.py mutate <module>` 封装；落地前本节为设计约定，落地后为强制流程（E01 双态标注）。
+
+- **时机**：测试文档撰写完成后即把变异测试列入任务清单；用例实现完成、`verify FXX` 之前执行。
+- **范围**：仅对本功能被测模块定向运行（如 F04 → `app/perspectives`），禁止全仓库无差别变异（耗时且噪声大）。
+- **达标判据**：kill rate ≥ 85%；未达标时存活变异体必须逐一分析——能补用例则按 §8 补设计补用例，确属等价变异体则在测试文档登记理由后视作已处理。
+- **归档**：scope、kill rate 与存活变异体分析记入该功能测试文档「变异测试结果」小节（模板见 §5）。
+- **成本控制**：mutmut 不纳入 make check 常规链，按功能点手动触发；运行时长异常时收窄 scope（模块内单文件/单函数）。

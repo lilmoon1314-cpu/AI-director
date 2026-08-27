@@ -47,6 +47,8 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
 - 不要在实现功能 A 时"顺便"重构功能 B
 - 功能完成的唯一标准（DoD，docs/testing.md §2）：必须层级测试全通过 + 测试文档 docs/tests/FXX 就位且状态全 pass + make check 通过
 - 测试文档先行：必须在功能任务清单开始执行前撰写该功能的测试文档 docs/tests/FXX_<name>.md（用例清单按 docs/testing.md §5 模板，初始状态 pending）；禁止边实现边补
+- 测试用例设计方法（docs/testing.md §8）：测试文档的用例清单必须按等价类划分（有效/无效）与边界值分析设计，并逐用例标注设计依据；同一断言逻辑的多情况用例必须实现为参数化测试（pytest.mark.parametrize），禁止复制同构测试函数
+- 变异测试（docs/testing.md §9）：测试文档撰写完成后，任务清单必须包含变异测试任务；用例实现完成、verify FXX 之前对本功能被测模块定向运行 mutmut——kill rate ≥ 85% 且存活变异体逐一分析（补用例或登记等价性），结果记入测试文档「变异测试结果」小节（工具随 F04 落地，自 F04 起生效）
 - 任务清单同步（PROGRESS.md「进行中」）：
     1. 功能开始实现前，先列出该功能的任务清单（可执行的小任务粒度），同步写入 PROGRESS.md「进行中」小节；
     2. 每完成一个任务，立即将其在「进行中」标记为已完成；

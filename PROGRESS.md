@@ -13,6 +13,7 @@
 - 2026-08-27: **F02 实体 CRUD API 完成（passing）**——entities/relations 模块（CRUD/@检索/删除双层防线）+ 首个 Alembic 迁移建齐两表 + L1 10 例 + L2 10 例 + 内存回归守卫 fixture 落地。详见 docs/tests/F02_entity_crud_api.md 与 git log
 - 2026-08-27: agent 规则升级——任务清单同步 PROGRESS/测试文档先行/测试失败记录 error.jsonl 三条硬规则写入 AGENTS.md；错误模式库迁移 backend/logs/error.jsonl（入版本库），运行时错误日志改名 runtime_error.jsonl。详见 DECISIONS.md 与 docs/lessons.md §2
 - 2026-08-27: **F03 关系 CRUD API 完成（passing）**——relations 模块补全（自环/端点存在性经 entities.service/重复三元组/known_by 成员四重写入校验 + 条件查询路由）+ L1 11 例 + L2 10 例 + L3 e2e 2 例（含 F02×F03 引用解除闭环）；同场修正 E01 复发（T-20260827-03）：补齐映射表声称的三项架构测试。详见 docs/tests/F03_relation_crud_api.md 与 git log
+- 2026-08-27: agent 规则升级（二）——测试用例设计方法学（等价类划分 + 边界值分析，参数化强制）与变异测试机制（mutmut，kill rate ≥ 85% + 存活变异体分析归档）写入 AGENTS.md 与 docs/testing.md §2/§8/§9，自 F04 起生效（工具随 F04 落地）。详见 DECISIONS.md
 
 ## 进行中
 - 无
@@ -21,5 +22,5 @@
 - 无（F03 起按功能清单顺序推进）
 
 # 下一步
-1. 执行 F04（三视角过滤图查询）：按 docs/features.md 验证命令实现，开工时 `python scripts/task.py verify F04 --activate`，完成后 `python scripts/task.py verify F04`
+1. 执行 F04（三视角过滤图查询）：按 docs/features.md 验证命令实现，开工时 `python scripts/task.py verify F04 --activate`；**首任务：落地变异测试工具（uv 添加 mutmut dev 依赖 + task.py mutate 命令，docs/testing.md §9 计划项）**
 2. F04–F10 依次逐功能实现（一次一个，端到端通过后再下一个）
