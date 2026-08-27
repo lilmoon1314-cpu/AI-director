@@ -57,7 +57,8 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
 ## 每次会话结束前
 1. 更新 PROGRESS.md
 2. 跑 make check 确认一致状态
-3. 提交所有已完成的工作
+3. 提交所有已完成的工作（提交信息含中文时一律经临时文件 `git commit -F <file>`，规避 PowerShell GBK 参数乱码，见 docs/lessons.md E03）
+4. `git push` 同步到远程仓库（origin: github.com:lilmoon1314-cpu/AI-director）
 
 ## 专题文档路由
 
