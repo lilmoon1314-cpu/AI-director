@@ -44,7 +44,7 @@
 | 文件 | 内容 |
 |------|------|
 | app.jsonl | 运行事件（lifecycle / request / checkpoint） |
-| error.jsonl | 错误专用，独立维护：完整上下文 + traceback + 三要素 |
+| runtime_error.jsonl | 错误专用，独立维护：完整上下文 + traceback + 三要素 |
 | metrics.jsonl | 资源采样，供异常模式（如内存持续增长）人工/脚本分析 |
 
 ## 内部结构

@@ -9,7 +9,7 @@
 
 输出（logs/ 目录，RotatingFileHandler 自动轮转，不入版本库）:
     app.jsonl      运行事件（lifecycle / request / checkpoint）
-    error.jsonl    错误专用（独立维护）
+    runtime_error.jsonl  错误专用（独立维护；error.jsonl 保留给错误模式库，见 docs/lessons.md）
     metrics.jsonl  资源采样（供内存持续增长等异常模式分析）
 """
 
@@ -240,7 +240,7 @@ class RequestSignalMiddleware(BaseHTTPMiddleware):
 
 
 async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    """全局异常出口：AppError → 统一三要素响应，并写 error.jsonl。
+    """全局异常出口：AppError → 统一三要素响应，并写 runtime_error.jsonl。
 
     作用: 采集错误信号（信号 5）+ 保证响应结构统一。
     参数: _request — 当前请求（未使用）；exc — 已构造的应用异常（签名取 Exception
@@ -266,7 +266,7 @@ async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
 
 
 async def request_validation_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    """请求校验错误出口：统一三要素结构（422），并写 error.jsonl。
+    """请求校验错误出口：统一三要素结构（422），并写 runtime_error.jsonl。
 
     作用: 将 FastAPI 默认的校验错误结构转换为统一错误响应结构
         （backend/CONSTRAINTS.md「所有 API 错误响应遵循统一结构」）。
@@ -291,7 +291,7 @@ async def request_validation_error_handler(_request: Request, exc: Exception) ->
 
 
 async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResponse:
-    """兜底出口：未捕获异常 → 500 通用响应（不泄露栈），完整上下文写 error.jsonl。
+    """兜底出口：未捕获异常 → 500 通用响应（不泄露栈），完整上下文写 runtime_error.jsonl。
 
     作用: 保证任何异常都有统一出口与完整记录（信号 5）。
     参数: _request — 当前请求（未使用）；exc — 未捕获异常。
@@ -312,7 +312,7 @@ async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResp
     body = {
         "code": "INTERNAL_ERROR",
         "problem": "服务器内部错误",
-        "cause": "服务端出现未预期的异常，细节已记录在 logs/error.jsonl",
+        "cause": "服务端出现未预期的异常，细节已记录在 logs/runtime_error.jsonl",
         "fix": "请携带响应头 x-request-id 反馈给开发者排查",
         "detail": {},
     }
@@ -377,10 +377,16 @@ def setup(app: FastAPI, settings: Settings) -> None:
 
     log_dir = Path(settings.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    for stream in ("app", "error", "metrics"):
+    # error 流写 runtime_error.jsonl：error.jsonl 保留给错误模式库（见 docs/lessons.md §2）
+    stream_files = {
+        "app": "app.jsonl",
+        "error": "runtime_error.jsonl",
+        "metrics": "metrics.jsonl",
+    }
+    for stream, filename in stream_files.items():
         _loggers[stream] = _init_logger(
             stream,
-            log_dir / f"{stream}.jsonl",
+            log_dir / filename,
             settings.log_rotate_max_mb,
             settings.log_rotate_backup_count,
         )

@@ -116,3 +116,8 @@
 - 原因: 文档虚登（E01）与格式化转义致脚本失配（E02）两处缺陷；机制描述须区分已就位/计划。
 - 否决: 文档与实现混写；脚本假定清单格式不变。
 - 约束: E01 入审查清单；E02 回归测试必须常绿。
+
+## 2026-08-27: 错误模式库迁移 JSONL（backend/logs/error.jsonl 入版本库）+ 运行时错误日志改名 runtime_error.jsonl
+- 原因: 错误模式与测试失败记录需跨会话持久且可被 agent 机器读写；与运行时轮转日志混写同一文件会被 RotatingFileHandler 轮转丢失且污染 git 跟踪内容。
+- 否决: 保留 markdown 表格（无法程序化追加/检索）；运行时日志与模式库共用 error.jsonl（轮转+混写）。
+- 约束: error.jsonl 只由 agent 维护（追加不覆写）；运行时错误流写 runtime_error.jsonl（gitignore）；AGENTS.md 工作规则新增任务清单同步/测试文档先行/测试失败记录三条硬规则。

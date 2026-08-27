@@ -46,6 +46,12 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
 - 当前功能点在端到端通过之后，才能开始下一个
 - 不要在实现功能 A 时"顺便"重构功能 B
 - 功能完成的唯一标准（DoD，docs/testing.md §2）：必须层级测试全通过 + 测试文档 docs/tests/FXX 就位且状态全 pass + make check 通过
+- 测试文档先行：必须在功能任务清单开始执行前撰写该功能的测试文档 docs/tests/FXX_<name>.md（用例清单按 docs/testing.md §5 模板，初始状态 pending）；禁止边实现边补
+- 任务清单同步（PROGRESS.md「进行中」）：
+    1. 功能开始实现前，先列出该功能的任务清单（可执行的小任务粒度），同步写入 PROGRESS.md「进行中」小节；
+    2. 每完成一个任务，立即将其在「进行中」标记为已完成；
+    3. 全部任务完成并通过验证后，把「进行中」的小任务统一压缩为一条摘要移入「当前已完成」，清空「进行中」
+- 测试失败记录（docs/lessons.md §2）：每次测试不通过必须当场在 backend/logs/error.jsonl 追加一条 test_failure 记录（三要素齐全），修复后按提升流程（docs/lessons.md §1）归档（resolved-known / promoted-EXX / resolved-unique）；新类型错误同步登记 error_pattern 条目并完成自动化转化评估
 - 审查反馈提升（docs/lessons.md §1）：每次代码审查/测试失败中发现新类型的 agent 错误，当次会话内登记错误模式库并转化为自动检查（lint/架构测试/回归测试）；暂无法自动化的加入审查清单
 
 ## 每次会话开始时

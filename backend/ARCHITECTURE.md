@@ -73,7 +73,7 @@ AppError（基类: code, problem, cause, fix, http_status, detail）
 └── AgentError             # 502 LLM 调用失败/超时
 ```
 
-`main.py` 注册 `app.exception_handler(AppError)` 统一出口；未捕获异常统一 500（`INTERNAL_ERROR`），禁止异常栈泄露给客户端。所有错误同时写入独立错误日志 logs/error.jsonl（含 request_id、参数摘要、traceback、三要素，见 core/ARCHITECTURE.md「可观测性」）。
+`main.py` 注册 `app.exception_handler(AppError)` 统一出口；未捕获异常统一 500（`INTERNAL_ERROR`），禁止异常栈泄露给客户端。所有错误同时写入独立错误日志 logs/runtime_error.jsonl（含 request_id、参数摘要、traceback、三要素，见 core/ARCHITECTURE.md「可观测性」）。
 
 ## 5. 应用生命周期（lifespan）
 
