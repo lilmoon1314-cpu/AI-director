@@ -6,10 +6,11 @@
 """
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import DateTime, event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -17,10 +18,49 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.types import TypeDecorator
 
 from app.config import get_settings
 
 _SQLITE_PREFIX = "sqlite+aiosqlite:///"
+
+
+class UTCDateTime(TypeDecorator):
+    """以 UTC 规范存取的时间戳类型（SQLite 方言下保证 aware 往返一致）。
+
+    作用:
+        SQLite 不持久化时区信息：DateTime(timezone=True) 写入后读回为 naive，
+        导致同一实体创建响应（+00:00/Z）与回读响应（无标记）序列化不一致。
+        本类型在写入前归一化为 UTC，读取后将 naive 值标记回 UTC，
+        保证 created_at/updated_at 全链路 aware 且语义统一。
+    参数: 无（构造同 DateTime）。
+    返回值: 无（类型类）。
+    异常: 无。
+    依赖: sqlalchemy.types.TypeDecorator、DateTime。
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        """写入前把任意时区的时间归一化为 UTC。
+
+        参数: value — 待写入的 datetime；dialect — 数据库方言。
+        返回值: datetime | None。异常: 无（naive 值视为已经是 UTC 存储）。
+        """
+        if value is None:
+            return None
+        return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        """读取后给丢失时区标记的值补上 UTC（aware 值直接归一化 UTC）。
+
+        参数: value — 从数据库读出的 datetime；dialect — 数据库方言。
+        返回值: datetime | None。异常: 无。
+        """
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):

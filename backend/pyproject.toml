@@ -42,9 +42,15 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# migrations/ 为 Alembic 生成代码（禁止手改），排除 lint/format 检查
+extend-exclude = ["migrations/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 依赖注入约定：参数默认值中调用 Depends 是官方推荐写法
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -1,8 +1,11 @@
-"""架构约束可执行检查（基线，F01）。
+"""架构约束可执行检查。
 
 映射: docs/architecture_checks.md §2 —
-    - core 纯净性（core 禁止 import 领域模块）
-    - 禁止业务代码散点日志（logging 仅 core.observability 允许使用）
+    - core 纯净性（core 禁止 import 领域模块）                    [F01]
+    - 禁止业务代码散点日志（logging 仅 core.observability 允许）   [F01]
+    - router 不碰数据层（router.py 禁止 import repository/models）[F02]
+    - 配置禁止硬编码（扫描源码端口/URL/密钥样式字面量）           [F02]
+    - relationships 外键 DDL 声明 ON DELETE RESTRICT             [F02]
 """
 
 import ast
@@ -12,6 +15,7 @@ import pytest
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 CORE_DIR = APP_DIR / "core"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
 
 # core 禁止依赖的领域模块前缀（CONSTRAINTS: core 保持零业务知识）
 FORBIDDEN_IN_CORE = (
@@ -27,9 +31,10 @@ pytestmark = pytest.mark.architecture
 
 
 def _imported_modules(source: str) -> set[str]:
-    """解析源码中全部 import 的完整模块名。
+    """解析源码中全部 import 的完整模块名（含相对导入的近似表示）。
 
-    作用: 为架构检查提供 AST 级 import 事实（不执行代码）。
+    作用: 为架构检查提供 AST 级 import 事实（不执行代码）；相对导入按
+        `相对层级:<模块名>` 记录，供 router 数据层检查区分自模块内层引用。
     参数: source — Python 源码文本。返回值: set[str]。异常: SyntaxError（源码非法）。
     依赖: ast。
     """
@@ -38,14 +43,41 @@ def _imported_modules(source: str) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             modules.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None and node.level == 0:
-            modules.add(node.module)
-    return modules
+        elif isinstance(node, ast.ImportFrom):
+            prefix = "" if node.module is None else node.module
+            suffix = f".{prefix}" if node.level > 0 else ""
+            modules.add(f"{node.level}:{suffix}{prefix}" if node.level else node.module or "")
+    return {m for m in modules if m}
 
 
 def _python_files(directory: Path) -> list[Path]:
     """列出目录下全部 .py 文件（含子目录）。"""
     return sorted(directory.rglob("*.py"))
+
+
+def _string_constants(source: str) -> list[str]:
+    """提取源码中全部字符串常量（排除模块/类/函数 docstring）。
+
+    作用: 为硬编码扫描提供准确的字面量集合——文档字符串中的示例 URL 属于
+        说明性内容而非配置，必须豁免。
+    参数: source — Python 源码文本。
+    返回值: list[str]。异常: SyntaxError（源码非法）。
+    依赖: ast。
+    """
+    tree = ast.parse(source)
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", [])
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+                docstrings.add(id(body[0].value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
 
 
 def test_core_purity() -> None:

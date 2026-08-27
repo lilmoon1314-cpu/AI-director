@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.core import db, observability
+from app.entities.router import router as entities_router
 
 
 @asynccontextmanager
@@ -76,6 +77,9 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         """健康检查端点（存活探针，供测试与运维验证服务可用）。"""
         return {"status": "ok"}
+
+    # 领域模块路由挂载（F02: entities；后续功能点在此追加）
+    app.include_router(entities_router)
 
     return app
 

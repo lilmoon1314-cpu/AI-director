@@ -1,5 +1,5 @@
 # 影视多智能体协作平台 — 标准化开发命令入口
-# 初始化契约见 INIT.md；测试层级见 docs/testing.md
+# 初始化契约见 docs/INIT.md；测试层级见 docs/testing.md
 # 实现说明：全部命令委托 scripts/task.py（Windows 无 make 时直接 `python scripts/task.py <命令>`）
 
 PYTHON ?= python

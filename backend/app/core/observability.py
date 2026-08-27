@@ -29,13 +29,14 @@ from typing import Any
 
 import psutil
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
 from app.config import Settings
 from app.core.exceptions import AppError
-from app.core.responses import error_response
+from app.core.responses import error_response, request_validation_error_response
 
 # 当前请求 ID：中间件写入、@checkpoint 读取，实现跨事件串联
 current_request_id: ContextVar[str] = ContextVar("current_request_id", default="")
@@ -264,6 +265,31 @@ async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=exc.http_status, content=error_response(exc))
 
 
+async def request_validation_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+    """请求校验错误出口：统一三要素结构（422），并写 error.jsonl。
+
+    作用: 将 FastAPI 默认的校验错误结构转换为统一错误响应结构
+        （backend/CONSTRAINTS.md「所有 API 错误响应遵循统一结构」）。
+    参数: _request — 当前请求（未使用）；exc — 请求校验异常（签名取 Exception
+        以满足 Starlette 处理器契约，函数体内收窄回 RequestValidationError）。
+    返回值: JSONResponse（422）。异常: 无。依赖: app.core.responses。
+    """
+    if not isinstance(exc, RequestValidationError):  # 防御：类型不符走兜底出口
+        return await unhandled_error_handler(_request, exc)
+    _emit(
+        "error",
+        "error",
+        component="exception",
+        data={
+            "code": "VALIDATION_ERROR",
+            "problem": "请求参数校验失败",
+            "errors": exc.errors()[:10],
+        },
+        stream="error",
+    )
+    return JSONResponse(status_code=422, content=request_validation_error_response(exc))
+
+
 async def unhandled_error_handler(_request: Request, exc: Exception) -> JSONResponse:
     """兜底出口：未捕获异常 → 500 通用响应（不泄露栈），完整上下文写 error.jsonl。
 
@@ -361,6 +387,7 @@ def setup(app: FastAPI, settings: Settings) -> None:
 
     app.add_middleware(RequestSignalMiddleware)
     app.add_exception_handler(AppError, app_error_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)
 
     if not _sampler_started.is_set():
