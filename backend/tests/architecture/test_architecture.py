@@ -9,6 +9,7 @@
 """
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -122,4 +123,90 @@ def test_no_scattered_logging_outside_core() -> None:
         f"【问题】以下模块直接 import logging: {violations}\n"
         "【原因】信号采集统一由 core.observability 自动完成，散点日志违反约束且格式不一致\n"
         "【修复】移除 logging 调用；需要检查点时使用 @checkpoint 装饰器（app.core.observability）"
+    )
+
+
+def test_router_does_not_import_data_layer() -> None:
+    """router.py 禁止 import repository/models（架构约束: 路由层不含数据访问）。
+
+    失败含义:
+        【问题】router 层出现数据层依赖
+        【原因】路由直接访问 repository/models 会绕过 service 层的校验与事务边界
+        【修复】把数据访问移到 service 层，router 只做参数解析与响应包装
+    """
+    violations: list[str] = []
+    for file in _python_files(APP_DIR):
+        if file.name != "router.py":
+            continue
+        modules = _imported_modules(file.read_text(encoding="utf-8"))
+        for module in modules:
+            # 相对导入记录形如 "1:.repository"，冒号归一为点后按段精确匹配
+            parts = module.replace(":", ".").split(".")
+            if "repository" in parts or "models" in parts:
+                violations.append(f"{file.relative_to(APP_DIR)} -> {module}")
+    assert not violations, (
+        f"【问题】router 层出现数据层依赖: {violations}\n"
+        "【原因】路由直接 import repository/models 绕过 service 层（校验/事务边界失效）\n"
+        "【修复】数据访问移入 service 层，router 仅做参数解析与响应包装"
+    )
+
+
+# 硬编码配置的字面量样式（启发式；白名单 config.py——默认值即配置契约）
+_HARDCODED_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^https?://"), "URL 字面量"),
+    (re.compile(r"^www\."), "URL 字面量"),
+    (re.compile(r"localhost:\d+"), "主机端口"),
+    (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "IP 地址"),
+    (re.compile(r"(?i)\bsk-[a-z0-9]{8,}\b"), "密钥样式字面量"),
+)
+
+
+def test_no_hardcoded_config_literals() -> None:
+    """业务源码禁止端口/URL/密钥样式字面量（配置一律经 config.py 从环境读取）。
+
+    失败含义:
+        【问题】源码出现硬编码配置样式字面量
+        【原因】绕过 config.py 的配置无法经 .env 覆盖，密钥类字面量还有泄露风险
+        【修复】把字面量移入 config.py 配置项（环境变量/.env 读取后引用）
+    """
+    violations: list[str] = []
+    for file in _python_files(APP_DIR):
+        if file.name == "config.py":
+            continue
+        for constant in _string_constants(file.read_text(encoding="utf-8")):
+            for pattern, label in _HARDCODED_PATTERNS:
+                if pattern.search(constant):
+                    violations.append(f"{file.relative_to(APP_DIR)}: {label} {constant[:60]!r}")
+    assert not violations, (
+        f"【问题】源码出现硬编码配置样式字面量: {violations}\n"
+        "【原因】配置未集中到 config.py，环境切换与密钥管理失效\n"
+        "【修复】把字面量改为 config.py 配置项（环境变量/.env 读取）后引用"
+    )
+
+
+def test_relationships_fk_declared_on_delete_restrict() -> None:
+    """relationships.source/target 外键必须声明 ON DELETE RESTRICT（幽灵节点 DB 层兜底）。
+
+    失败含义:
+        【问题】relationships 外键缺失或删除策略不是 RESTRICT
+        【原因】缺失 FK/RESTRICT 时旁路写入可产生悬空引用（幽灵节点）
+        【修复】在 app/relations/models.py 为 source/target 声明
+            ForeignKey("entities.id", ondelete="RESTRICT") 并生成 Alembic 迁移
+    """
+    from app.relations.models import Relationship
+
+    ondelete = {fk.parent.name: fk.ondelete for fk in Relationship.__table__.foreign_keys}
+    assert ondelete.get("source") == "RESTRICT" and ondelete.get("target") == "RESTRICT", (
+        f"【问题】relationships 外键声明不符: {ondelete}\n"
+        "【原因】ORM 模型 FK 缺失或未声明 ondelete=RESTRICT（DB 层兜底失效）\n"
+        "【修复】source/target 改为 ForeignKey('entities.id', ondelete='RESTRICT') 并迁移"
+    )
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert "RESTRICT" in migration_sql, (
+        "【问题】迁移文件未包含 RESTRICT 外键策略\n"
+        "【原因】ORM 声明与迁移 DDL 脱节（库表实际缺少约束）\n"
+        "【修复】重新生成 Alembic 迁移使 DDL 与 ORM 模型一致"
     )

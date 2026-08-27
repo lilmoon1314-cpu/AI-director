@@ -1,4 +1,4 @@
-"""relations 模块 ORM 模型：关系表（F02 建表；CRUD 由 F03 实现）。
+"""relations 模块 ORM 模型：关系表（F02 建表，F03 起承载 CRUD）。
 
 表结构蓝图: docs/data_struct_define.md §2。
 外键策略: source/target → entities.id，ON DELETE RESTRICT（backend/CONSTRAINTS.md

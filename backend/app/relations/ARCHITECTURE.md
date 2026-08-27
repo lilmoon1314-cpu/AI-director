@@ -13,11 +13,15 @@
 
 | 函数 | 说明 | 异常 |
 |------|------|------|
-| `create(schema: RelationCreate) -> RelationRead` | 校验端点存在后创建 | NotFoundError（端点缺失）/ ValidationError |
-| `get(relation_id: str) -> RelationRead` | 按 id 读取 | NotFoundError |
-| `update(relation_id, schema: RelationUpdate) -> RelationRead` | 局部更新动态属性 | NotFoundError / ValidationError |
-| `delete(relation_id: str) -> None` | 删除关系 | NotFoundError |
-| `get_all() -> list[RelationRead]` | 全量读取（供 perspectives/sync 聚合） | — |
+| `create(session, schema: RelationCreate) -> RelationRead` | 自环/端点存在性/known_by 成员/重复三元组四重校验后创建 | NotFoundError（端点缺失）/ ValidationError（自环、known_by）/ ConflictError（重复） |
+| `get(session, relation_id: str) -> RelationRead` | 按 id 读取 | NotFoundError |
+| `update(session, relation_id, schema: RelationUpdate) -> RelationRead` | 局部更新动态属性（known_by 更新时重校验；端点与 id/type 不可变） | NotFoundError / ValidationError |
+| `delete(session, relation_id: str) -> None` | 删除关系（即解除对两端实体的引用） | NotFoundError |
+| `get_all(session, *, source/target/rel_type 可选) -> list[RelationRead]` | 条件查询（无过滤返回全量，供 perspectives/sync 聚合） | — |
+| `count_by_entity(session, entity_id: str) -> int` | 实体被引用计数（entities.service 删除防线数据源） | — |
+
+校验取数约定: 端点/known_by 校验统一经 `entities.service.get_many` 单次批量读取
+（禁止直查 entities 表，见本模块 CONSTRAINTS.md）。
 
 ### HTTP 路由（/api/relations）
 
