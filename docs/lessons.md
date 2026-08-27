@@ -26,6 +26,7 @@
 |----|------|----------|----------|--------|--------|--------|
 | E01 | 2026-08-24 | 文档虚登（把计划写成现状） | docs/testing.md §7 声称 conftest 已提供 RSS 回归守卫 fixture，实际 conftest.py 无此 fixture | 设计先行时未区分「已就位/计划」两种状态，读者误信机制存在而跳过落地 | 虚登处改为双态标注（已就位/计划 FXX）；守卫 fixture 随 F02 落地 | 审查清单（文档-代码一致性为语义级比对，暂无法自动化） |
 | E02 | 2026-08-24 | 外部格式化改写清单文件致脚本失配 | IDE markdown 格式化器对 features.md 表格列对齐并把状态 `not_started` 转义为 `not\_started`，verify_feature.py 状态正则 `\w+` 无法匹配，verify F02+ 将报"未找到行" | 清单文件会被编辑器随手改写，脚本解析必须容错（转义与列宽变化） | 状态单元格匹配放宽为非空白非竖线字符、读取时剥离转义反斜杠 | 自动（回归测试 backend/tests/unit/test_verify_script.py） |
+| E03 | 2026-08-24 | PowerShell 下 git commit -m 中文乱码 | Windows 中文系统 PowerShell 以 GBK 编码传递命令行参数，`git commit -m "中文"` 可能烤入乱码字节；且终端显示层 GBK 解码 UTF-8 也会出现"假乱码"，需用 UTF-8 控制台重定向验证才能区分 | 编码链路有三层（参数传递/存储/显示），任何一层用错编码都会损坏或误判 | 提交信息一律经临时文件 `git commit -F <file>`（Write 工具产出 UTF-8）；验证存储真实性用 `[Console]::OutputEncoding=UTF8` + 重定向 | 审查清单（提交流程无 lint 挂点；规避法即 -F 文件方式） |
 
 ## 3. 面向 Agent 的错误消息三要素（规范）
 
