@@ -60,7 +60,8 @@ def _parse_feature_row(feature_id: str) -> tuple[int, str, str]:
         if len(cells) != 8:
             _fail(f"功能 {feature_id} 行列数异常", "表格被破坏或列分隔符缺失", "对照表头修复该行")
         verify_cmds = " && ".join(re.findall(r"`([^`]+)`", cells[5]))
-        return line_no, verify_cmds, cells[6]
+        # 状态列剥离转义反斜杠（IDE markdown 格式化器会把 not_started 转义为 not\_started，E02）
+        return line_no, verify_cmds, cells[6].replace("\\", "")
     _fail(
         f"功能清单中未找到 {feature_id}",
         f"docs/features.md 表格内无该 ID 的行",
@@ -114,7 +115,8 @@ def _update_state(feature_id: str, new_state: str) -> None:
     if new_state not in VALID_STATES:
         _fail(f"非法状态值: {new_state}", f"合法值: {VALID_STATES}", "检查调用参数")
     lines = FEATURES_FILE.read_text(encoding="utf-8").splitlines()
-    row_re = re.compile(rf"^(\|\s*{re.escape(feature_id)}\s*\|.*)\|\s*\w+\s*\|\s*$")
+    # 状态单元格宽容匹配（[^\s|]+）：兼容格式化器的列对齐与下划线转义（not\_started，E02）
+    row_re = re.compile(rf"^(\|\s*{re.escape(feature_id)}\s*\|.*)\|\s*[^\s|]+\s*\|\s*$")
     for idx, line in enumerate(lines):
         if row_re.match(line):
             lines[idx] = row_re.sub(rf"\1| {new_state} |", line)

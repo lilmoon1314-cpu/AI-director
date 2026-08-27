@@ -22,6 +22,8 @@
 | 配置禁止硬编码（根 §1） | tests/architecture：扫描源码禁止端口/URL/密钥样式字面量（白名单：config.py、tests） | 自动（启发式） | F02 |
 | 错误响应三要素统一结构（backend/CONSTRAINTS） | 集成测试断言错误响应含 code/problem/cause/fix | 自动 | F02 |
 | SQLite WAL + 外键（backend/CONSTRAINTS） | 集成测试启动时断言 PRAGMA 值 | 自动 | F02 |
+| relationships 外键 DDL + ON DELETE RESTRICT（backend/CONSTRAINTS） | 架构测试：断言迁移/ORM 模型含 FK 声明与 RESTRICT 策略 | 自动 | F02 |
+| 无幽灵节点（悬空外键巡检） | 集成测试：`PRAGMA foreign_key_check` 断言空结果 | 自动 | F02 |
 | id 不可变（entities/CONSTRAINTS） | 单元测试：update 尝试改 id 被拒 | 自动 | F02 |
 | 视角过滤只读/单一事实源（perspectives/CONSTRAINTS） | E2E：视角查询前后数据库快照逐字节一致 | 自动 | F04 |
 | 禁止散点日志（backend/CONSTRAINTS） | tests/architecture：业务模块禁止 import logging 直接调用（仅 core 可） | 自动 | F02 |
@@ -35,6 +37,7 @@
 | 约束 | 暂无法自动化的原因 |
 |------|--------------------|
 | docstring 完整性（作用/参数/返回/异常/依赖） | 语义级检查（ruff DOC 规则成熟后转化） |
+| 文档-代码一致性（文档声称「已就位」的机制实际存在，E01） | 语义级比对（发现虚登按 docs/lessons.md E01 当场修正并双态标注） |
 | router 无业务逻辑 | 逻辑语义判断 |
 | properties 校验"读宽容写严格" | 行为语义判断（部分由单元测试覆盖） |
 | G6 单例与增量更新 | 渲染行为判断（组件测试部分覆盖） |

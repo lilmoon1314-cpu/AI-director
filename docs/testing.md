@@ -82,4 +82,6 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 
 ## 7. 内存回归守卫
 
-conftest.py 提供 e2e 级 fixture：用例执行前后采样进程 RSS，增长超阈值（config 配置）即失败——对应"资源利用异常模式"信号的测试侧采集。
+- 运行侧（**已就位**）：core observability 后台线程低频采样 RSS / CPU 写入 `logs/metrics.jsonl`（运行期资源趋势分析）。
+- 测试侧（**计划，F02 落地**）：conftest.py 将提供 e2e 级 fixture——用例执行前后采样进程 RSS，增长超阈值（config: `memory_guard_threshold_mb`）即失败。
+- 规则：文档描述机制必须区分「已就位 / 计划（FXX）」双态，禁止把计划写成现状（错误模式 E01，见 docs/lessons.md）。

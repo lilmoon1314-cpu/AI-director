@@ -116,3 +116,13 @@
 - 原因: Tailwind v4 已是当前稳定版本，无需 tailwind.config.ts / postcss.config.js，仅 @tailwindcss/vite 插件 + `@import "tailwindcss"` 两行接入，配置面最小；shadcn/ui 已完整支持 v4（F05 引入时无阻碍）；毛玻璃视觉基调（backdrop-blur）v4 原生支持。
 - 否决方案: Tailwind v3（多两份配置文件，v3 生态进入维护期）；CSS Modules/手写样式（放弃决策文档既定的 Tailwind + shadcn/ui 体系）。
 - 约束: 全局样式只从 src/index.css 入口扩展（@theme 自定义设计令牌）；组件内类名遵循 frontend/CONSTRAINTS.md 视觉约束。
+
+## 2026-08-24: 幽灵节点双层防线——FK DDL（ON DELETE RESTRICT）+ foreign_key_check 巡检，F02 首迁移建齐两表
+- 原因: "删除被引用实体"仅靠应用层 ReferentialError 校验存在旁路风险（任何绕过 service 的写入路径都会产生悬空引用/幽灵节点）；PRAGMA foreign_keys=ON 只对 DDL 声明了外键的表生效，故必须建表即声明；F02 的删除校验依赖 relationships 表存在，两表在 F02 首个迁移同时创建（对齐既有决策"MVP 建表范围 entities + relationships"）。
+- 否决方案: 仅应用层校验（旁路无防护）；ON DELETE CASCADE（静默级联删除是数据失踪事故的常见源头，违反 entities/CONSTRAINTS"不物理级联"约束）；F02 只建 entities 表（F02 验收项"删除校验关系引用"无从验证）。
+- 约束: 集成测试纳入 `PRAGMA foreign_key_check` 空结果巡检；架构测试断言迁移/模型含 FK+RESTRICT 声明（映射表 F02 行，docs/architecture_checks.md）。
+
+## 2026-08-24: 文档机制双态标注（已就位/计划 FXX），verify 脚本容错格式化改写
+- 原因: 测试机制盘点发现两处缺陷——(1) testing.md §7 把"计划中的 RSS 守卫 fixture"写成现状（文档虚登，E01）；(2) IDE markdown 格式化器会重排 features.md 表格并把 not_started 转义为 not\_started，verify_feature.py 状态正则失配（E02）。文档描述机制一律区分「已就位/计划（FXX）」双态；脚本对清单文件的解析宽容化（剥离转义、非空白非竖线状态匹配）并以单元测试固化。
+- 否决方案: 文档与实现状态混写（读者误信机制存在）；脚本假定清单格式永恒不变（编辑器随手保存即破坏验证链）。
+- 约束: E01 入审查清单（语义级暂无法自动化）；E02 回归测试 backend/tests/unit/test_verify_script.py 必须常绿。
