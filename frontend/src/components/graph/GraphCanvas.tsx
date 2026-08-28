@@ -19,6 +19,58 @@ interface GraphCanvasProps {
   onNodeClick?: (id: string) => void;
 }
 
+/** 节点最小中心间距（画布单位）：节点直径 + 标签 + autoFit 缩放余量，低于即硬性推开。 */
+const MIN_NODE_DISTANCE = 120;
+
+/** 硬分离重叠节点对：多轮推开直至无重叠（实时取节点数据——闭包首帧是空图，勿传）。 */
+function separateOverlaps(graph: Graph): void {
+  const MIN_DIST_SQ = MIN_NODE_DISTANCE * MIN_NODE_DISTANCE;
+  const nodes = graph.getNodeData();
+  const positions = new Map<string, number[]>(
+    nodes.map((n) => [n.id, Array.from(graph.getElementPosition(n.id).slice(0, 2))] as const),
+  );
+  for (let iter = 0; iter < 4; iter++) {
+    let moved = false;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = positions.get(nodes[i].id);
+        const b = positions.get(nodes[j].id);
+        if (!a || !b) continue;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const distSq = dx * dx + dy * dy;
+        if (distSq >= MIN_DIST_SQ) continue;
+        const dist = Math.sqrt(distSq);
+        if (dist < 0.5) {
+          // 完全重合：沿固定方向拆开
+          a[0] -= MIN_NODE_DISTANCE / 2;
+          b[0] += MIN_NODE_DISTANCE / 2;
+        } else {
+          const push = (MIN_NODE_DISTANCE - dist) / 2;
+          const ux = dx / dist;
+          const uy = dy / dist;
+          a[0] -= ux * push;
+          a[1] -= uy * push;
+          b[0] += ux * push;
+          b[1] += uy * push;
+        }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  if (import.meta.env.DEV) {
+    console.log("[separateOverlaps] 节点数", nodes.length, "已写回平移");
+  }
+  // translateElementTo 是官方元素平移 API（updateNodeData+draw 在布局模拟后会被覆盖失效）
+  const target: Record<string, Float32Array> = {};
+  for (const n of nodes) {
+    const p = positions.get(n.id);
+    if (p) target[n.id] = new Float32Array([p[0], p[1], 0]);
+  }
+  graph.translateElementTo(target, false);
+}
+
 function prefersDark(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -35,6 +87,8 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
   onNodeClickRef.current = onNodeClick;
   // 点击持续高亮的节点 id（null = 无持续高亮）
   const highlightedRef = useRef<string | null>(null);
+  // 布局收敛检测定时器（afterlayout 去抖后执行硬分离）
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -48,60 +102,51 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
       padding: 40,
       layout: {
         type: "force",
-        linkDistance: 180,
-        nodeStrength: -400,
-        collide: 80, // 碰撞半径大于节点光圈直径，防止节点重叠（用户硬要求）
+        // 布局不动画：同步算完直接出最终位置——硬分离在 render 后 0.6s 执行，
+        // 若开动画，模拟 tick 会持续覆盖分离结果（曾致节点仍重叠）
+        animation: false,
+        linkDistance: 220,
+        nodeStrength: -800,
+        // 防重叠的正确开关：碰撞半径由 nodeSize+nodeSpacing 推导
+        // （传 collide: <数字> 不会生效——radius 会回退为默认 nodeSize 10 的一半，
+        //   远小于实际节点光圈，导致重叠，见 2026-08-28 视觉返工）
+        preventOverlap: true,
+        nodeSize: 46,
+        nodeSpacing: 24,
+        collideStrength: 1,
+        collideIterations: 6,
       },
       node: {
         style: {
           size: 13,
-          // 发散型光点：核心实色(1.0) → 内描边(0.6) → halo 光圈(0.15) → shadow 柔光(约0.23 alpha)，透明度逐层降低
           fill: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
           stroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
           strokeOpacity: 0.6,
           lineWidth: 2,
-          halo: true,
-          haloLineWidth: 10,
-          haloStroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
-          haloStrokeOpacity: 0.15,
-          shadowColor: (d: { data?: { color?: string } }) => `${d.data?.color ?? "#97a7b3"}3b`,
-          shadowBlur: 12,
+          fillOpacity: 0.88,
           labelText: (d: { data?: { name?: string } }) => d.data?.name ?? "",
         },
         state: {
-          // 悬停/选中：微微放大 + 光圈增强
-          active: {
-            size: 16,
-            haloLineWidth: 14,
-            haloStrokeOpacity: 0.3,
-            shadowBlur: 20,
-            labelFontWeight: 600,
-          },
-          selected: {
-            size: 16,
-            lineWidth: 2,
-            stroke: "#f59e0b",
-            haloLineWidth: 14,
-            haloStrokeOpacity: 0.3,
-            shadowBlur: 20,
-            labelFontWeight: 600,
-          },
-          inactive: { fillOpacity: 0.25, strokeOpacity: 0.2, labelOpacity: 0.2 },
+          // 高亮 = 在原样式上提高透明度（不叠色、不加粗、不改字重）；
+          // halo:false 显式关闭——G6 5 内置主题会给 active/selected 默认叠加光晕
+          active: { size: 16, fillOpacity: 1, strokeOpacity: 1, labelOpacity: 1, halo: false },
+          selected: { size: 16, fillOpacity: 1, strokeOpacity: 1, labelOpacity: 1, halo: false },
+          inactive: { fillOpacity: 0.5, strokeOpacity: 0.42, labelOpacity: 0.4, halo: false },
         },
       },
       edge: {
         style: {
           stroke: (d: { data?: { stroke?: string } }) => d.data?.stroke ?? "#94a3b8",
-          opacity: (d: { data?: { opacity?: number } }) => d.data?.opacity ?? 0.45,
+          opacity: (d: { data?: { opacity?: number } }) => d.data?.opacity ?? 0.22,
           endArrow: true,
           labelText: (d: { data?: { type?: string } }) => d.data?.type ?? "",
           // 多边场景边标签默认隐藏（喧宾夺主），悬停/选中高亮时经 state 显示
           labelOpacity: 0,
         },
         state: {
-          active: { opacity: 0.95, lineWidth: 2.5, labelOpacity: 1 },
-          selected: { opacity: 0.95, lineWidth: 2.5, labelOpacity: 1 },
-          inactive: { opacity: 0.08, labelOpacity: 0 },
+          active: { opacity: 0.7, labelOpacity: 1 },
+          selected: { opacity: 0.7, labelOpacity: 1 },
+          inactive: { opacity: 0.1, labelOpacity: 0 },
         },
       },
       behaviors: [
@@ -115,6 +160,21 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
     });
     graphRef.current = graph;
     void graph.render();
+
+    // 布局停止后执行一次硬分离：力导碰撞力是软约束仍可能残余重叠，
+    // 这里按最小间距把过近节点对沿连线推开（O(n²) 每轮毫秒级，200 节点无感）
+    const onAfterLayout = () => {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(() => {
+        graph.off("afterlayout", onAfterLayout);
+        separateOverlaps(graph);
+      }, 600);
+    };
+    graph.on("afterlayout", onAfterLayout);
+    // 兜底：afterlayout 事件时序不确定，布局动画常规时长内再固定触发一次
+    setTimeout(() => {
+      graph.emit("afterlayout");
+    }, 9000);
 
     // dev 验收后门：e2e 经其读取节点画布坐标（getViewportByCanvas 换算后 hover/click）；
     // 仅开发环境挂载，生产构建不暴露
@@ -144,6 +204,8 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
     }
 
     return () => {
+      graph.off("afterlayout", onAfterLayout);
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       graph.destroy();
       graphRef.current = null;
     };

@@ -74,9 +74,46 @@ test("悬停高亮放大 + 点击持续高亮与结构化详情", async ({ page,
     data: { source: charId, target: eventId, type: "PARTICIPATES", audience_known: true },
   })).status()).toBe(201);
 
+  page.on("console", (msg) => {
+    if (msg.text().includes("separateOverlaps")) console.log("[页面]", msg.text());
+  });
   await page.goto("/");
   await expect(page.getByTestId("graph-stats")).toHaveText(/3 节点 · 2 边/);
-  await page.waitForTimeout(4000); // 力导布局收敛
+  await page.waitForTimeout(10500); // 力导收敛 + 硬分离(兜底 9s+0.6s 去抖)完成
+  const nodeCoords = await page.evaluate(() => {
+    const graph = (window as unknown as { __g6graph?: {
+      getNodeData: () => { id: string; data: { name: string } }[];
+      getElementPosition: (id: string) => number[];
+    } }).__g6graph;
+    return graph?.getNodeData().map((n) => {
+      const p = graph.getElementPosition(n.id);
+      return { name: n.data.name, x: Math.round(p[0]), y: Math.round(p[1]) };
+    });
+  });
+  console.log("[节点画布坐标]", JSON.stringify(nodeCoords));
+  // 实验验证: translateElementTo 移动后 1s,位置是否被布局引擎拉回
+  await page.evaluate(() => {
+    const graph = (window as unknown as { __g6graph?: {
+      getNodeData: () => { id: string; data: { name: string } }[];
+      translateElementTo: (p: Record<string, Float32Array>, animation?: boolean) => void;
+    } }).__g6graph;
+    const target = graph?.getNodeData().find((n) => n.data.name === "夜探药庐");
+    if (target) graph?.translateElementTo({ [target.id]: new Float32Array([700, 100, 0]) }, false);
+  });
+  await page.waitForTimeout(1000);
+  const afterMove = await page.evaluate(() => {
+    const graph = (window as unknown as { __g6graph?: {
+      getNodeData: () => { id: string; data: { name: string } }[];
+      getElementPosition: (id: string) => number[];
+    } }).__g6graph;
+    return graph?.getNodeData()
+      .filter((n) => n.data.name === "夜探药庐")
+      .map((n) => {
+        const p = graph.getElementPosition(n.id);
+        return { name: n.data.name, x: Math.round(p[0]), y: Math.round(p[1]) };
+      });
+  });
+  console.log("[移动 1s 后]", JSON.stringify(afterMove));
 
   // —— 悬停人物节点：一跳邻域高亮、非邻接淡出、节点放大、边标签显示 ——
   const charPoint = await nodeViewportPoint(page, 0);

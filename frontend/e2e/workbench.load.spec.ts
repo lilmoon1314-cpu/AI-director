@@ -187,7 +187,7 @@ test("负载验收: 194 实体 + 208 关系的加载/交互/内存", async ({ pa
   const memAfterLoad = await heapMB(page);
 
   // —— 布局收敛稳定 ——
-  await page.waitForTimeout(6000);
+  await page.waitForTimeout(11500); // 布局收敛 + 硬分离(兜底 9s+0.6s)
   const memAfterStable = await heapMB(page);
   await shoot(page, "LOAD-01-全景-194节点-208边");
 

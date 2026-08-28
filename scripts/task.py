@@ -160,7 +160,8 @@ def cmd_dev() -> None:
     """
     procs = [
         subprocess.Popen(["uv", "run", "uvicorn", "app.main:app", "--reload"], cwd=BACKEND),
-        subprocess.Popen(["pnpm", "dev"], cwd=FRONTEND),
+        # pnpm 经 _resolve_executable 解析（Windows 下是 .cmd 批处理，裸名字 CreateProcess 失败）
+        subprocess.Popen([*_resolve_executable("pnpm"), "dev"], cwd=FRONTEND),
     ]
     print("后端 http://localhost:8000/docs | 前端 http://localhost:5173（Ctrl+C 停止全部）")
     try:
