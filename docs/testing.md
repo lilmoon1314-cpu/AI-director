@@ -21,7 +21,7 @@
 2. 测试文档 `docs/tests/FXX_<name>.md` 就位，层级矩阵中所有"必须"状态为 pass
 3. 必须层级测试全部通过（验证命令见 features.md）
 4. `make check` 通过
-5. 变异测试达标（§9：定向 mutmut kill rate ≥ 85%，存活变异体已分析归档；工具随 F04 落地，自 F04 起生效）
+5. 变异测试达标（§9：定向 mutmut kill rate ≥ 85%，存活变异体已分析归档；工具随 F04 落地，自 F04 起生效；**仅适用 backend/app 的 Python 模块，前端功能豁免**——mutmut 无法变异 TypeScript，前端测试有效性由 §8 等价类/边界值设计 + L1/L2/L3 层级测试保障，适用范围详见 §9）
 
 ## 3. 目录结构
 
@@ -106,7 +106,7 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 
 ## 9. 变异测试（mutmut）
 
-> 状态：**已就位（F04 落地）**——mutmut 2.x 已入 dev 依赖，封装命令 `python scripts/task.py mutate <module> [test_path...]`（等价 `make mutate <module>`）。
+> 状态：**已就位（F04 落地）**——mutmut 2.x 已入 dev 依赖，封装命令 `python scripts/task.py mutate <module> [test_path...]`（等价 `make mutate <module>`）。**适用范围：仅 backend/app 的 Python 模块**（2026-08-28 决策：mutmut 无法变异 TypeScript/React，前端功能 DoD 不含变异测试，其测试有效性由 §8 用例设计方法 + L1/L2/L3 层级测试保障；若未来引入前端变异工具须先修订本条）。
 
 - **判杀器构成（层级覆盖原则，F04 教训 E04 固化）**：判杀测试集合必须覆盖该功能 DoD 的全部「必须」测试层级——判杀器缺哪一层，那一层语义的变异就存在漏杀盲区：
     - **L1 单元（恒为基线）**：`tests/unit/test_<module>_service.py`（默认判杀器，不存在时显式传入）；负责杀过滤规则/校验/投影等纯逻辑变异；

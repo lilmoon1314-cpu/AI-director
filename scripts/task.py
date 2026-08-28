@@ -226,23 +226,32 @@ def cmd_backend_check() -> None:
 
 
 def cmd_frontend_check() -> None:
-    """仅前端验证：typecheck → lint → build。
+    """仅前端验证：api 类型同步 → typecheck → lint → build。
 
-    作用: 前端质量门禁（类型 + 规范 + 生产构建）。
-    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: tsc / eslint / vite。
+    作用: 前端质量门禁（API 契约 + 类型 + 规范 + 生产构建）。
+    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: cmd_check_api_types / tsc / eslint / vite。
     """
+    cmd_check_api_types()
     _frontend("typecheck")
     _frontend("lint")
     _frontend("build")
 
 
 def cmd_check_api_types() -> None:
-    """前端 API 类型同步检查（openapi-typescript 生成 + git diff 校验，F05 起启用）。
+    """前端 API 类型同步检查（导出 OpenAPI → openapi-typescript 生成 → git diff 校验）。
 
     作用:
-        保证前端 API 类型与后端 OpenAPI schema 一致（frontend/CONSTRAINTS.md「API 契约」）。
-    参数: 无。返回值: 无。异常: F05 前因 gen:api-types 脚本缺失而失败（预期行为）。依赖: pnpm / git。
+        保证前端 API 类型与后端 OpenAPI schema 一致（frontend/CONSTRAINTS.md「API 契约」）；
+        已挂入 cmd_check 前端链（F05 起）。
+    参数: 无。返回值: 无。异常: 后端无法导入 app 或类型漂移时经 _fail 终止。依赖: uv / pnpm / git。
     """
+    _backend(
+        "python",
+        "-c",
+        "import json, pathlib; from app.main import app; "
+        "pathlib.Path('openapi.json').write_text("
+        "json.dumps(app.openapi(), ensure_ascii=False, indent=2), encoding='utf-8')",
+    )
     _frontend("run", "gen:api-types")
     _run(["git", "diff", "--exit-code", "--", "src/api/"], FRONTEND)
 

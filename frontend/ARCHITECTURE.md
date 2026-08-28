@@ -4,7 +4,7 @@
 
 ## 1. 技术栈
 
-React 18 / TypeScript 5 / Vite 5 / AntV G6 5.x / Zustand / Tailwind CSS + shadcn/ui。
+React 18 / TypeScript 5 / Vite 5 / AntV G6 5.x / Zustand / Tailwind CSS + 自研轻量 UI 组件（shadcn/ui 风格：毛玻璃面板、按钮、输入框、表单；2026-08-28 决策不引入 shadcn CLI，详见 DECISIONS.md）。
 
 ## 2. 目录结构与分层
 
@@ -23,7 +23,7 @@ frontend/src/
 │   ├── entity-selector/# @ 触发的实体搜索选择器（含视角可见性提示）
 │   ├── entity-panel/   # 实体/关系详情（资产缩略图、编辑表单）
 │   ├── agent-panel/    # 对话面板（SSE 渲染 + 草案确认 UI）
-│   └── ui/             # shadcn/ui 通用组件
+│   └── ui/             # 自研轻量通用组件（毛玻璃面板/按钮/输入框，shadcn/ui 风格）
 └── lib/                # 工具（格式化、防抖等）
 ```
 

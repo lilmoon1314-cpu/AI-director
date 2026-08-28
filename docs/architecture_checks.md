@@ -10,7 +10,7 @@
 | import-linter | 模块边界契约（import 依赖检查） | `uv run lint-imports`（纳入 make check） |
 | tests/architecture/ | 自定义架构测试（AST 扫描、源码模式检查） | `pytest -m architecture` |
 | ruff / eslint | 通用 lint + 前端限制规则 | make check |
-| 类型同步检查 | 前端 API 类型与后端 schema 一致 | `make check-api-types` |
+| 类型同步检查 | 前端 API 类型与后端 schema 一致 | `make check-api-types`（导出 OpenAPI → openapi-typescript 生成 → git diff 校验；**F05 起挂入 `task.py check` 前端链首步**） |
 
 ## 2. 约束 → 检查映射表
 

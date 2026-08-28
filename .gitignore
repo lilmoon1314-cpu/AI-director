@@ -34,3 +34,10 @@ Thumbs.db
 
 # mutmut 变异测试缓存（定向运行产出，不入版本库）
 backend/.mutmut-cache
+
+# API 类型同步检查的中间产物（task.py check-api-types 导出，不入版本库）
+backend/openapi.json
+
+# Playwright 产物（L3 e2e 运行输出，不入版本库）
+frontend/test-results/
+frontend/playwright-report/
