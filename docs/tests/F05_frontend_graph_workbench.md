@@ -32,6 +32,8 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 | L2 集成（增强轮） | I10: properties JSON 编辑 → PATCH 携带新值 | 同上 | 必须 | pass |
 | L2 集成（增强轮） | I11: 新建手风琴（实体默认展开/关系收起，点击切换） | 同上 | 必须 | pass |
 | L2 集成（增强轮） | I12: 操作栏收起/展开 | 同上 | 必须 | pass |
+| L3 E2E（增强轮） | HL: 悬停高亮微放大→点击持续高亮+结构化详情面板→再点取消（截图 HL-01~03） | e2e/highlight-detail.spec.ts | 必须 | pass |
+| L3 E2E（视觉二轮） | HL2: 新配色/节点减半/边透明度 0.22/collide 防重叠（LOAD 截图核验） | e2e/workbench.load.spec.ts | 必须 | pass |
 
 ## 用例说明
 - U1: load 成功（GET /api/graph?perspective=author）→ nodes/edges/loading 就位；空数据 → 空数组非 undefined（边界值—空集）；fetch 抛错 → error 置位 + loading 复位（设计依据：等价类—成功/失败；边界值—空集；加载参数固定 author，F06 接管视角）
@@ -51,11 +53,13 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 - E2: 重载页面后 E1 建的实体与关系仍在（图计数 7 节点 4 边）（设计依据：持久化单一事实源，防纯前端假象）
 - U6 参数化: 7 实体类型各映射固定标识色；未知类型回退概念灰（设计依据：等价类—类型枚举逐一；无效等价类—未知类型容错）
 - U7 参数化: 关系边色随「非 character 一端」类型色（方向无关）；人—人取中性蓝灰；两端皆非人取 source 端；opacity < 1（更淡更透明，用户规则）（设计依据：等价类—端点类型组合；边界值—双 character/双非人）
-- I9: 选中含 properties 的实体（event-e: known_by/place）→ 面板属性区逐键值展示（设计依据：增强轮—详情面板完整参数可见）
-- I10: 编辑态 properties JSON 文本修改 → 保存 → PATCH body.properties 为解析后对象 → 面板更新（设计依据：增强轮—参数修改主路径；JSON 文本提交前 parse 校验）
+- I9: 选中含 properties 的实体（event-e: known_by/place）→ 面板按类型蓝图结构化展示全部规定字段（label 为字段中文名，空值显示 —），额外键兜底列出（设计依据：视觉二轮—详情面板按 schema 列字段）
+- I10: 结构化字段编辑（known_by 逗号分隔输入）→ 保存 → PATCH properties.known_by 为解析后数组 → 面板更新（设计依据：视觉二轮—schema 驱动修改主路径；buildProperties 逐字段校验 list/number/object）
 - I11: 「新建」手风琴——实体表单默认展开、关系表单默认收起；点「关系」标题展开、再点收起（设计依据：增强轮—折叠收纳交互，等价类—开/关两态）
 - I12: 点「收起操作栏」→ 侧栏移除、展开按钮出现；点「展开操作栏」→ 恢复（设计依据：增强轮—工作台收起展开，等价类—两态往返）
 - E3: emulateMedia(colorScheme: dark) → 页面以深色主题渲染（图计数与加载正常），截图存档（设计依据：增强轮—深浅色跟随系统 prefers-color-scheme；G6 主题经 setTheme 联动，视觉由截图人工核验）
+- HL: 播种小世界（3 实体 2 关系）→ 经 dev 后门 window.__g6graph 取节点画布坐标（getElementPosition + getViewportByCanvas + 容器 boundingBox 换算页面坐标）→ 真实 mouse.hover 断言面板前截图（悬停：一跳邻域高亮/非邻接淡出/节点微放大/边标签显示）→ mouse.click 断言详情面板结构化字段（身份/职业=药师、年龄=—）并截图（持续高亮+右侧蓝图字段）→ 再点截图（取消高亮）（设计依据：视觉二轮—高亮交互与结构化详情的人工核验自动化；G6 内置渲染行为无法在 jsdom 断言）
+- HL2: 负载全景截图（LOAD-01/02）核验视觉二轮：节点 size 13（原 26 减半）、collide=80 防重叠、边 opacity 0.22、新色板（人物 ff5a7d/事件 ffff7e/物件 a7ffff/地点 40531b/门派 ffceff/概念 97a7b3/功法 f86624）（设计依据：视觉二轮—负载规模下的清晰度人工核验）
 
 ## 测试设施约定
 - L1/L2 运行于 jsdom；@antv/g6 经 vite.config `test.alias` 指向测试桩（src/test-stubs/g6-stub.ts，jsdom 无 canvas），断言经桩实例收到的数据与手动 emit 的回调（E06：vi.mock 与 RTL 并存会触发转换期 TDZ，已禁用该组合）；L2 网络层用 MSW（handlers 按测试世界装配），`VITE_API_BASE` 指向 MSW 可匹配的绝对前缀（vitest test.env 注入）。

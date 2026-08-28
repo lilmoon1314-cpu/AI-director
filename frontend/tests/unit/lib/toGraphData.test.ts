@@ -23,14 +23,14 @@ describe("toGraphData（U3）", () => {
     expect(out.nodes[0].data.name).toBe("周兰");
     expect(out.nodes[0].data.aliases).toEqual(["兰姐", "阿兰"]);
     expect(out.nodes[0].data.aliases).not.toBe(input.nodes[0].aliases); // 拷贝而非引用
-    expect(out.nodes[0].data.color).toBe("#5b8def"); // character 蓝
-    expect(out.nodes[1].data.color).toBe("#4caf7d"); // location 绿
+    expect(out.nodes[0].data.color).toBe("#ff5a7d"); // character 粉红
+    expect(out.nodes[1].data.color).toBe("#40531b"); // location 暗绿
     expect(out.edges[0].id).toBe("rel-2");
     expect(out.edges[0].source).toBe("char-a");
     expect(out.edges[0].target).toBe("loc-l");
     expect(out.edges[0].data.type).toBe("LIVES_IN");
-    expect(out.edges[0].data.stroke).toBe("#4caf7d"); // 人—地：随非人端（地点绿）
-    expect(out.edges[0].data.opacity).toBeLessThan(1); // 比节点更淡
+    expect(out.edges[0].data.stroke).toBe("#40531b"); // 人—地：随非人端（地点绿）
+    expect(out.edges[0].data.opacity).toBe(0.22); // 边透明度减半
   });
 
   it.each([

@@ -50,40 +50,40 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
         type: "force",
         linkDistance: 180,
         nodeStrength: -400,
-        collide: 60, // 节点碰撞半径：配合标签避让减少拥挤
+        collide: 80, // 碰撞半径大于节点光圈直径，防止节点重叠（用户硬要求）
       },
       node: {
         style: {
-          size: 26,
+          size: 13,
           // 发散型光点：核心实色(1.0) → 内描边(0.6) → halo 光圈(0.15) → shadow 柔光(约0.23 alpha)，透明度逐层降低
-          fill: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
-          stroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
+          fill: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
+          stroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
           strokeOpacity: 0.6,
-          lineWidth: 4,
+          lineWidth: 2,
           halo: true,
-          haloLineWidth: 16,
-          haloStroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
+          haloLineWidth: 10,
+          haloStroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#97a7b3",
           haloStrokeOpacity: 0.15,
-          shadowColor: (d: { data?: { color?: string } }) => `${d.data?.color ?? "#8a94a6"}3b`,
-          shadowBlur: 20,
+          shadowColor: (d: { data?: { color?: string } }) => `${d.data?.color ?? "#97a7b3"}3b`,
+          shadowBlur: 12,
           labelText: (d: { data?: { name?: string } }) => d.data?.name ?? "",
         },
         state: {
           // 悬停/选中：微微放大 + 光圈增强
           active: {
-            size: 31,
-            haloLineWidth: 24,
+            size: 16,
+            haloLineWidth: 14,
             haloStrokeOpacity: 0.3,
-            shadowBlur: 30,
+            shadowBlur: 20,
             labelFontWeight: 600,
           },
           selected: {
-            size: 31,
-            lineWidth: 3,
+            size: 16,
+            lineWidth: 2,
             stroke: "#f59e0b",
-            haloLineWidth: 24,
+            haloLineWidth: 14,
             haloStrokeOpacity: 0.3,
-            shadowBlur: 30,
+            shadowBlur: 20,
             labelFontWeight: 600,
           },
           inactive: { fillOpacity: 0.25, strokeOpacity: 0.2, labelOpacity: 0.2 },
@@ -115,6 +115,12 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
     });
     graphRef.current = graph;
     void graph.render();
+
+    // dev 验收后门：e2e 经其读取节点画布坐标（getViewportByCanvas 换算后 hover/click）；
+    // 仅开发环境挂载，生产构建不暴露
+    if (import.meta.env.DEV) {
+      (window as unknown as { __g6graph?: Graph }).__g6graph = graph;
+    }
 
     graph.on("node:click", (evt) => {
       const id = (evt as unknown as { target?: { id?: string } }).target?.id;

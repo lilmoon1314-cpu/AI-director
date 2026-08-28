@@ -1,6 +1,7 @@
 /**
  * 实体详情面板：选中实体后拉取完整数据，支持编辑（PATCH）与删除（二次确认）。
- * - properties 只读展示（键值），编辑态为 JSON 文本（parse 校验，非法则三要素报错）；
+ * - properties 按类型蓝图结构化展示（全部规定字段，空值显示 —）与编辑
+ *   （与新建表单同一 schema 驱动，逐字段校验）；
  * - 后端 409（被引用）等业务错误原样展示三要素（problem + fix）。
  */
 
@@ -14,11 +15,19 @@ import {
   type EntityFormValues,
   type FormIssue,
 } from "../../lib/entityForm";
+import {
+  buildProperties,
+  displayPropertyValue,
+  propertiesSchema,
+  toPropertyFormState,
+  type PropertyFormState,
+} from "../../lib/entityProperties";
 import { useGraphStore } from "../../stores/graphStore";
 import { useSelectionStore } from "../../stores/selectionStore";
 import { Button } from "../ui/Button";
 import { CheckboxInput, SelectInput, TextArea, TextInput } from "../ui/Field";
 import { GlassPanel } from "../ui/GlassPanel";
+import { PropertiesFields } from "./PropertiesFields";
 
 function fromEntity(e: EntityRead): EntityFormValues {
   return {
@@ -39,8 +48,8 @@ export function EntityPanel() {
   const [entity, setEntity] = useState<EntityRead | null>(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EntityFormValues>(EMPTY_ENTITY_FORM);
-  const [propsText, setPropsText] = useState("{}");
-  const [propsIssue, setPropsIssue] = useState<string | null>(null);
+  const [propValues, setPropValues] = useState<PropertyFormState>({});
+  const [propIssues, setPropIssues] = useState<Record<string, string>>({});
   const [issues, setIssues] = useState<FormIssue[]>([]);
   const [error, setError] = useState<{ problem: string; fix: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -51,14 +60,14 @@ export function EntityPanel() {
     setEditing(false);
     setError(null);
     setConfirmingDelete(false);
-    setPropsIssue(null);
+    setPropIssues({});
     if (!selectedEntityId) return;
     api
       .getEntity(selectedEntityId)
       .then((e) => {
         setEntity(e);
         setForm(fromEntity(e));
-        setPropsText(JSON.stringify(e.properties ?? {}, null, 2));
+        setPropValues(toPropertyFormState(e.type, e.properties ?? {}));
       })
       .catch((cause: unknown) => {
         const err = cause instanceof ApiError ? cause : null;
@@ -71,31 +80,22 @@ export function EntityPanel() {
 
   if (!panelOpen || !selectedEntityId) return null;
 
-  const issueFor = (field: FormIssue["field"]) =>
-    issues.find((i) => i.field === field)?.message;
-
-  const parseProps = (): Record<string, unknown> | null => {
-    try {
-      const value = JSON.parse(propsText || "{}") as unknown;
-      if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        setPropsIssue("properties 必须是 JSON 对象");
-        return null;
-      }
-      setPropsIssue(null);
-      return value as Record<string, unknown>;
-    } catch {
-      setPropsIssue("properties 不是合法 JSON，请检查格式");
-      return null;
-    }
-  };
+  const issueFor = (field: FormIssue["field"]) => issues.find((i) => i.field === field)?.message;
+  const fields = entity ? propertiesSchema(entity.type) : [];
+  const extraEntries = entity
+    ? Object.entries(entity.properties ?? {}).filter(
+        ([k]) => !fields.some((f) => f.key === k),
+      )
+    : [];
 
   const save = async () => {
     if (!entity) return;
     const found = validateEntityForm(form);
     setIssues(found);
     if (found.length > 0) return;
-    const props = parseProps();
-    if (props === null) return;
+    const { properties, issues: propIssueMap } = buildProperties(entity.type, propValues);
+    setPropIssues(propIssueMap);
+    if (Object.keys(propIssueMap).length > 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -107,7 +107,7 @@ export function EntityPanel() {
           .filter((a) => a.length > 0),
         audience_known: form.audienceKnown,
         description: form.description.trim(),
-        properties: props,
+        properties,
       });
       setEntity(updated);
       setEditing(false);
@@ -137,10 +137,8 @@ export function EntityPanel() {
     }
   };
 
-  const propertiesEntries = Object.entries(entity?.properties ?? {});
-
   return (
-    <GlassPanel data-testid="entity-panel" className="absolute top-6 right-6 z-10 w-96 p-5">
+    <GlassPanel data-testid="entity-panel" className="absolute top-6 right-6 z-10 max-h-[85vh] w-96 overflow-y-auto p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">实体详情</h2>
         <Button variant="ghost" onClick={clear} aria-label="关闭面板">
@@ -187,12 +185,15 @@ export function EntityPanel() {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
-          <TextArea
-            id="edit-props"
-            label="属性 properties（JSON）"
-            value={propsText}
-            error={propsIssue ?? undefined}
-            onChange={(e) => setPropsText(e.target.value)}
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {entity.type} 属性（{fields.length} 个字段）
+          </p>
+          <PropertiesFields
+            fields={fields}
+            values={propValues}
+            errors={propIssues}
+            idPrefix="edit"
+            onChange={(key, raw) => setPropValues((prev) => ({ ...prev, [key]: raw }))}
           />
           <CheckboxInput
             id="edit-audience"
@@ -209,9 +210,9 @@ export function EntityPanel() {
               onClick={() => {
                 setEditing(false);
                 setIssues([]);
-                setPropsIssue(null);
+                setPropIssues({});
                 setForm(fromEntity(entity));
-                setPropsText(JSON.stringify(entity.properties ?? {}, null, 2));
+                setPropValues(toPropertyFormState(entity.type, entity.properties ?? {}));
               }}
             >
               取消
@@ -240,21 +241,42 @@ export function EntityPanel() {
               {entity.description}
             </p>
           ) : null}
-          {propertiesEntries.length > 0 ? (
-            <div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">属性</span>
-              <dl className="mt-1 space-y-1" data-testid="entity-properties">
-                {propertiesEntries.map(([key, value]) => (
-                  <div key={key} className="rounded-lg bg-slate-100/70 px-2 py-1 text-xs dark:bg-slate-800/70">
-                    <dt className="font-medium text-slate-600 dark:text-slate-300">{key}</dt>
+
+          <div data-testid="entity-properties">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              {entity.type} 属性（{fields.length} 个字段）
+            </p>
+            <dl className="mt-1 space-y-1">
+              {fields.map((f) => {
+                const value = (entity.properties ?? {})[f.key];
+                return (
+                  <div
+                    key={f.key}
+                    data-testid={`prop-${f.key}`}
+                    className="rounded-lg bg-slate-100/70 px-2 py-1 text-xs dark:bg-slate-800/70"
+                  >
+                    <dt className="font-medium text-slate-600 dark:text-slate-300">{f.label}</dt>
                     <dd className="break-all text-slate-700 dark:text-slate-400">
-                      {Array.isArray(value) ? value.join("、") : String(value)}
+                      {displayPropertyValue(value)}
                     </dd>
                   </div>
-                ))}
-              </dl>
-            </div>
-          ) : null}
+                );
+              })}
+              {extraEntries.map(([key, value]) => (
+                <div
+                  key={key}
+                  data-testid={`prop-${key}`}
+                  className="rounded-lg bg-slate-100/70 px-2 py-1 text-xs dark:bg-slate-800/70"
+                >
+                  <dt className="font-medium text-slate-600 dark:text-slate-300">{key}</dt>
+                  <dd className="break-all text-slate-700 dark:text-slate-400">
+                    {displayPropertyValue(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
           <p className="text-xs text-slate-500 dark:text-slate-400">
             观众可见：{entity.audience_known ? "是" : "否"}
           </p>

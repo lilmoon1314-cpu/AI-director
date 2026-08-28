@@ -8,6 +8,8 @@ export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   // 负载验收走独立配置（pnpm test:e2e:load → playwright.load.config.ts）
   testIgnore: "**/*.load.spec.ts",
+  // 单 worker：各 spec 共用同一后端库，并行会互踩数据（reset/播种交错致断言恒 9/5）
+  workers: 1,
   fullyParallel: false,
   retries: 0,
   timeout: 30_000,
@@ -27,12 +29,15 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "cd ../backend && uv run alembic upgrade head && uv run uvicorn app.main:app --port 8000",
+      // 前置 taskkill：彼时本轮 uvicorn 尚未启动，杀全部 uvicorn 安全
+      // （Windows 下残留进程链会占 8000 端口与库文件，致轮询误命中旧库——同 load 配置）
+      command:
+        "taskkill /F /T /IM uvicorn.exe 2>nul & cd ../backend && uv run alembic upgrade head && uv run uvicorn app.main:app --port 8000",
       url: "http://localhost:8000/api/entities",
       reuseExistingServer: false,
       timeout: 90_000,
       env: {
-        // e2e 专用临时库，与开发库 data/app.db 隔离（globalSetup 先删除旧文件保证干净起点）
+        // e2e 专用临时库，与开发库 data/app.db 隔离
         DATABASE_URL: "sqlite+aiosqlite:///data/e2e_test.db",
       },
     },

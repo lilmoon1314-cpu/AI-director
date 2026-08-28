@@ -1,7 +1,7 @@
 /**
  * 新建实体表单：前端校验（等价类/边界值）→ POST /api/entities → 成功后刷新图。
- * properties 为 JSON 文本编辑（默认 {}；known_by/seen_by 等任意结构均可填），
- * 提交前 parse 校验，非法 JSON 阻止提交（前端即时反馈，后端校验仍是唯一权威）。
+ * properties 按所选类型列出蓝图规定的全部字段（结构化输入，见 entityProperties.ts），
+ * 提交前逐字段校验（number/object 非法阻止提交），后端校验仍是唯一权威。
  */
 
 import { useState } from "react";
@@ -15,48 +15,43 @@ import {
   type EntityFormValues,
   type FormIssue,
 } from "../../lib/entityForm";
+import {
+  buildProperties,
+  propertiesSchema,
+  toPropertyFormState,
+  type PropertyFormState,
+} from "../../lib/entityProperties";
 import { useGraphStore } from "../../stores/graphStore";
 import { Button } from "../ui/Button";
 import { CheckboxInput, SelectInput, TextArea, TextInput } from "../ui/Field";
+import { PropertiesFields } from "./PropertiesFields";
 
 export function CreateEntityForm() {
   const reloadGraph = useGraphStore((s) => s.loadGraph);
   const [form, setForm] = useState<EntityFormValues>(EMPTY_ENTITY_FORM);
-  const [propsText, setPropsText] = useState("{}");
-  const [propsIssue, setPropsIssue] = useState<string | null>(null);
+  const [propValues, setPropValues] = useState<PropertyFormState>(() =>
+    toPropertyFormState(EMPTY_ENTITY_FORM.type, {}),
+  );
+  const [propIssues, setPropIssues] = useState<Record<string, string>>({});
   const [issues, setIssues] = useState<FormIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const issueFor = (field: FormIssue["field"]) => issues.find((i) => i.field === field)?.message;
 
-  const parseProps = (): Record<string, unknown> | null => {
-    try {
-      const value = JSON.parse(propsText || "{}") as unknown;
-      if (typeof value !== "object" || value === null || Array.isArray(value)) {
-        setPropsIssue("properties 必须是 JSON 对象（如 {\"known_by\": [\"char-a\"]}）");
-        return null;
-      }
-      setPropsIssue(null);
-      return value as Record<string, unknown>;
-    } catch {
-      setPropsIssue("properties 不是合法 JSON，请检查格式");
-      return null;
-    }
-  };
-
   const submit = async () => {
     const found = validateEntityForm(form);
     setIssues(found);
     if (found.length > 0) return; // 无效输入：拦截，零网络请求
-    const props = parseProps();
-    if (props === null) return;
+    const { properties, issues: propIssueMap } = buildProperties(form.type, propValues);
+    setPropIssues(propIssueMap);
+    if (Object.keys(propIssueMap).length > 0) return;
     setBusy(true);
     setError(null);
     try {
-      await api.createEntity({ ...toEntityCreate(form), properties: props });
+      await api.createEntity({ ...toEntityCreate(form), properties });
       setForm(EMPTY_ENTITY_FORM);
-      setPropsText("{}");
+      setPropValues(toPropertyFormState(EMPTY_ENTITY_FORM.type, {}));
       await reloadGraph();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.problem : "创建实体失败，请稍后重试");
@@ -78,7 +73,12 @@ export function CreateEntityForm() {
         options={ENTITY_TYPES}
         value={form.type}
         error={issueFor("type")}
-        onChange={(e) => setForm({ ...form, type: e.target.value })}
+        onChange={(e) => {
+          const nextType = e.target.value;
+          setForm({ ...form, type: nextType });
+          setPropValues(toPropertyFormState(nextType, {})); // 类型切换 → 重置为该类型字段
+          setPropIssues({});
+        }}
       />
       <TextInput
         id="create-name"
@@ -99,12 +99,15 @@ export function CreateEntityForm() {
         value={form.description}
         onChange={(e) => setForm({ ...form, description: e.target.value })}
       />
-      <TextArea
-        id="create-props"
-        label="属性 properties（JSON）"
-        value={propsText}
-        error={propsIssue ?? undefined}
-        onChange={(e) => setPropsText(e.target.value)}
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+        {form.type} 属性（{propertiesSchema(form.type).length} 个字段）
+      </p>
+      <PropertiesFields
+        fields={propertiesSchema(form.type)}
+        values={propValues}
+        errors={propIssues}
+        idPrefix="create"
+        onChange={(key, raw) => setPropValues((prev) => ({ ...prev, [key]: raw }))}
       />
       <CheckboxInput
         id="create-audience"

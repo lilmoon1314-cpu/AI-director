@@ -10,14 +10,14 @@ import { nodeColor, relationEdgeColor, TYPE_COLORS } from "../../../src/lib/pale
 
 describe("nodeColor（U6 类型分色）", () => {
   it.each([
-    ["character", "#5b8def"],
-    ["faction", "#e0885a"],
-    ["location", "#4caf7d"],
-    ["item", "#d4b13f"],
-    ["skill", "#a678d8"],
-    ["event", "#e06a75"],
-    ["concept", "#8a94a6"],
-  ])("%s → 固定标识色（等价类—类型枚举逐一）", (type, color) => {
+    ["character", "#ff5a7d"],
+    ["faction", "#ffceff"],
+    ["location", "#40531b"],
+    ["item", "#a7ffff"],
+    ["skill", "#f86624"],
+    ["event", "#ffff7e"],
+    ["concept", "#97a7b3"],
+  ])("%s → 固定标识色（等价类—类型枚举逐一，用户指定色板）", (type, color) => {
     expect(nodeColor(type)).toBe(color);
     expect(TYPE_COLORS[type]).toBe(color);
   });
@@ -30,21 +30,20 @@ describe("nodeColor（U6 类型分色）", () => {
 describe("relationEdgeColor（U7 边随非人端淡化）", () => {
   it.each([
     // 人—非人：跟随非人端类型色
-    ["character", "item", "#d4b13f"],
-    ["character", "faction", "#e0885a"],
-    ["item", "character", "#d4b13f"], // 方向无关：非人端优先
+    ["character", "item", "#a7ffff"],
+    ["character", "faction", "#ffceff"],
+    ["item", "character", "#a7ffff"], // 方向无关：非人端优先
     // 人—人：无非人因素，中性蓝灰
     ["character", "character", "#94a3b8"],
     // 两端皆非人：跟随 source 端
-    ["location", "item", "#4caf7d"],
+    ["location", "item", "#40531b"],
   ])("%s—%s → 边色 %s", (sourceType, targetType, expected) => {
     const edge = relationEdgeColor(sourceType, targetType);
     expect(edge.stroke).toBe(expected);
   });
 
-  it("关系边整体比节点更淡更透明（opacity < 1）", () => {
+  it("关系边透明度为 0.22（用户要求较原值再减半，视图清晰）", () => {
     const edge = relationEdgeColor("character", "item");
-    expect(edge.opacity).toBeGreaterThan(0);
-    expect(edge.opacity).toBeLessThan(1);
+    expect(edge.opacity).toBe(0.22);
   });
 });

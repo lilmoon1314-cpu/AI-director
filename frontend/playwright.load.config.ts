@@ -12,6 +12,7 @@ export default defineConfig({
   testMatch: "**/*.load.spec.ts",
   globalSetup: "./e2e/load-global-setup.ts",
   fullyParallel: false,
+  workers: 1,
   retries: 0,
   timeout: 600_000,
   use: {

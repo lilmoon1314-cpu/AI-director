@@ -4,7 +4,7 @@
  * @antv/g6 为测试桩（test.alias），节点点击经桩实例 emit 触发真实回调链。
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -243,30 +243,32 @@ describe("Workbench 集成（I1–I8）", () => {
     expect(alert).toHaveTextContent("无法连接服务器");
   });
 
-  it("I9: properties 只读展示（known_by 等蓝图参数可见）", async () => {
-    // 设计依据: 增强轮—详情面板展示完整参数（properties 键值）
+  it("I9: properties 按蓝图结构化展示（known_by 等字段可见，空值显示 —）", async () => {
+    // 设计依据: 增强轮—详情面板按类型 schema 列出全部规定字段
     await renderWorkbench();
     Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
     const props = await screen.findByTestId("entity-properties");
-    expect(props).toHaveTextContent("known_by");
+    expect(props).toHaveTextContent("知晓角色");
     expect(props).toHaveTextContent("char-b");
-    expect(props).toHaveTextContent("place");
-    expect(props).toHaveTextContent("药庐后院");
+    expect(props).toHaveTextContent("参与角色"); // 空字段也列出
+    const knownBy = screen.getByTestId("prop-known_by");
+    expect(knownBy).toHaveTextContent("char-b");
+    const emptyField = screen.getByTestId("prop-participants");
+    expect(emptyField).toHaveTextContent("—");
   });
 
-  it("I10: properties JSON 编辑 → PATCH 携带新值 → 面板更新", async () => {
-    // 设计依据: 增强轮—参数修改主路径；无效 JSON 阻止提交
+  it("I10: 结构化字段编辑（known_by 逗号分隔）→ PATCH 携带解析后列表 → 面板更新", async () => {
+    // 设计依据: 增强轮—按 schema 字段修改主路径（list 逗号分隔提交解析为数组）
     const user = await renderWorkbench();
     Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
     await user.click(await screen.findByRole("button", { name: "编辑" }));
-    const propsInput = screen.getByLabelText("属性 properties（JSON）", { selector: "#edit-props" });
-    // JSON 含 {}——userEvent.type 会将其解析为键盘特殊键标记，改用 change 事件直接设值
-    await user.clear(propsInput);
-    fireEvent.change(propsInput, { target: { value: '{"known_by": ["char-a", "char-b"]}' } });
+    const knownByInput = screen.getByLabelText("知晓角色（关联 character ID，逗号分隔）");
+    await user.clear(knownByInput);
+    await user.type(knownByInput, "char-a, char-b");
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
       const props = (lastPatchBody ?? {}) as { properties?: Record<string, unknown> };
-      expect(props.properties).toEqual({ known_by: ["char-a", "char-b"] });
+      expect(props.properties).toMatchObject({ known_by: ["char-a", "char-b"] });
     });
     const panel = await screen.findByTestId("entity-panel");
     await waitFor(() => expect(panel).toHaveTextContent("char-a"));

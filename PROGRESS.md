@@ -23,6 +23,8 @@
 
 - 2026-08-28: **F05 光点样式 + 负载验收（用户追加）**——①节点改发散型光点（三层光圈透明度递减：核心实色→内描边 0.6→halo 0.15→shadow 柔光），悬停/选中微放大（state size 26→31）+ 光圈增强；②负载验收落地：`pnpm test:e2e:load`（独立 playwright.load.config.ts + 8010 端口/专用库与主验收隔离），播种 20 人物/8 功法/6 门派/20 物体/20 地点/80 事件/40 概念 + 208 关系；**结果：/api/graph 33ms、首屏就绪 3.4s、交互期间主线程往返 ~400ms、JS 堆净增 25MB（峰值 173MB）无泄漏**；③边标签默认隐藏（多边场景喧宾夺主，悬停/选中高亮时经 state 显示）。环境坑链修复：globalSetup 在 webServer 之后执行（杀进程会误伤本轮）、uvicorn shim+python 进程链需 /T 树杀、残留进程占 8000 端口致轮询误命中旧库——负载环境改独立端口 + webServer command 前置 taskkill + spec 内 resetWorld 兜底。详见 frontend/e2e/workbench.load.spec.ts 与 git log
 
+- 2026-08-28: **F05 视觉二轮 + 结构化属性（用户追加）**——①节点减半（26→13）+ collide=80 防重叠 + 边透明度减半（0.22）+ 用户指定 7 色板（人物 ff5a7d/事件 ffff7e/物件 a7ffff/地点 40531b/门派 ffceff/概念 97a7b3/功法 f86624）；②properties 结构化：按蓝图 7 类型字段定义（lib/entityProperties.ts，character 36 字段等）驱动新建/编辑/详情三处——表单按类型列出全部规定字段（list 逗号分隔/number/bool/object JSON，逐字段校验），详情面板结构化展示空值显示 —，额外键 JSON 兜底；③单独验收 spec e2e/highlight-detail.spec.ts：dev 后门 window.__g6graph 取节点坐标（canvas→viewport→页面坐标换算）驱动真实 hover/click，截图 HL-01~03（悬停邻域高亮+微放大、点击持续高亮+结构化详情、再点取消）；④E07 登记 Windows uvicorn 进程链残留 + Playwright webServer→globalSetup 时序 + workers 并行互踩（fullyParallel:false 不约束文件间并行，config workers:1 修复——多 spec 共库 reset/播种交错致 stats 恒 9/5）。测试 L1 49 + L2 12 + e2e 4 例全过。详见 docs/tests/F05_frontend_graph_workbench.md、backend/logs/error.jsonl（E07）与 git log
+
 ## 进行中
 - 无
 
