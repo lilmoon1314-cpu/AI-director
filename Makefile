@@ -6,7 +6,7 @@ PYTHON ?= python
 
 .PHONY: setup dev dev-backend dev-frontend test test-unit test-integration test-e2e \
         test-backend test-frontend check check-api-types backend-check frontend-check \
-        verify clean help
+        verify mutate clean help
 
 ## setup: 初始化（安装前后端依赖 + 生成 .env + 数据库迁移）
 setup:
@@ -57,6 +57,10 @@ check-api-types:
 ## verify: 功能项验证并自动更新清单状态（如 make verify F01）
 verify:
 	$(PYTHON) scripts/task.py verify $(filter-out $@,$(MAKECMDGOALS))
+
+## mutate: 定向变异测试（如 make mutate perspectives；docs/testing.md §9，不进 check 链）
+mutate:
+	$(PYTHON) scripts/task.py mutate $(filter-out $@,$(MAKECMDGOALS))
 
 backend-check:
 	$(PYTHON) scripts/task.py backend-check

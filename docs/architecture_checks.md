@@ -16,8 +16,8 @@
 
 | 约束（出处） | 检查机制 | 类型 | 引入 |
 |--------------|----------|------|------|
-| 跨模块仅经 service（根 CONSTRAINTS §2） | import-linter：每模块一条 forbidden 契约——外部模块禁止 import 该模块的 repository/models/schemas | 自动 | F01 |
-| core 零业务依赖（core/CONSTRAINTS） | import-linter：core 禁止 import 任何领域模块 | 自动 | F01 |
+| 跨模块仅经 service（根 CONSTRAINTS §2） | import-linter：每模块一条 forbidden 契约——外部模块禁止直接 import 该模块的 repository/models/schemas（`allow_indirect_imports=true` 只拦直接引用，模块自身装配边豁免） | 自动 | F01 登记 / **F04 落地**（此前虚登，见 error.jsonl T-20260827-06） |
+| core 零业务依赖（core/CONSTRAINTS） | import-linter：core 禁止 import 任何领域模块 | 自动 | F01 登记 / **F04 落地**（同上） |
 | router 不碰数据层（backend/ARCHITECTURE §2） | tests/architecture：AST 检查 router.py 禁止 import repository/models | 自动 | F02 |
 | 配置禁止硬编码（根 §1） | tests/architecture：扫描源码禁止端口/URL/密钥样式字面量（白名单：config.py、tests） | 自动（启发式） | F02 |
 | 错误响应三要素统一结构（backend/CONSTRAINTS） | 集成测试断言错误响应含 code/problem/cause/fix | 自动 | F02 |
@@ -26,6 +26,7 @@
 | 无幽灵节点（悬空外键巡检） | 集成测试：`PRAGMA foreign_key_check` 断言空结果 | 自动 | F02 |
 | id 不可变（entities/CONSTRAINTS） | 单元测试：update 尝试改 id 被拒 | 自动 | F02 |
 | 视角过滤只读/单一事实源（perspectives/CONSTRAINTS） | E2E：视角查询前后数据库快照逐字节一致 | 自动 | F04 |
+| character 视角不泄露被过滤实体名（perspectives/CONSTRAINTS） | L2/L3：响应文本级断言（不含被过滤实体名） | 自动 | F04 |
 | 禁止散点日志（backend/CONSTRAINTS） | tests/architecture：业务模块禁止 import logging 直接调用（仅 core 可） | 自动 | F02 |
 | 前端类型自动生成（frontend/CONSTRAINTS） | check-api-types = 重新生成 + `git diff --exit-code` | 自动 | F05 |
 | 前端禁止直连 fetch（frontend/CONSTRAINTS） | eslint no-restricted-syntax：fetch/axios 仅允许出现在 src/api/ | 自动 | F05 |

@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.core import db, observability
 from app.entities.router import router as entities_router
+from app.perspectives.router import router as perspectives_router
 from app.relations.router import router as relations_router
 
 
@@ -79,9 +80,10 @@ def create_app() -> FastAPI:
         """健康检查端点（存活探针，供测试与运维验证服务可用）。"""
         return {"status": "ok"}
 
-    # 领域模块路由挂载（F02: entities；F03: relations；后续功能点在此追加）
+    # 领域模块路由挂载（F02: entities；F03: relations；F04: perspectives；后续功能点在此追加）
     app.include_router(entities_router)
     app.include_router(relations_router)
+    app.include_router(perspectives_router)
 
     return app
 

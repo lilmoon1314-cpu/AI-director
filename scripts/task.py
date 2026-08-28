@@ -42,6 +42,7 @@ COMMANDS: dict[str, str] = {
     "frontend-check": "仅前端验证",
     "check-api-types": "前端 API 类型与后端 OpenAPI schema 同步检查（F05 起）",
     "verify": "功能项验证并自动更新清单状态：verify F01（见 scripts/verify_feature.py）",
+    "mutate": "定向变异测试（docs/testing.md §9）：mutate <module> [test_path...]，如 mutate perspectives",
     "clean": "清理构建产物与缓存",
     "help": "显示本帮助",
 }
@@ -260,6 +261,47 @@ def cmd_clean() -> None:
         print("已清理 frontend/dist")
 
 
+def cmd_mutate(module: str, *test_paths: str) -> None:
+    """定向变异测试（docs/testing.md §9）：仅对指定模块运行 mutmut。
+
+    作用:
+        变异测试封装——mutmut 只变异 backend/app/<module>/ 下源码，以
+        「判杀测试命令」的退出码判定变异体存活；结束时打印结果汇总，
+        kill rate ≥ 85% 才算达标（存活变异体逐一分析后归档测试文档）。
+        不纳入 make check 常规链（成本控制，按功能点手动触发）。
+    参数:
+        module — 模块名（app/ 下的目录名，如 perspectives）；
+        test_paths — 判杀测试路径（可选，默认 tests/unit/test_<module>_service.py，
+        该文件不存在时必须显式指定）。
+    返回值: 无。异常: 模块不存在或缺判杀器时经 _fail 终止。依赖: mutmut / pytest。
+    """
+    if not (BACKEND / "app" / module).is_dir():
+        _fail(
+            f"未知模块: {module}",
+            f"backend/app/{module} 目录不存在",
+            "用法: python scripts/task.py mutate <module>（app/ 下的模块名，如 perspectives）",
+        )
+    default_test = BACKEND / "tests" / "unit" / f"test_{module}_service.py"
+    tests = list(test_paths) or (
+        [f"tests/unit/test_{module}_service.py"] if default_test.exists() else []
+    )
+    if not tests:
+        _fail(
+            f"模块 {module} 缺少默认判杀测试",
+            f"backend/tests/unit/test_{module}_service.py 不存在",
+            "显式传入判杀测试路径: python scripts/task.py mutate <module> <test_path...>",
+        )
+    runner = f"python -m pytest -x -q {' '.join(tests)}"
+    _backend(
+        "mutmut",
+        "run",
+        f"--paths-to-mutate=app/{module}/",
+        f"--runner={runner}",
+        "--tests-dir=tests/",
+    )
+    _backend("mutmut", "results")
+
+
 # ---------------------------------------------------------------- 命令分派
 
 # 分派表：命令名 -> 实现函数（help 文案见 COMMANDS；简单转发命令用 lambda 直连）
@@ -319,6 +361,15 @@ def main(argv: list[str]) -> None:
             )
         # 转发到功能验证脚本（独立文件，职责单一）
         _run([sys.executable, str(ROOT / "scripts" / "verify_feature.py"), *argv[1:]], ROOT)
+        return
+    if name == "mutate":
+        if len(argv) < 2:
+            _fail(
+                "mutate 命令缺少模块名",
+                "未在命令行传入要变异的模块",
+                "用法: python scripts/task.py mutate <module> [test_path...]",
+            )
+        cmd_mutate(*argv[1:])
         return
     handler = DISPATCH.get(name)
     if handler is None:

@@ -31,3 +31,6 @@ tools/
 Thumbs.db
 .idea/
 *.swp
+
+# mutmut 变异测试缓存（定向运行产出，不入版本库）
+backend/.mutmut-cache

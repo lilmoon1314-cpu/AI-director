@@ -20,7 +20,7 @@
 - 必须：所有 API 错误响应遵循统一结构（code / problem / cause / fix / detail），异常经全局异常处理器统一出口（层级见 backend/ARCHITECTURE.md §4）。
 - 必须：错误消息三要素完整（什么出了问题/为什么/怎么修）；AppError 构造函数 problem/cause/fix 必填（规范见 docs/lessons.md §3）。
 - 禁止：未捕获异常栈泄露给客户端。
-- 必须：错误写入独立日志 logs/error.jsonl（request_id + 参数摘要 + traceback + 三要素）。
+- 必须：错误写入独立日志 logs/runtime_error.jsonl（request_id + 参数摘要 + traceback + 三要素；backend/logs/error.jsonl 为 agent 维护的错误模式库，两者职责不同，见 DECISIONS 2026-08-27）。
 
 ## 日志与信号采集
 - 禁止：业务模块手写散点日志（直接调用 logging）；五类信号由 core observability 统一自动采集（设计见 core/ARCHITECTURE.md「可观测性」）。

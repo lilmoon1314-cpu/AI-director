@@ -122,7 +122,22 @@
 - 否决: 保留 markdown 表格（无法程序化追加/检索）；运行时日志与模式库共用 error.jsonl（轮转+混写）。
 - 约束: error.jsonl 只由 agent 维护（追加不覆写）；运行时错误流写 runtime_error.jsonl（gitignore）；AGENTS.md 工作规则新增任务清单同步/测试文档先行/测试失败记录三条硬规则。
 
+## 2026-08-27: F04 三视角过滤规则细化（视角角色恒可见 + marker 字段映射 + audience 边双端校验）
+- 原因: 模块文档过滤规则有语义空隙——视角角色自身可见性未定义、实体 known 标记字段按类型分散、audience 边与端点可见性未约束（悬空边/间接泄露风险）。
+- 否决: entities 加顶层 known_by 列（改表+迁移，第 1 批无此需求）；audience 只按边自身标记过滤（端点不可见时渲染悬空边并泄露结构）。
+- 约束: 实体可见 = 自身 ∪ 标记命中（event→properties.known_by、item→properties.seen_by，脏数据容错）∪ 可见边端点；audience 边须双端可见；character 视角错误统一 PerspectiveError 403（reason 三值）；投影不含 properties/description/known_by（收窄泄露通道）；规则同步模块 ARCHITECTURE.md。
+
+## 2026-08-27: import-linter 契约落地（allow_indirect_imports 只拦直接引用）+ mutmut 2.x 定向变异封装
+- 原因: forbidden 契约默认传递闭包，模块自身装配链（router→service→repository）会让组合根与 service 间合法调用误报；mutmut 3.x 配置仅限 pyproject 静态路径、无法按模块参数化，2.x 支持 CLI 定向。
+- 否决: ignore_imports 豁免装配边（逐边枚举、新模块必漂移）；mutmut 3.x（无法 `mutate <module>` 参数化）；全仓变异（噪声+耗时）。
+- 约束: 内部层私有契约一律 `allow_indirect_imports=true`；新模块落地时同步登记契约与 source 兄弟枚举；mutmut 固定 >=2.4,<3.0，经 `task.py mutate <module> [test_path...]` 触发，不进 make check；kill rate ≥ 85% 且存活变异体逐一分析归档测试文档。
+
 ## 2026-08-27: 测试有效性双机制——等价类/边界值设计 + 变异测试（mutmut）
 - 原因: 用例数量不等于检出能力；变异测试把「测试有效性」变为可量化指标（kill rate），等价类划分/边界值分析在源头保证覆盖结构，参数化杜绝同构用例漂移。
 - 否决: cosmic-ray（维护与并行体验弱）；仅人工断言强度审查（不可量化）；变异测试纳入 make check（全量运行过慢）。
 - 约束: mutmut 仅 dev 依赖、按功能模块定向执行（F04 落地工具与 task.py mutate 命令）；kill rate ≥ 85% 且存活变异体逐一分析（补用例或登记等价性）；自 F04 起写入 DoD（docs/testing.md §2/§8/§9）。
+
+## 2026-08-28: F04 变异测试首轮实践——判杀器必须覆盖 L1+L2，错误用例断言须钉死三要素
+- 原因: F04 首轮仅以 L1 单元测试判杀，kill rate 仅 47%（41/87）：router 路由注册（prefix/path/装饰器删除）与 Perspective Literal 枚举变异不改变 service 运行时行为，只有经 HTTP 语义的 L2 集成测试可杀；错误三要素文案与 detail 键值变异因 U4/U5 仅断言 reason 单键而存活。
+- 否决: 断言 OpenAPI 文档文案（tags/Query/Field description）换 kill rate（钉死文案阻碍正常迭代，4 个变异登记等价性）；仅看 kill rate 总值不逐一分类存活变异体（会漏掉判杀器结构性缺口）。
+- 约束: `task.py mutate <module>` 判杀器默认 unit，含 router/schemas 的模块须显式追加 L2 集成测试路径；错误类用例必须断言三要素完整文案 + detail 字典整体相等（仅断言单键视为断言不足）；文档性字符串变异登记等价性、不补用例。

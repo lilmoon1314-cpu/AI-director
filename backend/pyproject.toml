@@ -26,6 +26,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "import-linter>=2.0,<3.0",
+    "mutmut>=2.4,<3.0",
 ]
 
 [tool.pytest.ini_options]
@@ -65,6 +66,36 @@ exclude = ["tests/", "migrations/"]
 module = ["psutil"]
 ignore_missing_imports = true
 
-# 模块边界契约：随 F02+ 领域模块落地逐条登记（见 docs/architecture_checks.md）
+# 模块边界契约（映射表见 docs/architecture_checks.md §2）：新领域模块落地时同步登记
+# source 须枚举兄弟模块而非整包 app（app 含全部后代，会把模块内部合法引用误判为违规）
+# 内部层私有契约 allow_indirect_imports=true：只拦截「外部模块直接 import 内部层」，
+# 不做传递闭包（否则组合根 main 挂路由、service 间合法调用会经模块自身装配边误报）
 [tool.importlinter]
 root_packages = ["app"]
+
+[[tool.importlinter.contracts]]
+name = "core 零业务依赖（core/CONSTRAINTS.md）"
+type = "forbidden"
+source_modules = ["app.core"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives"]
+
+[[tool.importlinter.contracts]]
+name = "entities 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.relations", "app.perspectives"]
+forbidden_modules = ["app.entities.repository", "app.entities.models", "app.entities.schemas"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "relations 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.perspectives"]
+forbidden_modules = ["app.relations.repository", "app.relations.models", "app.relations.schemas"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "perspectives 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.relations"]
+forbidden_modules = ["app.perspectives.schemas"]
+allow_indirect_imports = true

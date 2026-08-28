@@ -106,10 +106,10 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 
 ## 9. 变异测试（mutmut）
 
-> 状态：**计划（F04 落地）**——F04 开工首任务安装 mutmut（dev 依赖）并提供 `python scripts/task.py mutate <module>` 封装；落地前本节为设计约定，落地后为强制流程（E01 双态标注）。
+> 状态：**已就位（F04 落地）**——mutmut 2.x 已入 dev 依赖，封装命令 `python scripts/task.py mutate <module> [test_path...]`（等价 `make mutate <module>`）；默认判杀器为该模块单测文件 `tests/unit/test_<module>_service.py`，不存在时显式传入 test_path。
 
 - **时机**：测试文档撰写完成后即把变异测试列入任务清单；用例实现完成、`verify FXX` 之前执行。
-- **范围**：仅对本功能被测模块定向运行（如 F04 → `app/perspectives`），禁止全仓库无差别变异（耗时且噪声大）。
+- **范围**：仅对本功能被测模块定向运行（如 F04 → `mutate perspectives`），禁止全仓库无差别变异（耗时且噪声大）。
 - **达标判据**：kill rate ≥ 85%；未达标时存活变异体必须逐一分析——能补用例则按 §8 补设计补用例，确属等价变异体则在测试文档登记理由后视作已处理。
 - **归档**：scope、kill rate 与存活变异体分析记入该功能测试文档「变异测试结果」小节（模板见 §5）。
 - **成本控制**：mutmut 不纳入 make check 常规链，按功能点手动触发；运行时长异常时收窄 scope（模块内单文件/单函数）。
