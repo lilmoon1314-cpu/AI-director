@@ -83,7 +83,7 @@
 ## 变异测试结果（用例实现完成后填写；自 F04 起）
 - scope: app/perspectives（87 个变异体）；判杀器: tests/unit/test_perspectives_service.py + tests/integration/test_graph_api.py
 - 过程: 首轮仅以 L1 单元测试判杀，kill rate 47%（41/87，存活 46）——router 路由注册/Literal 枚举类变异只有 L2 集成测试（HTTP 语义）可杀，错误三要素文案与 detail 键值类变异因 U4/U5 仅断言 reason 单键而存活。据此：判杀器纳入 L2 集成测试；U4/U5 补三要素精确断言与 detail 字典相等断言；新增 U9（schema 默认值/type 必填/协议只读 property/checkpoint 装饰在位）
-- kill rate: **95.4%（83/87）≥ 85% 达标**
+- kill rate: **95.4%（83/87）≥ 85% 达标**（实杀 83 / 等价登记 4，等价占比 4.6% < 20% 门槛失真线，§9 等价性登记）
 - 存活变异体分析（4 个，全部登记等价性）:
   - router.py #2 `tags=["graph"]→["XXgraphXX"]`: OpenAPI 分组标签，无运行时行为，无路由/响应差异
   - router.py #6/#7 Query 参数 description 文案变异: 仅影响 OpenAPI 文档展示，请求校验与响应不变
