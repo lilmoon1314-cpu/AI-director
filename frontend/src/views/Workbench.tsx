@@ -1,12 +1,13 @@
 /**
  * 图谱工作台主视图（F05，固定 author 视角）：图画布 + 左侧操作栏 + 详情面板。
  * - 操作栏可整体收起/展开（图区自动占满）；
- * - 「新建」面板手风琴收纳实体/关系两个表单（实体默认展开）；
+ * - 所有内容区块默认折叠：「新建」（实体/关系表单）与「筛选」（实体类型显隐勾选）；
+ * - 状态栏计数为画布可见数（筛选后随之减少并标注「已筛选」）；
  * - 深浅色跟随系统（CSS dark: 变体 + G6 主题在 GraphCanvas 内联动）。
  * 挂载即加载图数据；视角切换控件与 perspectiveStore 由 F06 接入。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CreateEntityForm } from "../components/entity-panel/CreateEntityForm";
 import { CreateRelationForm } from "../components/entity-panel/CreateRelationForm";
@@ -14,6 +15,8 @@ import { EntityPanel } from "../components/entity-panel/EntityPanel";
 import { GraphCanvas } from "../components/graph/GraphCanvas";
 import { Button } from "../components/ui/Button";
 import { GlassPanel } from "../components/ui/GlassPanel";
+import { ENTITY_TYPES } from "../lib/entityForm";
+import { TYPE_COLORS, TYPE_LABELS } from "../lib/palette";
 import { useGraphStore } from "../stores/graphStore";
 import { useSelectionStore } from "../stores/selectionStore";
 
@@ -55,12 +58,46 @@ export function Workbench() {
   const selectEntity = useSelectionStore((s) => s.selectEntity);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [openEntityForm, setOpenEntityForm] = useState(true);
+  // 全部区块默认折叠（用户要求）：新建组、组内实体/关系表单、筛选面板
+  const [openCreate, setOpenCreate] = useState(false);
+  const [openEntityForm, setOpenEntityForm] = useState(false);
   const [openRelationForm, setOpenRelationForm] = useState(false);
+  const [openFilter, setOpenFilter] = useState(false);
+  // 类型筛选：勾选 = 画布显示该类型（默认全选）
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(ENTITY_TYPES));
 
   useEffect(() => {
     void loadGraph();
   }, [loadGraph]);
+
+  const toggleType = (type: string) => {
+    setVisibleTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+
+  // 各类型实体数与画布可见计数（状态栏随筛选联动）
+  const countByType = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const n of graph.nodes) counts.set(n.data.type, (counts.get(n.data.type) ?? 0) + 1);
+    return counts;
+  }, [graph.nodes]);
+
+  const visibleNodes = useMemo(
+    () => graph.nodes.filter((n) => visibleTypes.has(n.data.type)),
+    [graph.nodes, visibleTypes],
+  );
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
+  const visibleEdgeCount = useMemo(
+    () =>
+      graph.edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target))
+        .length,
+    [graph.edges, visibleNodeIds],
+  );
+  const isFiltered = visibleTypes.size < ENTITY_TYPES.length;
 
   return (
     <div className="relative flex h-screen w-full gap-6 overflow-hidden bg-slate-100 p-6 dark:bg-slate-950">
@@ -80,25 +117,65 @@ export function Workbench() {
             </Button>
           </div>
 
-          <GlassPanel className="p-3" data-testid="create-panel">
-            <h2 className="mb-1 px-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-              新建
-            </h2>
+          <div className="flex flex-col gap-1" data-testid="create-panel">
             <AccordionSection
-              title="实体"
-              open={openEntityForm}
-              onToggle={() => setOpenEntityForm((v) => !v)}
+              title="新建"
+              open={openCreate}
+              onToggle={() => setOpenCreate((v) => !v)}
             >
-              <CreateEntityForm />
+              <div className="flex flex-col gap-1">
+                <AccordionSection
+                  title="实体"
+                  open={openEntityForm}
+                  onToggle={() => setOpenEntityForm((v) => !v)}
+                >
+                  <CreateEntityForm />
+                </AccordionSection>
+                <AccordionSection
+                  title="关系"
+                  open={openRelationForm}
+                  onToggle={() => setOpenRelationForm((v) => !v)}
+                >
+                  <CreateRelationForm />
+                </AccordionSection>
+              </div>
             </AccordionSection>
             <AccordionSection
-              title="关系"
-              open={openRelationForm}
-              onToggle={() => setOpenRelationForm((v) => !v)}
+              title="筛选"
+              open={openFilter}
+              onToggle={() => setOpenFilter((v) => !v)}
             >
-              <CreateRelationForm />
+              <div className="flex flex-col gap-1.5 px-2 py-1" data-testid="filter-panel">
+                {ENTITY_TYPES.map((type) => {
+                  const count = countByType.get(type) ?? 0;
+                  return (
+                    <label
+                      key={type}
+                      className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleTypes.has(type)}
+                        onChange={() => toggleType(type)}
+                        aria-label={`${TYPE_LABELS[type]} (${count})`}
+                        data-testid={`filter-${type}`}
+                        className="h-3.5 w-3.5 accent-slate-700 dark:accent-slate-300"
+                      />
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 rounded-full ring-1 ring-black/10 dark:ring-white/20"
+                        style={{ backgroundColor: TYPE_COLORS[type] }}
+                      />
+                      <span>{TYPE_LABELS[type]}</span>
+                      <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">
+                        {count}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </AccordionSection>
-          </GlassPanel>
+          </div>
         </GlassPanel>
       ) : (
         <Button
@@ -119,7 +196,7 @@ export function Workbench() {
             {errorFix ? <p className="mt-1 text-xs text-red-600 dark:text-red-400">修复：{errorFix}</p> : null}
           </div>
         ) : (
-          <GraphCanvas graph={graph} onNodeClick={selectEntity} />
+          <GraphCanvas graph={graph} visibleTypes={visibleTypes} onNodeClick={selectEntity} />
         )}
         {loading ? (
           <span data-testid="graph-loading" className="absolute bottom-4 left-4 text-xs text-slate-500 dark:text-slate-400">
@@ -130,7 +207,7 @@ export function Workbench() {
           data-testid="graph-stats"
           className="absolute right-4 bottom-4 rounded-lg bg-white/70 px-3 py-1 text-xs text-slate-600 backdrop-blur dark:bg-slate-800/70 dark:text-slate-300"
         >
-          {graph.nodes.length} 节点 · {graph.edges.length} 边（author 视角）
+          {visibleNodes.length} 节点 · {visibleEdgeCount} 边（author 视角）{isFiltered ? "（已筛选）" : ""}
         </span>
       </GlassPanel>
 

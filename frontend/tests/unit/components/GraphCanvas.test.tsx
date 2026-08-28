@@ -23,6 +23,8 @@ const DATA_B: G6GraphData = {
   ],
   edges: [{ id: "rel-1", source: "char-a", target: "char-b", data: { type: "ALLY" } }],
 };
+/** 必填筛选 prop：全类型可见（等价 Workbench 默认全选初值） */
+const ALL_TYPES = new Set(["character", "faction", "location", "item", "skill", "event", "concept"]);
 
 describe("GraphCanvas（U5 单例生命周期）", () => {
   const renderSpy = vi.spyOn(Graph.prototype, "render");
@@ -36,15 +38,15 @@ describe("GraphCanvas（U5 单例生命周期）", () => {
   afterEach(cleanup);
 
   it("挂载创建恰一个实例并完成首次渲染", () => {
-    render(<GraphCanvas graph={DATA_A} />);
+    render(<GraphCanvas graph={DATA_A} visibleTypes={ALL_TYPES} />);
     expect(Graph.instances).toHaveLength(1);
     expect(renderSpy).toHaveBeenCalledTimes(1);
     expect(setDataSpy).not.toHaveBeenCalled(); // 初次数据经构造传入，不走增量
   });
 
   it("数据变更仅增量 setData，不重建实例", () => {
-    const { rerender } = render(<GraphCanvas graph={DATA_A} />);
-    rerender(<GraphCanvas graph={DATA_B} />);
+    const { rerender } = render(<GraphCanvas graph={DATA_A} visibleTypes={ALL_TYPES} />);
+    rerender(<GraphCanvas graph={DATA_B} visibleTypes={ALL_TYPES} />);
     expect(Graph.instances).toHaveLength(1);
     expect(setDataSpy).toHaveBeenCalledTimes(1);
     expect(setDataSpy.mock.calls[0]?.[0]).toEqual(DATA_B);
@@ -53,13 +55,13 @@ describe("GraphCanvas（U5 单例生命周期）", () => {
 
   it("node:click 事件经回调上抛节点 id", () => {
     const onNodeClick = vi.fn();
-    render(<GraphCanvas graph={DATA_A} onNodeClick={onNodeClick} />);
+    render(<GraphCanvas graph={DATA_A} visibleTypes={ALL_TYPES} onNodeClick={onNodeClick} />);
     Graph.instances[0]?.emit("node:click", { target: { id: "char-a" } });
     expect(onNodeClick).toHaveBeenCalledWith("char-a");
   });
 
   it("卸载销毁实例（防泄漏）", () => {
-    const { unmount } = render(<GraphCanvas graph={DATA_A} />);
+    const { unmount } = render(<GraphCanvas graph={DATA_A} visibleTypes={ALL_TYPES} />);
     unmount();
     expect(destroySpy).toHaveBeenCalledTimes(1);
   });

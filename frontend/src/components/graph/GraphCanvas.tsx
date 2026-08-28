@@ -2,20 +2,26 @@
  * GraphCanvas：G6 5.x 封装（frontend/CONSTRAINTS.md「渲染性能」）：
  * - 实例单例：仅挂载时创建、卸载时 destroy，数据变更走 setData（禁止整图重建）；
  * - auto-adapt-label：标签避让（视口空间 + 重叠检测，按度中心性排序显示优先级）；
- * - hover-activate：悬停高亮一跳邻域（active），非邻接淡出（inactive）；
- * - 点击：该节点及其邻接边/对端节点持续高亮（selected），再次点击取消恢复；
+ * - hover-activate：悬停高亮一跳邻域（active）+ 无关元素淡出（inactiveState），
+ *   持续选中期间经 enable 门控整体禁用（选中视图不被悬停扰动）；
+ * - 点击：该节点及其邻接边/对端节点持续高亮（selected），其余淡出（inactive），
+ *   再次点击取消——状态全量批量写回（实时读 graph 数据，不闭包 props 首帧空数据）；
+ * - 类型筛选：hideElement/showElement 增量显隐（不触发重布局），边随双端可见性联动；
  * - 节点/边颜色由数据驱动（palette.ts：类型色 / 边随非人端淡化）；
+ * - 动画：状态过渡与显隐淡入淡出（element.animation show/hide/enter 阶段 + API animation 参数）；
  * - 深浅色跟随系统：matchMedia 监听 → graph.setTheme 切换 G6 内置主题；
  * - 高频交互（缩放/拖拽）交由 G6 behaviors，状态不进全局 store。
  */
 
 import { Graph } from "@antv/g6";
-import { useEffect, useRef, type MutableRefObject } from "react";
+import { useEffect, useRef } from "react";
 
 import type { G6GraphData } from "../../lib/toGraphData";
 
 interface GraphCanvasProps {
   graph: G6GraphData;
+  /** 画布上可见的实体类型集合（类型筛选；不在集合内的类型其节点与关联边隐藏） */
+  visibleTypes: Set<string>;
   onNodeClick?: (id: string) => void;
 }
 
@@ -79,14 +85,66 @@ function prefersDark(): boolean {
   );
 }
 
-export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps) {
+/** 全量重算类型筛选下的隐藏元素集合（节点按类型；边随双端可见性——防端点不可见的悬空边）。 */
+function hiddenTargets(graph: Graph, visibleTypes: Set<string>): Set<string> {
+  const hidden = new Set<string>();
+  const visibleNodes = new Set<string>();
+  for (const n of graph.getNodeData()) {
+    const type = (n.data as { type?: string }).type;
+    if (visibleTypes.has(type ?? "")) visibleNodes.add(String(n.id));
+    else hidden.add(String(n.id));
+  }
+  for (const e of graph.getEdgeData()) {
+    const source = String(e.source);
+    const target = String(e.target);
+    if (!visibleNodes.has(source) || !visibleNodes.has(target)) hidden.add(String(e.id));
+  }
+  return hidden;
+}
+
+/** 点击持续高亮全量状态机：选中节点+一跳邻域（selected），其余淡出（inactive）；null = 全部复位。
+ *  状态从 graph 实时数据推导（getNodeData/getEdgeData），不闭包 props——数据异步加载后点击才生效（E08）。 */
+function applySelection(graph: Graph, selectedId: string | null, animation: boolean): void {
+  const states: Record<string, string[]> = {};
+  const nodes = graph.getNodeData();
+  // G6 的边端点/id 是 string|number 联合，统一归一化为 string 参与集合运算
+  const edges = graph.getEdgeData().map((e) => ({
+    id: String(e.id),
+    source: String(e.source),
+    target: String(e.target),
+  }));
+  if (!selectedId) {
+    for (const n of nodes) states[String(n.id)] = [];
+    for (const e of edges) states[e.id] = [];
+  } else {
+    const incidentIds = new Set(
+      edges.filter((e) => e.source === selectedId || e.target === selectedId).map((e) => e.id),
+    );
+    const neighbors = new Set(
+      edges.filter((e) => incidentIds.has(e.id)).flatMap((e) => [e.source, e.target]),
+    );
+    for (const n of nodes) {
+      const id = String(n.id);
+      states[id] = id === selectedId || neighbors.has(id) ? ["selected"] : ["inactive"];
+    }
+    for (const e of edges) states[e.id] = incidentIds.has(e.id) ? ["selected"] : ["inactive"];
+  }
+  void graph.setElementState(states, animation);
+}
+
+export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<Graph | null>(null);
   // 点击回调经 ref 最新化：G6 监听只在挂载时注册一次，不随 props 重建
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
+  // 筛选集合经 ref 最新化：数据变更回调（render.then）里读当前筛选而非闭包首帧值
+  const visibleTypesRef = useRef(visibleTypes);
+  visibleTypesRef.current = visibleTypes;
   // 点击持续高亮的节点 id（null = 无持续高亮）
-  const highlightedRef = useRef<string | null>(null);
+  const selectedRef = useRef<string | null>(null);
+  // 上一次筛选的隐藏集合（增量显隐的 diff 基准；null = 尚未初始化）
+  const prevHiddenRef = useRef<Set<string> | null>(null);
   // 布局收敛检测定时器（afterlayout 去抖后执行硬分离）
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -133,6 +191,12 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
           selected: { size: 16, fillOpacity: 1, strokeOpacity: 1, labelOpacity: 1, halo: false },
           inactive: { fillOpacity: 0.5, strokeOpacity: 0.42, labelOpacity: 0.4, halo: false },
         },
+        // 动画阶段：进场淡入 + 筛选显隐淡入淡出（位置动画仍禁用，只有透明度）
+        animation: {
+          enter: [{ fields: ["opacity"], duration: 400, easing: "ease" }],
+          show: [{ fields: ["opacity"], duration: 260, easing: "ease" }],
+          hide: [{ fields: ["opacity"], duration: 220, easing: "ease" }],
+        },
       },
       edge: {
         style: {
@@ -148,14 +212,28 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
           selected: { opacity: 0.7, labelOpacity: 1 },
           inactive: { opacity: 0.1, labelOpacity: 0 },
         },
+        animation: {
+          enter: [{ fields: ["opacity"], duration: 400, easing: "ease" }],
+          show: [{ fields: ["opacity"], duration: 260, easing: "ease" }],
+          hide: [{ fields: ["opacity"], duration: 220, easing: "ease" }],
+        },
       },
       behaviors: [
         "zoom-canvas",
         "drag-canvas",
         "drag-element",
         "auto-adapt-label",
-        // 悬停高亮一跳邻域；非邻接淡出（G6 内置，状态见上方 node/edge.state）
-        { type: "hover-activate", degree: 1, direction: "both" },
+        // 悬停高亮一跳邻域（active）+ 无关元素淡出（inactiveState——缺省不配置时
+        // 非邻接元素保持常态，淡出不会生效）；animation:true 状态过渡平滑；
+        // enable 门控：存在点击持续选中时整体禁用悬停（选中视图不被悬停扰动）
+        {
+          type: "hover-activate",
+          degree: 1,
+          direction: "both",
+          inactiveState: "inactive",
+          animation: true,
+          enable: () => selectedRef.current === null,
+        },
       ],
     });
     graphRef.current = graph;
@@ -176,7 +254,7 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
       graph.emit("afterlayout");
     }, 9000);
 
-    // dev 验收后门：e2e 经其读取节点画布坐标（getViewportByCanvas 换算后 hover/click）；
+    // dev 验收后门：e2e 经其读取节点画布坐标与元素状态（getViewportByCanvas 换算后 hover/click）；
     // 仅开发环境挂载，生产构建不暴露
     if (import.meta.env.DEV) {
       (window as unknown as { __g6graph?: Graph }).__g6graph = graph;
@@ -185,7 +263,9 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
     graph.on("node:click", (evt) => {
       const id = (evt as unknown as { target?: { id?: string } }).target?.id;
       if (!id) return;
-      toggleHighlight(graph, graphData, id, highlightedRef);
+      // toggle：同节点再点取消；状态推导用 graph 实时数据（E08：闭包首帧空数据曾致高亮全失效）
+      selectedRef.current = selectedRef.current === id ? null : id;
+      applySelection(graph, selectedRef.current, true);
       onNodeClickRef.current?.(id);
     });
 
@@ -218,45 +298,37 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
     const graph = graphRef.current;
     if (!graph || lastDataRef.current === graphData) return;
     lastDataRef.current = graphData;
-    highlightedRef.current = null;
+    selectedRef.current = null;
     graph.setData(graphData);
-    void graph.render();
+    // render 会按全量数据重建元素，显隐复位——完成后按当前筛选全量重挂
+    // （动画关闭：与进场动画叠加会闪烁）
+    void graph.render().then(() => {
+      if (!graphRef.current) return;
+      const hidden = hiddenTargets(graph, visibleTypesRef.current);
+      prevHiddenRef.current = hidden;
+      if (hidden.size > 0) void graph.hideElement([...hidden], false);
+    });
   }, [graphData]);
 
-  return <div ref={containerRef} data-testid="graph-canvas" className="h-full w-full" />;
-}
-
-/** 点击 toggle：选中该节点及其邻接边/对端节点（selected），其余淡出（inactive）；再点同节点取消。 */
-function toggleHighlight(
-  graph: Graph,
-  graphData: G6GraphData,
-  nodeId: string,
-  highlightedRef: MutableRefObject<string | null>,
-): void {
-  if (highlightedRef.current === nodeId) {
-    // 取消：全部恢复常态
-    for (const n of graphData.nodes) void graph.setElementState(n.id, []);
-    for (const e of graphData.edges) void graph.setElementState(e.id, []);
-    highlightedRef.current = null;
-    return;
-  }
-  // 先清除上一轮
-  if (highlightedRef.current) {
-    const prev = highlightedRef.current;
-    void graph.setElementState(prev, []);
-    for (const e of graphData.edges) {
-      if (e.source === prev || e.target === prev) void graph.setElementState(e.id, []);
+  // 类型筛选变更 → 增量显隐（hide/show 不触发重布局，画布其余元素位置稳定）
+  useEffect(() => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    if (prevHiddenRef.current === null) {
+      // 挂载首跑：无增量可言，仅记录基准（数据路径负责首挂后的全量应用）
+      prevHiddenRef.current = hiddenTargets(graph, visibleTypes);
+      return;
     }
-  }
-  const incidentEdges = graphData.edges.filter(
-    (e) => e.source === nodeId || e.target === nodeId,
-  );
-  const neighbors = new Set(incidentEdges.flatMap((e) => [e.source, e.target]));
-  for (const n of graphData.nodes) {
-    void graph.setElementState(n.id, n.id === nodeId || neighbors.has(n.id) ? ["selected"] : ["inactive"]);
-  }
-  for (const e of graphData.edges) {
-    void graph.setElementState(e.id, incidentEdges.includes(e) ? ["selected"] : ["inactive"]);
-  }
-  highlightedRef.current = nodeId;
+    const target = hiddenTargets(graph, visibleTypes);
+    const prev = prevHiddenRef.current;
+    const toHide = [...target].filter((id) => !prev.has(id));
+    const toShow = [...prev].filter((id) => !target.has(id));
+    prevHiddenRef.current = target;
+    if (toShow.length > 0) void graph.showElement(toShow, true);
+    if (toHide.length > 0) void graph.hideElement(toHide, true);
+    // 重放持续选中态：重新显示的元素不应携带隐藏前的旧状态
+    if (selectedRef.current) applySelection(graph, selectedRef.current, false);
+  }, [visibleTypes]);
+
+  return <div ref={containerRef} data-testid="graph-canvas" className="h-full w-full" />;
 }

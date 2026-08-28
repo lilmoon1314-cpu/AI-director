@@ -5,6 +5,17 @@
  *   两端均为 character 时取中性蓝灰淡化；两端均非人时取 target 端类型色。
  */
 
+/** 实体类型中文标签（筛选面板/详情面板展示用）。 */
+export const TYPE_LABELS: Record<string, string> = {
+  character: "人物",
+  faction: "门派",
+  location: "地点",
+  item: "物件",
+  skill: "功法",
+  event: "事件",
+  concept: "概念",
+};
+
 export const TYPE_COLORS: Record<string, string> = {
   character: "#ff5a7d", // 人物 — 粉红
   faction: "#ffceff", // 门派 — 浅粉紫

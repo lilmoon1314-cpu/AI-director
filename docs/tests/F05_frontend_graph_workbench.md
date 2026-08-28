@@ -30,10 +30,15 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 | L3 E2E | E3: 深色模式跟随系统（emulate prefers-color-scheme: dark） | 同上 | 必须 | pass |
 | L2 集成（增强轮） | I9: properties 只读展示（known_by 等蓝图参数） | tests/integration/Workbench.test.tsx | 必须 | pass |
 | L2 集成（增强轮） | I10: properties JSON 编辑 → PATCH 携带新值 | 同上 | 必须 | pass |
-| L2 集成（增强轮） | I11: 新建手风琴（实体默认展开/关系收起，点击切换） | 同上 | 必须 | pass |
+| L2 集成（增强轮） | I11: 新建两层手风琴（默认折叠：新建→实体/关系均收起，逐层展开/收起） | 同上 | 必须 | pass |
 | L2 集成（增强轮） | I12: 操作栏收起/展开 | 同上 | 必须 | pass |
 | L3 E2E（增强轮） | HL: 悬停高亮微放大→点击持续高亮+结构化详情面板→再点取消（截图 HL-01~03） | e2e/highlight-detail.spec.ts | 必须 | pass |
 | L3 E2E（视觉二轮） | HL2: 新配色/节点减半/边透明度 0.22/collide 防重叠（LOAD 截图核验） | e2e/workbench.load.spec.ts | 必须 | pass |
+| L2 集成（交互三轮） | I13: 类型筛选——取消勾选人物 → hideElement 隐藏人物节点+关联边；恢复勾选 → showElement | tests/integration/Workbench.test.tsx | 必须 | pass |
+| L2 集成（交互三轮） | I14: 筛选联动状态栏可见计数（3 节点 · 0 边（已筛选）→ 恢复 6 节点 · 3 边） | 同上 | 必须 | pass |
+| L2 集成（交互三轮） | I15: 全部区块默认折叠——新建/实体/关系/筛选内容均不可见；筛选面板含 7 类型勾选且默认全选 | 同上 | 必须 | pass |
+| L3 E2E（交互三轮） | HL3: 点击持续高亮回归——点击后鼠标移开，选中邻域保持 selected、非邻接保持 inactive（dev 后门断言 getElementState）；再点取消后全部复位 | e2e/highlight-detail.spec.ts | 必须 | pass |
+| L3 E2E（交互三轮） | E4: 类型筛选——取消勾选人物 → 3 节点 0 边 → 恢复勾选 → 6 节点 3 边（截图 E4-01/02） | e2e/workbench.spec.ts | 必须 | pass |
 
 ## 用例说明
 - U1: load 成功（GET /api/graph?perspective=author）→ nodes/edges/loading 就位；空数据 → 空数组非 undefined（边界值—空集）；fetch 抛错 → error 置位 + loading 复位（设计依据：等价类—成功/失败；边界值—空集；加载参数固定 author，F06 接管视角）
@@ -55,16 +60,21 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 - U7 参数化: 关系边色随「非 character 一端」类型色（方向无关）；人—人取中性蓝灰；两端皆非人取 source 端；opacity < 1（更淡更透明，用户规则）（设计依据：等价类—端点类型组合；边界值—双 character/双非人）
 - I9: 选中含 properties 的实体（event-e: known_by/place）→ 面板按类型蓝图结构化展示全部规定字段（label 为字段中文名，空值显示 —），额外键兜底列出（设计依据：视觉二轮—详情面板按 schema 列字段）
 - I10: 结构化字段编辑（known_by 逗号分隔输入）→ 保存 → PATCH properties.known_by 为解析后数组 → 面板更新（设计依据：视觉二轮—schema 驱动修改主路径；buildProperties 逐字段校验 list/number/object）
-- I11: 「新建」手风琴——实体表单默认展开、关系表单默认收起；点「关系」标题展开、再点收起（设计依据：增强轮—折叠收纳交互，等价类—开/关两态）
+- I11: 「新建」组与组内「实体/关系」手风琴全部默认折叠；点「新建」展开后表单仍折叠，再点「实体」出现表单、「关系」出现表单，各再点收起（设计依据：交互三轮—两层折叠收纳交互，等价类—开/关两态；修订：原「实体默认展开」已被用户「所有内容默认折叠」取代）
 - I12: 点「收起操作栏」→ 侧栏移除、展开按钮出现；点「展开操作栏」→ 恢复（设计依据：增强轮—工作台收起展开，等价类—两态往返）
 - E3: emulateMedia(colorScheme: dark) → 页面以深色主题渲染（图计数与加载正常），截图存档（设计依据：增强轮—深浅色跟随系统 prefers-color-scheme；G6 主题经 setTheme 联动，视觉由截图人工核验）
 - HL: 播种小世界（3 实体 2 关系）→ 经 dev 后门 window.__g6graph 取节点画布坐标（getElementPosition + getViewportByCanvas + 容器 boundingBox 换算页面坐标）→ 真实 mouse.hover 断言面板前截图（悬停：一跳邻域高亮/非邻接淡出/节点微放大/边标签显示）→ mouse.click 断言详情面板结构化字段（身份/职业=药师、年龄=—）并截图（持续高亮+右侧蓝图字段）→ 再点截图（取消高亮）（设计依据：视觉二轮—高亮交互与结构化详情的人工核验自动化；G6 内置渲染行为无法在 jsdom 断言）
 - HL2: 负载全景截图（LOAD-01/02）核验视觉二轮：节点 size 13（原 26 减半）、collide=80 防重叠、边 opacity 0.22、新色板（人物 ff5a7d/事件 ffff7e/物件 a7ffff/地点 40531b/门派 ffceff/概念 97a7b3/功法 f86624）（设计依据：视觉二轮—负载规模下的清晰度人工核验）
+- I13: 展开「筛选」→ 取消勾选「人物 (3)」→ G6 桩 hiddenIds 收到 3 个人物节点 id + 3 条关联边 id（边随双端可见性联动，防悬空边）；重新勾选 → shownIds 收到同集合（设计依据：交互三轮—筛选显隐主路径；边界值—全关联边被隐藏/恢复；等价类—勾选/取消两态）
+- I14: 取消勾选人物后状态栏显示「3 节点 · 0 边（author 视角）（已筛选）」，恢复勾选回到「6 节点 · 3 边」（设计依据：交互三轮—可见计数联动；边界值—边计数 0（全部边触人物））
+- I15: 挂载后 create-entity-form/create-relation-form/filter-panel 均不在文档（默认折叠）；点「新建」展开后表单仍折叠（两层手风琴），再点「实体」出现表单（设计依据：交互三轮—所有内容默认折叠；等价类—开/关两态逐层）
+- HL3: 播种小世界（4 实体：周兰/青云山/夜探药庐 相连 + 北漠 孤立）→ 点击周兰后鼠标移开画布角落 → dev 后门读 getElementState：周兰/青云山/夜探药庐 = ["selected"]、北漠 = ["inactive"]（持续高亮不随鼠标离开而丢失）；再点周兰并移开 → 全部复位 []（设计依据：交互三轮—点击持续高亮回归断言（E08 修复的自动化防线：此前 e2e 只断言面板副作用、未断言图状态，闭包 bug 漏检）；边界值—孤立节点淡出/复位）
+- E4: 展开筛选 → 取消勾选人物 → 状态栏 3 节点 · 0 边 → 截图 E4-01；恢复勾选 → 6 节点 · 3 边 → 截图 E4-02（设计依据：交互三轮—真实画布显隐与计数联动；动画淡入淡出经截图人工核验）
 
 ## 测试设施约定
 - L1/L2 运行于 jsdom；@antv/g6 经 vite.config `test.alias` 指向测试桩（src/test-stubs/g6-stub.ts，jsdom 无 canvas），断言经桩实例收到的数据与手动 emit 的回调（E06：vi.mock 与 RTL 并存会触发转换期 TDZ，已禁用该组合）；L2 网络层用 MSW（handlers 按测试世界装配），`VITE_API_BASE` 指向 MSW 可匹配的绝对前缀（vitest test.env 注入）。
 - L3 Playwright `webServer` 自动拉起 uvicorn（临时 SQLite）与 vite dev；断言基于真实 API 与 DOM；关键步骤经 `shoot()` 截图存档 `frontend/e2e-screenshots/`（gitignore），深色模式用 `emulateMedia` 模拟系统偏好。
-- 视觉高亮（hover-activate 悬停 / 点击 selected / auto-adapt-label 标签避让）为 G6 内置行为，jsdom 无法断言渲染效果，由 e2e 截图人工核验；数据驱动的配色规则由 U3/U6/U7 在 L1 锁定。
+- 视觉高亮（hover-activate 悬停 / 点击 selected / auto-adapt-label 标签避让）为 G6 内置行为，jsdom 无法断言渲染效果，由 e2e 截图人工核验；数据驱动的配色规则由 U3/U6/U7 在 L1 锁定。交互三轮起：悬停淡出经 hover-activate `inactiveState: "inactive"` + `animation: true`，点击持续选中经手工批量 setElementState（实时读 graph 数据）并在选中期间经 `enable` 门控禁用悬停——jsdom 层断言桩的调用面（lastStateBatch/hiddenIds），渲染效果（状态过渡动画/显隐淡入淡出）由 HL3/E4 截图人工核验。
 - 变异测试（§9）：**豁免**（2026-08-28 决策）——mutmut 仅支持 Python，本功能为 TypeScript/React；docs/testing.md §2 DoD 第 5 条与 §9 已注明适用范围仅 backend/app。前端测试有效性由本文件 §8 等价类/边界值设计标注与 L1/L2/L3 层级测试保障。
 
 ## 验收判定

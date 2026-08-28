@@ -148,6 +148,12 @@ async function renderWorkbench() {
   return user;
 }
 
+/** 交互三轮起所有区块默认折叠：逐层展开「新建 → 实体」表单（I3/I4 前置）。 */
+async function expandEntityForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "新建", exact: true }));
+  await user.click(screen.getByRole("button", { name: "实体", exact: true }));
+}
+
 describe("Workbench 集成（I1–I8）", () => {
   it("I1: 挂载经 MSW 加载 author 全量并渲染（6 节点 3 边）", async () => {
     // 设计依据: 等价类—数据加载主路径
@@ -171,6 +177,7 @@ describe("Workbench 集成（I1–I8）", () => {
   it("I3: 新建实体（合法最小输入）→ POST 201 → 图刷新为 7 节点", async () => {
     // 设计依据: 等价类—创建有效；边界值—name 单字符（最小合法）
     const user = await renderWorkbench();
+    await expandEntityForm(user); // 所有区块默认折叠（交互三轮）
     await user.type(screen.getByLabelText("名称"), "顾");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("7 节点"));
@@ -180,6 +187,7 @@ describe("Workbench 集成（I1–I8）", () => {
   it("I4: 新建实体（空名称）→ 前端拦截，零网络请求", async () => {
     // 设计依据: 无效等价类—必填缺失；边界值—空串
     const user = await renderWorkbench();
+    await expandEntityForm(user); // 所有区块默认折叠（交互三轮）
     await user.click(screen.getByRole("button", { name: "创建" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("名称不能为空");
     expect(createCalls).toBe(0);
@@ -274,13 +282,16 @@ describe("Workbench 集成（I1–I8）", () => {
     await waitFor(() => expect(panel).toHaveTextContent("char-a"));
   });
 
-  it("I11: 新建手风琴——实体默认展开、关系默认收起，点标题展开", async () => {
-    // 设计依据: 增强轮—折叠收纳交互（提示文字 aria-hidden，按钮名即「关系」）
+  it("I11: 新建两层手风琴默认折叠——逐层展开实体/关系表单，再点收起", async () => {
+    // 设计依据: 交互三轮—两层折叠收纳交互（提示文字 aria-hidden，按钮名即「实体」「关系」）
     const user = await renderWorkbench();
-    expect(screen.getByTestId("create-entity-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("create-entity-form")).not.toBeInTheDocument();
     expect(screen.queryByTestId("create-relation-form")).not.toBeInTheDocument();
-    const relationToggle = screen.getByRole("button", { name: "关系", exact: true });
-    await user.click(relationToggle); // 展开
+    await user.click(screen.getByRole("button", { name: "新建", exact: true })); // 展开组
+    expect(screen.queryByTestId("create-entity-form")).not.toBeInTheDocument(); // 组内仍折叠
+    await user.click(screen.getByRole("button", { name: "实体", exact: true }));
+    expect(screen.getByTestId("create-entity-form")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关系", exact: true }));
     expect(screen.getByTestId("create-relation-form")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "关系", exact: true })); // 再点收起
     expect(screen.queryByTestId("create-relation-form")).not.toBeInTheDocument();
@@ -293,5 +304,51 @@ describe("Workbench 集成（I1–I8）", () => {
     expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "展开操作栏" }));
     expect(screen.getByTestId("sidebar")).toBeInTheDocument();
+  });
+
+  it("I13: 类型筛选——取消勾选人物 → hideElement 隐藏节点与关联边，恢复勾选 → showElement", async () => {
+    // 设计依据: 交互三轮—筛选显隐主路径（边随双端可见性联动，防悬空边）；边界值—全部关联边被隐藏/恢复
+    const user = await renderWorkbench();
+    const stub = Graph.instances[0];
+    await user.click(screen.getByRole("button", { name: "筛选", exact: true }));
+    await user.click(screen.getByLabelText("人物 (3)")); // 取消勾选
+    await waitFor(() => {
+      expect(stub?.hiddenIds).toEqual(
+        expect.arrayContaining(["char-a", "char-b", "char-c", "rel-1", "rel-2", "rel-3"]),
+      );
+    });
+    expect(stub?.shownIds).toHaveLength(0); // 首轮无恢复动作
+    await user.click(screen.getByLabelText("人物 (3)")); // 恢复勾选
+    await waitFor(() => {
+      expect(stub?.shownIds).toEqual(
+        expect.arrayContaining(["char-a", "char-b", "char-c", "rel-1", "rel-2", "rel-3"]),
+      );
+    });
+  });
+
+  it("I14: 筛选联动状态栏可见计数——取消人物后 3 节点 0 边（已筛选），恢复后 6 节点 3 边", async () => {
+    // 设计依据: 交互三轮—可见计数联动；边界值—边计数 0（种子全部边触人物）
+    const user = await renderWorkbench();
+    await user.click(screen.getByRole("button", { name: "筛选", exact: true }));
+    await user.click(screen.getByLabelText("人物 (3)"));
+    expect(screen.getByTestId("graph-stats")).toHaveTextContent("3 节点 · 0 边");
+    expect(screen.getByTestId("graph-stats")).toHaveTextContent("（已筛选）");
+    await user.click(screen.getByLabelText("人物 (3)"));
+    await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("6 节点 · 3 边"));
+    expect(screen.getByTestId("graph-stats")).not.toHaveTextContent("已筛选");
+  });
+
+  it("I15: 全部区块默认折叠；筛选面板含 7 类型勾选且默认全选", async () => {
+    // 设计依据: 交互三轮—所有内容默认折叠（用户要求）；等价类—全选初值
+    const user = await renderWorkbench();
+    expect(screen.queryByTestId("create-entity-form")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("create-relation-form")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("filter-panel")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "筛选", exact: true }));
+    const panel = screen.getByTestId("filter-panel");
+    expect(panel).toBeInTheDocument();
+    const checkboxes = panel.querySelectorAll<HTMLInputElement>("input[type='checkbox']");
+    expect(checkboxes).toHaveLength(7); // 7 实体类型逐一可勾选
+    expect(checkboxes.length && [...checkboxes].every((c) => c.checked)).toBe(true); // 默认全选
   });
 });

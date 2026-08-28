@@ -54,7 +54,9 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await shoot(page, "E1-01-首屏加载完成-6节点3边");
 
-  // 建实体（用户写入路径）
+  // 建实体（用户写入路径）：所有区块默认折叠（交互三轮），逐层展开「新建 → 实体」
+  await page.getByRole("button", { name: "新建", exact: true }).click();
+  await page.getByRole("button", { name: "实体", exact: true }).click();
   await page.getByLabel("名称").fill("顾长风");
   await page
     .getByTestId("create-entity-form")
@@ -89,4 +91,25 @@ test("E3: 深色模式跟随系统（emulate prefers-color-scheme: dark）", asy
   await page.goto("/");
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await shoot(page, "E3-01-深色模式首屏");
+});
+
+test("E4: 类型筛选——取消勾选人物 → 仅非人物可见（3 节点 0 边）→ 恢复勾选复原", async ({ page }) => {
+  // 设计依据: docs/tests/F05 交互三轮 E4——真实画布显隐 + 状态栏可见计数联动（截图人工核验动画淡入淡出）
+  await resetWorld(page.request);
+  await seedWorld(page.request);
+
+  await page.goto("/");
+  await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
+  await page.getByRole("button", { name: "筛选", exact: true }).click();
+  await page.getByLabel("人物 (3)").uncheck();
+  await expect(page.getByTestId("graph-stats")).toHaveText(/3 节点 · 0 边/);
+  await expect(page.getByTestId("graph-stats")).toHaveText(/（已筛选）/);
+  await page.waitForTimeout(800); // 淡出动画结束后截图
+  await shoot(page, "E4-01-取消人物-仅非人物3节点0边");
+
+  await page.getByLabel("人物 (3)").check();
+  await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
+  await expect(page.getByTestId("graph-stats")).not.toHaveText(/已筛选/);
+  await page.waitForTimeout(800);
+  await shoot(page, "E4-02-恢复人物-6节点3边");
 });
