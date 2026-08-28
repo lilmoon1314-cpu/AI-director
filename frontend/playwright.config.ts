@@ -14,7 +14,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     // 用完整版 chromium（含 headless=new）；避免额外下载 chromium-headless-shell
     channel: "chromium",
+    // 失败自动截图/录屏留证（test-results/，成功路径的存档截图见 e2e/helpers.ts shoot()）
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
+  reporter: [
+    ["list"],
+    // 终端跑完执行 `pnpm exec playwright show-report` 可看带截图/步骤的交互式报告
+    ["html", { open: "never", outputFolder: "playwright-report" }],
+  ],
   webServer: [
     {
       command: "cd ../backend && uv run alembic upgrade head && uv run uvicorn app.main:app --port 8000",

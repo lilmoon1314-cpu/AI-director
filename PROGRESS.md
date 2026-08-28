@@ -18,6 +18,7 @@
 - 2026-08-28: 变异测试规则完整化（T-20260828-01 提升）——判杀器层级覆盖原则写入 docs/testing.md §9（L1 基线 + 含 router 必加 L2 + 必须层级含 L3 时加 e2e，防后续端到端场景漏杀）；task.py mutate 对含 router 模块缺 L2 判杀自动拦截（拦截/放行双分支已验证）；错误用例断言强度规范（三要素 + detail 字典钉死）登记 E05。详见 DECISIONS.md 与 backend/logs/error.jsonl（E04/E05）
 - 2026-08-28: 等价性登记豁免边界与三道防线入规——不影响运行时行为的变异体（OpenAPI 文档性字符串）不钉死文案，但豁免附三防线：唯一判定标准（不进运行时数据流，错误文案/alias/Literal 值等行为载体严禁豁免）+ 滥用防线（逐条核实依据，等价数 > 总数 20% 视为门槛失真）+ 时效防线（结论仅对当次验证时点有效）；F04 测试文档回填实杀/等价拆分（83/4）。详见 DECISIONS.md 与 docs/testing.md §9「等价性登记」
 - 2026-08-28: **F05 前端图谱工作台完成（passing）**——前端基建（G6 5.x/zustand/msw/openapi-typescript/Playwright 依赖 + test:integration/test:e2e/gen:api-types 脚本 + Playwright 配置（临时 SQLite webServer）+ check-api-types 挂链 check）+ api 客户端（VITE_API_BASE 注入，类型全由 OpenAPI 生成）+ graphStore（固定 author，F06 接管视角）/selectionStore + GraphCanvas（G6 单例/增量更新/卸载销毁）+ 毛玻璃轻量 UI 组件 + 实体详情面板（编辑 PATCH/删除二次确认/409 三要素展示）+ 实体与关系创建表单 + Workbench 聚合（图计数状态栏）；测试 L1 21 例 + L2 8 例（MSW）+ L3 e2e 2 例（真实前后端，API 播种 + 幂等清库）；两项决策入规（前端豁免 mutmut、UI 自研轻量组件）+ 新错误模式 E06（vi.mock×RTL TDZ，test.alias 桩方案 + file_conventions 回归检查）。详见 docs/tests/F05_frontend_graph_workbench.md、DECISIONS.md 与 git log
+- 2026-08-28: e2e 验收截图机制——关键步骤经 `shoot()` 自动存档 `frontend/e2e-screenshots/`（序号命名按序即执行序，gitignore 不入库）；失败自动截图/录屏（screenshot/video retain-on-failure）+ HTML 报告（`pnpm exec playwright show-report`）。详见 frontend/e2e/helpers.ts
 
 ## 进行中
 - 无（F05 已完成，F06 待启动）

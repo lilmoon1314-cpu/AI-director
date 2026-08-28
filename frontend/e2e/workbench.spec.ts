@@ -6,6 +6,8 @@
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { shoot } from "./helpers";
+
 // 测试世界种子（与 docs/tests/F05_graph 种子一致）：e2e 库为全新空库，
 // 经真实后端 API 播种（走 vite 代理），保证「周兰」等下拉端点存在。
 const SEED_ENTITIES = [
@@ -47,6 +49,7 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
 
   await page.goto("/");
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
+  await shoot(page, "E1-01-首屏加载完成-6节点3边");
 
   // 建实体（用户写入路径）
   await page.getByLabel("名称").fill("顾长风");
@@ -55,6 +58,7 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
     .getByRole("button", { name: "创建", exact: true })
     .click();
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 3 边/);
+  await shoot(page, "E1-02-新建实体后-7节点");
 
   // 建关系：端点从图节点下拉选择
   await page.getByLabel("关系起点").selectOption({ label: "顾长风" });
@@ -62,11 +66,14 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
   await page.getByLabel("关系类型（如 ALLY）").fill("MENTORS");
   await page.getByRole("button", { name: "创建关系" }).click();
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 4 边/);
+  await shoot(page, "E1-03-新建关系后-7节点4边");
 });
 
 test("E2: 刷新页面后 E1 的数据仍在（持久化单一事实源）", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 4 边/);
+  await shoot(page, "E2-01-刷新前-数据在");
   await page.reload();
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 4 边/);
+  await shoot(page, "E2-02-刷新持久化后-数据仍在");
 });

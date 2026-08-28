@@ -41,3 +41,5 @@ backend/openapi.json
 # Playwright 产物（L3 e2e 运行输出，不入版本库）
 frontend/test-results/
 frontend/playwright-report/
+# e2e 验收截图存档（人工查看用，不入版本库）
+frontend/e2e-screenshots/
