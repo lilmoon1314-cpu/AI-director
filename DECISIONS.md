@@ -140,4 +140,4 @@
 ## 2026-08-28: F04 变异测试首轮实践——判杀器必须覆盖 L1+L2，错误用例断言须钉死三要素
 - 原因: F04 首轮仅以 L1 单元测试判杀，kill rate 仅 47%（41/87）：router 路由注册（prefix/path/装饰器删除）与 Perspective Literal 枚举变异不改变 service 运行时行为，只有经 HTTP 语义的 L2 集成测试可杀；错误三要素文案与 detail 键值变异因 U4/U5 仅断言 reason 单键而存活。
 - 否决: 断言 OpenAPI 文档文案（tags/Query/Field description）换 kill rate（钉死文案阻碍正常迭代，4 个变异登记等价性）；仅看 kill rate 总值不逐一分类存活变异体（会漏掉判杀器结构性缺口）。
-- 约束: `task.py mutate <module>` 判杀器默认 unit，含 router/schemas 的模块须显式追加 L2 集成测试路径；错误类用例必须断言三要素完整文案 + detail 字典整体相等（仅断言单键视为断言不足）；文档性字符串变异登记等价性、不补用例。
+- 约束: 判杀器层级 ⊇ 功能必须测试层级（docs/testing.md §9「判杀器构成」）——L1 单元恒为基线；模块含 router.py 必加 L2 集成路径（HTTP 语义变异仅集成可杀，task.py mutate 自动拦截缺 L2 的调用）；功能必须层级含 L3 时判杀器追加 e2e 路径（跨组件装配变异仅真实组合根可杀），存活分析出现「仅 e2e 可杀」变异体必须补 e2e 判杀重跑；错误类用例必须断言三要素完整文案 + detail 字典整体相等（仅断言单键视为断言不足，E05）；文档性字符串变异（OpenAPI tags/Query/Field description）登记等价性、不补用例。

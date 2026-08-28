@@ -106,10 +106,14 @@ pytest marker 约定：`unit` / `integration` / `e2e` / `architecture`（conftes
 
 ## 9. 变异测试（mutmut）
 
-> 状态：**已就位（F04 落地）**——mutmut 2.x 已入 dev 依赖，封装命令 `python scripts/task.py mutate <module> [test_path...]`（等价 `make mutate <module>`）；默认判杀器为该模块单测文件 `tests/unit/test_<module>_service.py`，不存在时显式传入 test_path。
+> 状态：**已就位（F04 落地）**——mutmut 2.x 已入 dev 依赖，封装命令 `python scripts/task.py mutate <module> [test_path...]`（等价 `make mutate <module>`）。
 
+- **判杀器构成（层级覆盖原则，F04 教训 E04 固化）**：判杀测试集合必须覆盖该功能 DoD 的全部「必须」测试层级——判杀器缺哪一层，那一层语义的变异就存在漏杀盲区：
+    - **L1 单元（恒为基线）**：`tests/unit/test_<module>_service.py`（默认判杀器，不存在时显式传入）；负责杀过滤规则/校验/投影等纯逻辑变异；
+    - **L2 集成（模块含 `router.py` 即必须）**：显式追加该功能集成测试路径——路由注册（prefix/path/装饰器删除）与 Literal/Query 参数校验类变异不改变 service 运行时行为，只有经 HTTP 的集成测试可杀（F04 实测：仅 L1 判杀 kill rate 47%，补 L2 后 95.4%）；`task.py mutate` 对含 router 而判杀器缺 `tests/integration/` 路径的调用自动拦截；
+    - **L3 端到端（功能必须层级含 L3 时）**：判杀器须追加对应 e2e 测试路径（可配 `-k` 选择器收窄）——跨组件装配变异（路由挂载、依赖注入、迁移、启动链）在 L1/L2 的桩/裁剪环境下不可见，只有真实组合根的 e2e 可杀。当前若 e2e 所杀变异与 L2 完全重叠可不追加，但存活变异体分析中一旦出现「仅 e2e 可杀」的变异体（L1/L2 判杀下存活、行为只在全链路显现），必须把 e2e 补入判杀器重跑后再归档。
 - **时机**：测试文档撰写完成后即把变异测试列入任务清单；用例实现完成、`verify FXX` 之前执行。
 - **范围**：仅对本功能被测模块定向运行（如 F04 → `mutate perspectives`），禁止全仓库无差别变异（耗时且噪声大）。
-- **达标判据**：kill rate ≥ 85%；未达标时存活变异体必须逐一分析——能补用例则按 §8 补设计补用例，确属等价变异体则在测试文档登记理由后视作已处理。
+- **达标判据**：kill rate ≥ 85%；未达标时存活变异体必须逐一分析——能补用例则按 §8 补设计补用例，确属等价变异体则在测试文档登记理由后视作已处理。错误类用例的断言强度不足（仅断言单键/存在性）会以「三要素文案与 detail 键值变异存活」的形式暴露（E05）：补用例时按三要素完整文案精确相等 + detail 字典整体相等钉死（F04 U4/U5 范式）；文档性字符串（OpenAPI tags/Query/Field description）变异属等价，登记理由、不钉死文案。
 - **归档**：scope、kill rate 与存活变异体分析记入该功能测试文档「变异测试结果」小节（模板见 §5）。
 - **成本控制**：mutmut 不纳入 make check 常规链，按功能点手动触发；运行时长异常时收窄 scope（模块内单文件/单函数）。

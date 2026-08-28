@@ -273,7 +273,8 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
         module — 模块名（app/ 下的目录名，如 perspectives）；
         test_paths — 判杀测试路径（可选，默认 tests/unit/test_<module>_service.py，
         该文件不存在时必须显式指定）。
-    返回值: 无。异常: 模块不存在或缺判杀器时经 _fail 终止。依赖: mutmut / pytest。
+    返回值: 无。异常: 模块不存在、缺判杀器、或模块含 router.py 而判杀器缺
+        L2 集成测试时经 _fail 终止（docs/testing.md §9 判杀器构成）。依赖: mutmut / pytest。
     """
     if not (BACKEND / "app" / module).is_dir():
         _fail(
@@ -290,6 +291,16 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
             f"模块 {module} 缺少默认判杀测试",
             f"backend/tests/unit/test_{module}_service.py 不存在",
             "显式传入判杀测试路径: python scripts/task.py mutate <module> <test_path...>",
+        )
+    if (BACKEND / "app" / module / "router.py").is_file() and not any(
+        p.replace("\\", "/").startswith("tests/integration/") for p in tests
+    ):
+        _fail(
+            f"模块 {module} 含 router.py 但判杀器缺少 L2 集成测试（docs/testing.md §9 判杀器构成）",
+            "路由注册（prefix/path/装饰器）与参数校验类变异不改变 service 运行时行为，"
+            "仅 L1 单元判杀会在 HTTP 语义层留下漏杀盲区（F04 首轮 kill rate 仅 47%）",
+            "判杀器追加该功能集成测试路径，如: python scripts/task.py mutate <module> "
+            "tests/unit/test_<module>_service.py tests/integration/test_<feature>.py",
         )
     runner = f"python -m pytest -x -q {' '.join(tests)}"
     _backend(

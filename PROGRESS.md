@@ -15,6 +15,7 @@
 - 2026-08-27: **F03 关系 CRUD API 完成（passing）**——relations 模块补全（自环/端点存在性经 entities.service/重复三元组/known_by 成员四重写入校验 + 条件查询路由）+ L1 11 例 + L2 10 例 + L3 e2e 2 例（含 F02×F03 引用解除闭环）；同场修正 E01 复发（T-20260827-03）：补齐映射表声称的三项架构测试。详见 docs/tests/F03_relation_crud_api.md 与 git log
 - 2026-08-27: agent 规则升级（二）——测试用例设计方法学（等价类划分 + 边界值分析，参数化强制）与变异测试机制（mutmut，kill rate ≥ 85% + 存活变异体分析归档）写入 AGENTS.md 与 docs/testing.md §2/§8/§9，自 F04 起生效（工具随 F04 落地）。详见 DECISIONS.md
 - 2026-08-28: **F04 三视角过滤图查询完成（passing）**——perspectives 模块（schemas/service/router 纯只读聚合，author 全量 / character 按 known_by+标记+端点推导 / audience 双端规则，PerspectiveError 403 三 reason）+ L1 18 例 + L2 12 例 + L3 e2e 2 例 + 变异测试落地：mutmut 判杀 kill rate 95.4%（83/87，存活 4 个 OpenAPI 文案等价性归档），判杀器纳入 L1+L2 双层（纯 unit 判杀对 HTTP 层变异失效，kill rate 曾仅 47%）；含 T0 前置修正（import-linter 三契约补登 + 负例注入验证，E01 复发 T-20260827-06）与 T1 变异工具（task.py mutate 命令）。详见 docs/tests/F04_graph_perspective_query.md、DECISIONS.md 与 git log
+- 2026-08-28: 变异测试规则完整化（T-20260828-01 提升）——判杀器层级覆盖原则写入 docs/testing.md §9（L1 基线 + 含 router 必加 L2 + 必须层级含 L3 时加 e2e，防后续端到端场景漏杀）；task.py mutate 对含 router 模块缺 L2 判杀自动拦截（拦截/放行双分支已验证）；错误用例断言强度规范（三要素 + detail 字典钉死）登记 E05。详见 DECISIONS.md 与 backend/logs/error.jsonl（E04/E05）
 
 ## 进行中
 - 无（F04 已完成，F05 待启动）
