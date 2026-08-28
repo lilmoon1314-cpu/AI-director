@@ -54,13 +54,38 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
       },
       node: {
         style: {
-          size: 28,
+          size: 26,
+          // 发散型光点：核心实色(1.0) → 内描边(0.6) → halo 光圈(0.15) → shadow 柔光(约0.23 alpha)，透明度逐层降低
           fill: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
+          stroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
+          strokeOpacity: 0.6,
+          lineWidth: 4,
+          halo: true,
+          haloLineWidth: 16,
+          haloStroke: (d: { data?: { color?: string } }) => d.data?.color ?? "#8a94a6",
+          haloStrokeOpacity: 0.15,
+          shadowColor: (d: { data?: { color?: string } }) => `${d.data?.color ?? "#8a94a6"}3b`,
+          shadowBlur: 20,
           labelText: (d: { data?: { name?: string } }) => d.data?.name ?? "",
         },
         state: {
-          active: { lineWidth: 3, stroke: "#f59e0b", labelFontWeight: 600 },
-          selected: { lineWidth: 3, stroke: "#f59e0b", labelFontWeight: 600 },
+          // 悬停/选中：微微放大 + 光圈增强
+          active: {
+            size: 31,
+            haloLineWidth: 24,
+            haloStrokeOpacity: 0.3,
+            shadowBlur: 30,
+            labelFontWeight: 600,
+          },
+          selected: {
+            size: 31,
+            lineWidth: 3,
+            stroke: "#f59e0b",
+            haloLineWidth: 24,
+            haloStrokeOpacity: 0.3,
+            shadowBlur: 30,
+            labelFontWeight: 600,
+          },
           inactive: { fillOpacity: 0.25, strokeOpacity: 0.2, labelOpacity: 0.2 },
         },
       },
@@ -70,6 +95,8 @@ export function GraphCanvas({ graph: graphData, onNodeClick }: GraphCanvasProps)
           opacity: (d: { data?: { opacity?: number } }) => d.data?.opacity ?? 0.45,
           endArrow: true,
           labelText: (d: { data?: { type?: string } }) => d.data?.type ?? "",
+          // 多边场景边标签默认隐藏（喧宾夺主），悬停/选中高亮时经 state 显示
+          labelOpacity: 0,
         },
         state: {
           active: { opacity: 0.95, lineWidth: 2.5, labelOpacity: 1 },

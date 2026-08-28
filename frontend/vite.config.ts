@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 // Vite 配置：构建行为 + 开发服务器 + 测试环境
-// API 代理：开发期前端请求 /api/* 由 Vite 转发到后端 :8000，无需处理跨域
+// API 代理：开发期前端请求 /api/* 转发到后端（默认 :8000；负载验收经
+// VITE_API_PROXY_TARGET 指向独立端口，避免残留进程干扰）
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8000";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
-      "/api": "http://localhost:8000",
+      "/api": apiProxyTarget,
     },
   },
   test: {

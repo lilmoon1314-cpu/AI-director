@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
-    "gen:api-types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts"
+    "gen:api-types": "openapi-typescript ../backend/openapi.json -o src/api/schema.d.ts",
+    "test:e2e:load": "playwright test --config playwright.load.config.ts"
   },
   "dependencies": {
     "@antv/g6": "^5",

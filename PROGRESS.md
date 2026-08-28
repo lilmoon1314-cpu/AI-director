@@ -21,6 +21,8 @@
 - 2026-08-28: e2e 验收截图机制——关键步骤经 `shoot()` 自动存档 `frontend/e2e-screenshots/`（序号命名按序即执行序，gitignore 不入库）；失败自动截图/录屏（screenshot/video retain-on-failure）+ HTML 报告（`pnpm exec playwright show-report`）。详见 frontend/e2e/helpers.ts
 - 2026-08-28: **F05 增强轮（用户追加七项需求）**——①标签避让（G6 auto-adapt-label + force collide/linkDistance 加大）；②节点悬停高亮一跳邻域（hover-activate）、点击持续高亮相关路径且非相关淡出、再点取消（setElementState toggle）；③实体类型 7 色标识 + 关系边随非人端淡化（lib/palette.ts，两端均人取中性）；④properties 展示与 JSON 编辑（新建/编辑均支持，parse 校验；known_by/seen_by 等蓝图参数可填）；⑤「新建实体/关系」折叠进「新建」手风琴（实体默认展开）；⑥操作栏收起/展开；⑦深浅色双主题跟随系统（CSS dark: 变体 + G6 setTheme 经 matchMedia 联动）。测试 L1 49 例（新增 palette 参数化）/L2 12 例（properties/折叠/收起）/e2e 3 例（新增深色 E3 截图）；frontend/CONSTRAINTS 视觉小节同步双主题/分色/高亮硬约束。详见 docs/tests/F05_frontend_graph_workbench.md 与 git log
 
+- 2026-08-28: **F05 光点样式 + 负载验收（用户追加）**——①节点改发散型光点（三层光圈透明度递减：核心实色→内描边 0.6→halo 0.15→shadow 柔光），悬停/选中微放大（state size 26→31）+ 光圈增强；②负载验收落地：`pnpm test:e2e:load`（独立 playwright.load.config.ts + 8010 端口/专用库与主验收隔离），播种 20 人物/8 功法/6 门派/20 物体/20 地点/80 事件/40 概念 + 208 关系；**结果：/api/graph 33ms、首屏就绪 3.4s、交互期间主线程往返 ~400ms、JS 堆净增 25MB（峰值 173MB）无泄漏**；③边标签默认隐藏（多边场景喧宾夺主，悬停/选中高亮时经 state 显示）。环境坑链修复：globalSetup 在 webServer 之后执行（杀进程会误伤本轮）、uvicorn shim+python 进程链需 /T 树杀、残留进程占 8000 端口致轮询误命中旧库——负载环境改独立端口 + webServer command 前置 taskkill + spec 内 resetWorld 兜底。详见 frontend/e2e/workbench.load.spec.ts 与 git log
+
 ## 进行中
 - 无
 

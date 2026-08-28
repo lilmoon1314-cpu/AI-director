@@ -6,6 +6,8 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "./e2e/global-setup.ts",
+  // 负载验收走独立配置（pnpm test:e2e:load → playwright.load.config.ts）
+  testIgnore: "**/*.load.spec.ts",
   fullyParallel: false,
   retries: 0,
   timeout: 30_000,
