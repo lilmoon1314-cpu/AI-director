@@ -25,6 +25,8 @@ export class Graph {
     this.listeners.get(event)?.(evt);
   }
 
+  setElementState() {}
+
   async render(): Promise<undefined> {
     return undefined;
   }

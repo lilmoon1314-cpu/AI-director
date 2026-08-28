@@ -15,6 +15,8 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 | L1 单元 | U3: toGraphData 映射参数化 | tests/unit/lib/toGraphData.test.ts | 必须 | pass |
 | L1 单元 | U4: 实体表单校验参数化 | tests/unit/lib/entityForm.test.ts | 必须 | pass |
 | L1 单元 | U5: GraphCanvas 单例生命周期 | tests/unit/components/GraphCanvas.test.tsx | 必须 | pass |
+| L1 单元 | U6: 实体类型分色参数化（7 类型 + 未知回退） | tests/unit/lib/palette.test.ts | 必须 | pass |
+| L1 单元 | U7: 关系边色随非人端淡化参数化 | 同上 | 必须 | pass |
 | L2 集成 | I1: Workbench 挂载经 msw 加载并渲染全量 | tests/integration/Workbench.test.tsx | 必须 | pass |
 | L2 集成 | I2: 节点点击 → 详情面板字段 | 同上 | 必须 | pass |
 | L2 集成 | I3: 新建实体有效 → POST + 图刷新 | 同上 | 必须 | pass |
@@ -25,6 +27,11 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 | L2 集成 | I8: API 网络错误 → 错误提示不白屏 | 同上 | 必须 | pass |
 | L3 E2E | E1: UI 建实体→建关系→图渲染→点选详情→编辑保存全链路（跨组件：前端+API+DB） | e2e/workbench.spec.ts | 必须 | pass |
 | L3 E2E | E2: 刷新持久化 | 同上 | 必须 | pass |
+| L3 E2E | E3: 深色模式跟随系统（emulate prefers-color-scheme: dark） | 同上 | 必须 | pass |
+| L2 集成（增强轮） | I9: properties 只读展示（known_by 等蓝图参数） | tests/integration/Workbench.test.tsx | 必须 | pass |
+| L2 集成（增强轮） | I10: properties JSON 编辑 → PATCH 携带新值 | 同上 | 必须 | pass |
+| L2 集成（增强轮） | I11: 新建手风琴（实体默认展开/关系收起，点击切换） | 同上 | 必须 | pass |
+| L2 集成（增强轮） | I12: 操作栏收起/展开 | 同上 | 必须 | pass |
 
 ## 用例说明
 - U1: load 成功（GET /api/graph?perspective=author）→ nodes/edges/loading 就位；空数据 → 空数组非 undefined（边界值—空集）；fetch 抛错 → error 置位 + loading 复位（设计依据：等价类—成功/失败；边界值—空集；加载参数固定 author，F06 接管视角）
@@ -42,10 +49,18 @@ author 期望视图：6 节点 3 边（全量）。删除边界：loc-l 被 rel-
 - I8: MSW 强制网络错误 → 界面渲染错误提示组件而非崩溃白屏（设计依据：无效等价类—API 不可达）
 - E1: Playwright 起真前后端 → UI 表单建实体「顾长风」→ 图计数 6→7 节点 → 建关系（顾长风→周兰）→ 边 3→4（设计依据：跨组件全链路主路径，features.md F05 必须层级含 L3；固定 author 视角，三视角链路属 F06）。修订：G6 力导布局下 canvas 节点坐标不可定位，「点击节点→详情→编辑」链路由 I2/I5/I6 经 MSW 真实 HTTP 契约覆盖；E1 聚焦 UI 写入 → 图刷新的跨前后端路径
 - E2: 重载页面后 E1 建的实体与关系仍在（图计数 7 节点 4 边）（设计依据：持久化单一事实源，防纯前端假象）
+- U6 参数化: 7 实体类型各映射固定标识色；未知类型回退概念灰（设计依据：等价类—类型枚举逐一；无效等价类—未知类型容错）
+- U7 参数化: 关系边色随「非 character 一端」类型色（方向无关）；人—人取中性蓝灰；两端皆非人取 source 端；opacity < 1（更淡更透明，用户规则）（设计依据：等价类—端点类型组合；边界值—双 character/双非人）
+- I9: 选中含 properties 的实体（event-e: known_by/place）→ 面板属性区逐键值展示（设计依据：增强轮—详情面板完整参数可见）
+- I10: 编辑态 properties JSON 文本修改 → 保存 → PATCH body.properties 为解析后对象 → 面板更新（设计依据：增强轮—参数修改主路径；JSON 文本提交前 parse 校验）
+- I11: 「新建」手风琴——实体表单默认展开、关系表单默认收起；点「关系」标题展开、再点收起（设计依据：增强轮—折叠收纳交互，等价类—开/关两态）
+- I12: 点「收起操作栏」→ 侧栏移除、展开按钮出现；点「展开操作栏」→ 恢复（设计依据：增强轮—工作台收起展开，等价类—两态往返）
+- E3: emulateMedia(colorScheme: dark) → 页面以深色主题渲染（图计数与加载正常），截图存档（设计依据：增强轮—深浅色跟随系统 prefers-color-scheme；G6 主题经 setTheme 联动，视觉由截图人工核验）
 
 ## 测试设施约定
-- L1/L2 运行于 jsdom；GraphCanvas 内 G6 实例经 `vi.mock('@antv/g6')` 替换（jsdom 无 canvas），断言经 mock 收到的数据与回调；L2 网络层用 MSW（handlers 按测试世界装配），`VITE_API_BASE` 指向 MSW 默认前缀。
-- L3 Playwright `webServer` 自动拉起 uvicorn（临时 SQLite）与 vite dev；断言基于真实 API 与 DOM。
+- L1/L2 运行于 jsdom；@antv/g6 经 vite.config `test.alias` 指向测试桩（src/test-stubs/g6-stub.ts，jsdom 无 canvas），断言经桩实例收到的数据与手动 emit 的回调（E06：vi.mock 与 RTL 并存会触发转换期 TDZ，已禁用该组合）；L2 网络层用 MSW（handlers 按测试世界装配），`VITE_API_BASE` 指向 MSW 可匹配的绝对前缀（vitest test.env 注入）。
+- L3 Playwright `webServer` 自动拉起 uvicorn（临时 SQLite）与 vite dev；断言基于真实 API 与 DOM；关键步骤经 `shoot()` 截图存档 `frontend/e2e-screenshots/`（gitignore），深色模式用 `emulateMedia` 模拟系统偏好。
+- 视觉高亮（hover-activate 悬停 / 点击 selected / auto-adapt-label 标签避让）为 G6 内置行为，jsdom 无法断言渲染效果，由 e2e 截图人工核验；数据驱动的配色规则由 U3/U6/U7 在 L1 锁定。
 - 变异测试（§9）：**豁免**（2026-08-28 决策）——mutmut 仅支持 Python，本功能为 TypeScript/React；docs/testing.md §2 DoD 第 5 条与 §9 已注明适用范围仅 backend/app。前端测试有效性由本文件 §8 等价类/边界值设计标注与 L1/L2/L3 层级测试保障。
 
 ## 验收判定

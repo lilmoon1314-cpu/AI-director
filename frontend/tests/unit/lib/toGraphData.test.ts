@@ -9,7 +9,7 @@ import type { GraphData } from "../../../src/api/client";
 import { toGraphData } from "../../../src/lib/toGraphData";
 
 describe("toGraphData（U3）", () => {
-  it("实体与关系字段一一对应映射到 G6 data 结构", () => {
+  it("实体与关系字段一一对应映射到 G6 data 结构（含数据驱动配色）", () => {
     const input: GraphData = {
       nodes: [
         { id: "char-a", type: "character", name: "周兰", aliases: ["兰姐", "阿兰"] },
@@ -19,17 +19,18 @@ describe("toGraphData（U3）", () => {
     };
     const out = toGraphData(input);
     expect(out.nodes).toHaveLength(2);
-    expect(out.nodes[0]).toEqual({
-      id: "char-a",
-      data: { type: "character", name: "周兰", aliases: ["兰姐", "阿兰"] },
-    });
+    expect(out.nodes[0].id).toBe("char-a");
+    expect(out.nodes[0].data.name).toBe("周兰");
+    expect(out.nodes[0].data.aliases).toEqual(["兰姐", "阿兰"]);
     expect(out.nodes[0].data.aliases).not.toBe(input.nodes[0].aliases); // 拷贝而非引用
-    expect(out.edges[0]).toEqual({
-      id: "rel-2",
-      source: "char-a",
-      target: "loc-l",
-      data: { type: "LIVES_IN" },
-    });
+    expect(out.nodes[0].data.color).toBe("#5b8def"); // character 蓝
+    expect(out.nodes[1].data.color).toBe("#4caf7d"); // location 绿
+    expect(out.edges[0].id).toBe("rel-2");
+    expect(out.edges[0].source).toBe("char-a");
+    expect(out.edges[0].target).toBe("loc-l");
+    expect(out.edges[0].data.type).toBe("LIVES_IN");
+    expect(out.edges[0].data.stroke).toBe("#4caf7d"); // 人—地：随非人端（地点绿）
+    expect(out.edges[0].data.opacity).toBeLessThan(1); // 比节点更淡
   });
 
   it.each([

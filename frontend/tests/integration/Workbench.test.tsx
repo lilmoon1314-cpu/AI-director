@@ -4,7 +4,7 @@
  * @antv/g6 为测试桩（test.alias），节点点击经桩实例 emit 触发真实回调链。
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -22,12 +22,14 @@ interface SeedEntity {
   aliases: string[];
   description: string;
   audience_known: boolean;
+  properties?: Record<string, unknown>;
 }
 
 let entities: SeedEntity[] = [];
 let relations: { id: string; source: string; target: string; type: string }[] = [];
 let createCalls = 0;
 let deleteCalls = 0;
+let lastPatchBody: Record<string, unknown> | null = null;
 let genSeq = 0;
 
 function resetWorld() {
@@ -36,7 +38,15 @@ function resetWorld() {
     { id: "char-b", type: "character", name: "沈墨", aliases: [], description: "", audience_known: false },
     { id: "char-c", type: "character", name: "陆离", aliases: [], description: "", audience_known: true },
     { id: "item-x", type: "item", name: "青铜镜", aliases: [], description: "", audience_known: false },
-    { id: "event-e", type: "event", name: "夜探药庐", aliases: [], description: "", audience_known: true },
+    {
+      id: "event-e",
+      type: "event",
+      name: "夜探药庐",
+      aliases: [],
+      description: "",
+      audience_known: true,
+      properties: { known_by: ["char-b"], place: "药庐后院" },
+    },
     { id: "loc-l", type: "location", name: "青云山", aliases: [], description: "", audience_known: true },
   ];
   relations = [
@@ -46,6 +56,7 @@ function resetWorld() {
   ];
   createCalls = 0;
   deleteCalls = 0;
+  lastPatchBody = null;
 }
 
 const graphBody = () => ({
@@ -93,6 +104,7 @@ const server = setupServer(
     const found = entities.find((e) => e.id === params.id);
     if (!found) return HttpResponse.json({ problem: "实体不存在" }, { status: 404 });
     const body = (await request.json()) as Partial<SeedEntity>;
+    lastPatchBody = body;
     Object.assign(found, body);
     return HttpResponse.json({ ...found, updated_at: "2026-01-02T00:00:00Z" });
   }),
@@ -229,5 +241,55 @@ describe("Workbench 集成（I1–I8）", () => {
     render(<Workbench />);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("无法连接服务器");
+  });
+
+  it("I9: properties 只读展示（known_by 等蓝图参数可见）", async () => {
+    // 设计依据: 增强轮—详情面板展示完整参数（properties 键值）
+    await renderWorkbench();
+    Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
+    const props = await screen.findByTestId("entity-properties");
+    expect(props).toHaveTextContent("known_by");
+    expect(props).toHaveTextContent("char-b");
+    expect(props).toHaveTextContent("place");
+    expect(props).toHaveTextContent("药庐后院");
+  });
+
+  it("I10: properties JSON 编辑 → PATCH 携带新值 → 面板更新", async () => {
+    // 设计依据: 增强轮—参数修改主路径；无效 JSON 阻止提交
+    const user = await renderWorkbench();
+    Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
+    await user.click(await screen.findByRole("button", { name: "编辑" }));
+    const propsInput = screen.getByLabelText("属性 properties（JSON）", { selector: "#edit-props" });
+    // JSON 含 {}——userEvent.type 会将其解析为键盘特殊键标记，改用 change 事件直接设值
+    await user.clear(propsInput);
+    fireEvent.change(propsInput, { target: { value: '{"known_by": ["char-a", "char-b"]}' } });
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      const props = (lastPatchBody ?? {}) as { properties?: Record<string, unknown> };
+      expect(props.properties).toEqual({ known_by: ["char-a", "char-b"] });
+    });
+    const panel = await screen.findByTestId("entity-panel");
+    await waitFor(() => expect(panel).toHaveTextContent("char-a"));
+  });
+
+  it("I11: 新建手风琴——实体默认展开、关系默认收起，点标题展开", async () => {
+    // 设计依据: 增强轮—折叠收纳交互（提示文字 aria-hidden，按钮名即「关系」）
+    const user = await renderWorkbench();
+    expect(screen.getByTestId("create-entity-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("create-relation-form")).not.toBeInTheDocument();
+    const relationToggle = screen.getByRole("button", { name: "关系", exact: true });
+    await user.click(relationToggle); // 展开
+    expect(screen.getByTestId("create-relation-form")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关系", exact: true })); // 再点收起
+    expect(screen.queryByTestId("create-relation-form")).not.toBeInTheDocument();
+  });
+
+  it("I12: 操作栏收起/展开（图区占满，状态可恢复）", async () => {
+    // 设计依据: 增强轮—工作台收起展开
+    const user = await renderWorkbench();
+    await user.click(screen.getByRole("button", { name: "收起操作栏" }));
+    expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "展开操作栏" }));
+    expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   });
 });

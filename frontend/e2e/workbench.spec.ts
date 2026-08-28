@@ -27,13 +27,11 @@ async function resetWorld(request: APIRequestContext) {
   for (const e of entities) await request.delete(`/api/entities/${e.id}`);
 }
 
-test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async ({ page }) => {
-  await resetWorld(page.request);
-
-  // 播种：建 6 实体并记录 id，再按 id 建 3 关系
+/** 播种测试世界：经真实后端 API 建 6 实体并按 id 建 3 关系。 */
+async function seedWorld(request: APIRequestContext) {
   const ids: Record<string, string> = {};
   for (const e of SEED_ENTITIES) {
-    const resp = await page.request.post("/api/entities", { data: e });
+    const resp = await request.post("/api/entities", { data: e });
     expect(resp.status()).toBe(201);
     ids[(await resp.json()).name] = (await resp.json()).id;
   }
@@ -43,9 +41,14 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
     { source: ids["沈墨"], target: ids["夜探药庐"], type: "PARTICIPATES", audience_known: true },
   ];
   for (const r of relations) {
-    const resp = await page.request.post("/api/relations", { data: r });
+    const resp = await request.post("/api/relations", { data: r });
     expect(resp.status()).toBe(201);
   }
+}
+
+test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async ({ page }) => {
+  await resetWorld(page.request);
+  await seedWorld(page.request);
 
   await page.goto("/");
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
@@ -60,7 +63,8 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 3 边/);
   await shoot(page, "E1-02-新建实体后-7节点");
 
-  // 建关系：端点从图节点下拉选择
+  // 建关系：展开「关系」手风琴后从图节点下拉选择端点（提示文字 aria-hidden，按钮名即「关系」）
+  await page.getByRole("button", { name: "关系", exact: true }).click();
   await page.getByLabel("关系起点").selectOption({ label: "顾长风" });
   await page.getByLabel("关系终点").selectOption({ label: "周兰" });
   await page.getByLabel("关系类型（如 ALLY）").fill("MENTORS");
@@ -76,4 +80,13 @@ test("E2: 刷新页面后 E1 的数据仍在（持久化单一事实源）", asy
   await page.reload();
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 4 边/);
   await shoot(page, "E2-02-刷新持久化后-数据仍在");
+});
+
+test("E3: 深色模式跟随系统（emulate prefers-color-scheme: dark）", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await resetWorld(page.request);
+  await seedWorld(page.request);
+  await page.goto("/");
+  await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
+  await shoot(page, "E3-01-深色模式首屏");
 });

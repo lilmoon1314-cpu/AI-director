@@ -1,7 +1,7 @@
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 const CONTROL_CLASSES =
-  "w-full rounded-xl border border-slate-300 bg-white/70 px-3 py-2 text-sm text-slate-900 transition-colors duration-150 focus:border-slate-500 focus:outline-none";
+  "w-full rounded-xl border border-slate-300 bg-white/70 px-3 py-2 text-sm text-slate-900 transition-colors duration-150 focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100 dark:focus:border-slate-400";
 
 function FieldShell({
   label,
@@ -16,12 +16,12 @@ function FieldShell({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-slate-700">
+      <label htmlFor={htmlFor} className="text-xs font-medium text-slate-700 dark:text-slate-300">
         {label}
       </label>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
           {error}
         </p>
       ) : null}
@@ -85,7 +85,7 @@ export function CheckboxInput({
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return (
-    <label htmlFor={id} className="flex items-center gap-2 text-sm text-slate-700">
+    <label htmlFor={id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
       <input id={id} type="checkbox" className="size-4 accent-slate-800" {...rest} />
       {label}
     </label>
