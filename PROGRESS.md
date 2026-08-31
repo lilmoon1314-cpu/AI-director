@@ -2,7 +2,7 @@
 
 ## 当前状态
 - 最新commit：F05 前端图谱工作台完成（见 git log）
-- 测试状态：后端 100 通过 + mutmut（F04 perspectives kill rate 95.4%）；前端 52（unit 35：stores/lib/GraphCanvas/约定检查 + integration 15（MSW）+ App 冒烟 2）+ Playwright e2e 5
+- 测试状态：后端 100 通过 + mutmut（F04 perspectives kill rate 95.4%）；前端 68（unit 46：stores/lib/GraphCanvas/约定检查 + integration 20（MSW）+ App 冒烟 2）+ Playwright e2e 6
 - Lint：make check 全绿（后端 ruff/format/lint-imports/mypy/pytest + 前端 check-api-types/typecheck/lint/build，check-api-types F05 起挂链）
 - 功能清单：F01–F05 passing（F06–F10 not_started）
 
@@ -29,6 +29,8 @@
 
 - 2026-08-28: **F05 交互三轮（用户反馈）**——①修复点击持续高亮失效（根因：node:click 监听闭包捕获首帧空 graphData，悬停因走 G6 内置行为而正常造成假象，e2e 只断言面板副作用未断言图状态致两轮漏检——登记 E08）：applySelection 全量状态机实时读 graph.getNodeData/getEdgeData 推导 selected/inactive；②悬停/选中淡出补齐：hover-activate 配 inactiveState（激活侧配置淡出侧缺省则不生效）+ enable 门控（选中期间禁用悬停互不踩踏）；③动画：状态过渡与 setElementState/hide/show 带 animation，节点/边 enter/show/hide 淡入淡出（布局动画仍禁用）；④类型筛选：工作台「筛选」面板 7 类型勾选（计数+色点）经 hideElement/showElement 增量显隐不触发重布局，边随双端可见性联动，状态栏可见计数+已筛选标注；⑤工作台所有内容默认折叠（新建两层手风琴/筛选）。测试前端 52 例（L1 35 + L2 15：I11 重写默认折叠、I13–I15 新增）+ e2e 5 例（HL3 点击持久回归断言 getElementState、E4 筛选截图）全过；新增 T-20260828-02（e2e 节点定位改按实体名——getNodeData 序非插入序）与 T-20260828-03（交互坐标复用前须防覆盖层遮挡，先关面板再点击）。详见 docs/tests/F05_frontend_graph_workbench.md、backend/logs/error.jsonl 与 git log
 
+- 2026-08-28: **F06 视角切换 UI 完成（passing）**——perspectiveStore（三态 + characterId 回切保留 + 角色列表懒加载）+ graphStore.loadGraph 实时读视角透传（character_id 仅随 character 视角发送，不泄入其他视角请求——边界用例锁定）+ api.client 补 listEntities(type 检索) + PerspectiveSwitcher 三段切换控件（aria-pressed，character 视角角色下拉、未选角色零图请求对齐后端 missing_character_id）+ Workbench 挂载与 stats 动态视角标注（角色视角·周兰）；视角作用面决策入 DECISIONS（仅约束 /api/graph 展示面，详情/编辑保持管理面完整）。测试前端 68 例（L1 46：perspectiveStore 4 + graphStore 视角透传参数化 7；L2 20：I1–I5 三视角/缺参零请求/403 三要素/回切恢复）+ e2e 6 例（E1 三视角全链路截图 P-01~03 + E2 观众视角不泄露断言）全过；变异测试按 2026-08-28 决策豁免。详见 docs/tests/F06_perspective_switch_ui.md、DECISIONS.md 与 git log
+
 ## 进行中
 - 无
 
@@ -36,5 +38,5 @@
 - 无
 
 # 下一步
-1. 执行 F06（视角切换 UI）：三视角一键切换 + character 视角选角色 + 切换后按视角重载（perspectiveStore + 控件 + 不泄露断言的前端面），开工时 `python scripts/task.py verify F06 --activate`；首任务：撰写测试文档 docs/tests/F06（衔接 F05 已预留的 graphStore 视角参数）
-2. F06–F10 依次逐功能实现（一次一个，端到端通过后再下一个）
+1. 执行 F07（@ 实体选择器）：输入 @ 触发防抖检索，选择插入引用，提示该实体对当前视角是否可见（开工时 `python scripts/task.py verify F07 --activate`）；首任务：撰写测试文档 docs/tests/F07
+2. F07–F10 依次逐功能实现（一次一个，端到端通过后再下一个）

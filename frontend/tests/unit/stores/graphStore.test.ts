@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useGraphStore } from "../../../src/stores/graphStore";
+import { usePerspectiveStore } from "../../../src/stores/perspectiveStore";
 
 const SEED_GRAPH = {
   nodes: [
@@ -79,5 +80,90 @@ describe("graphStore（U1–U3）", () => {
     expect(graph.nodes).toEqual([]);
     expect(graph.edges).toEqual([]);
     expect(error).toBeNull();
+  });
+});
+
+describe("graphStore（F06 U2 视角参数透传）", () => {
+  beforeEach(() => {
+    useGraphStore.setState({
+      graph: { nodes: [], edges: [] },
+      loading: false,
+      error: null,
+      errorFix: null,
+    });
+    usePerspectiveStore.setState({
+      perspective: "author",
+      characterId: null,
+      characters: [],
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["author", null, "perspective=author"],
+    ["character", "char-a", "perspective=character&character_id=char-a"],
+    ["audience", null, "perspective=audience"],
+    // 回切保留的角色 id 不得泄入其他视角请求（边界值—非 character 视角带已存角色）
+    ["author", "char-a", "perspective=author"],
+    ["audience", "char-a", "perspective=audience"],
+  ] as const)(
+    "U2 参数化: 视角 %s + 角色 %s → 请求查询串 %s",
+    async (perspective, characterId, expectedQuery) => {
+      // 设计依据: 等价类—视角枚举逐一；边界值—characterId null 不拼参
+      usePerspectiveStore.setState({ perspective, characterId });
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(SEED_GRAPH), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await useGraphStore.getState().loadGraph();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toContain(expectedQuery);
+      expect(useGraphStore.getState().error).toBeNull();
+    },
+  );
+
+  it("U2: character 缺角色不拼 character_id（边界值—缺参）", async () => {
+    usePerspectiveStore.setState({ perspective: "character", characterId: null });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(SEED_GRAPH), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await useGraphStore.getState().loadGraph();
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("perspective=character");
+    expect(url).not.toContain("character_id");
+  });
+
+  it("U2: 403 → 三要素落位（error=problem / errorFix=fix），loading 复位", async () => {
+    // 设计依据: 无效等价类—服务端拒绝（后端 PerspectiveError 三要素）
+    usePerspectiveStore.setState({ perspective: "character", characterId: "char-x" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "PERSPECTIVE_FORBIDDEN",
+            problem: "character 视角的角色不存在",
+            cause: "character_id 'char-x' 未在实体库中",
+            fix: "先调用 GET /api/entities?q= 检索确认角色 id 后重试",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    await useGraphStore.getState().loadGraph();
+    const s = useGraphStore.getState();
+    expect(s.loading).toBe(false);
+    expect(s.error).toBe("character 视角的角色不存在");
+    expect(s.errorFix).toBe("先调用 GET /api/entities?q= 检索确认角色 id 后重试");
+    expect(s.graph.nodes).toEqual([]); // 失败不污染旧数据
   });
 });

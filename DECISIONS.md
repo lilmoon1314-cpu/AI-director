@@ -151,3 +151,8 @@
 - 原因: mutmut 仅支持 Python，无法变异 TypeScript/React，DoD 第 5 条对前端功能不可执行；shadcn/ui 初始化是交互式 CLI 且需与 Tailwind v4 调试兼容，F05 所需组件少（毛玻璃面板/按钮/输入框/表单），完整引入成本远超收益。
 - 否决: StrykerJS 前端变异（工具重、Windows 体验未知、拖慢首批交付，留待后续评估）；完整 shadcn/ui（CLI 自动化不确定性 + 兼容调试成本）。
 - 约束: docs/testing.md §2 DoD 第 5 条与 §9 注明 mutmut 仅适用 backend/app 的 Python 模块，前端测试有效性由 §8 等价类/边界值设计 + L1/L2/L3 层级测试保障，引入前端变异工具前须先修订该条；UI 组件按 frontend/CONSTRAINTS.md 视觉规范自研（毛玻璃 backdrop-blur + 浅色基调 + 动效 ≤200ms），frontend/ARCHITECTURE.md §1/§2 措辞同步更新。
+
+## 2026-08-28: F06 视角切换的作用面——仅约束 /api/graph 展示面，详情/编辑保持数据管理面完整
+- 原因: F06 的需求是「切换后图数据按视角刷新」（展示面）；而后端 /api/entities/:id 等读写 API 自 F02 起就是无视角概念的数据管理接口（作者工具语义）。若让详情面板也按视角隐藏/禁用编辑，等于把「读者可见性」混入「作者编辑能力」，第 1 批 MVP 的数据管理目标会被视角切断（角色视角下无法修数据）。
+- 否决: 详情面板按视角降级（隐藏字段/禁用编辑）——把两层语义耦合，成本高且与 MVP 目标冲突；character 视角禁用写操作——同上。
+- 约束: 视角隔离的唯一执行点在后端 F04 perspectives.service 且仅作用于 GET /api/graph；前端断言面 = 参数透传 + 展示一致 + 观众视角页面文本不出现 audience_known=false 实体名（E2 不泄露断言）；详情面板/新建/编辑/删除保持全量管理能力；角色下拉数据源为管理接口 /api/entities?type=character（列全量角色，属作者工具面，非泄露通道）；characterId 回切保留但仅随 character 视角请求发送（不泄入 author/audience 请求，graphStore 收口 + 单测边界用例锁定）。

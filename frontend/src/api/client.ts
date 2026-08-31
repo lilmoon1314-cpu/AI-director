@@ -73,13 +73,21 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** 后端 REST 端点的类型化封装（路径总表见 backend/ARCHITECTURE.md §7）。 */
 export const api = {
-  /** 三视角图查询；F05 固定 author（全量），视角切换由 F06 接管。 */
-  getGraph: (perspective: "author" = "author", characterId?: string) => {
+  /** 三视角图查询（perspective 枚举与后端契约一致；character 视角必须携带角色 id）。 */
+  getGraph: (perspective: "author" | "character" | "audience", characterId?: string) => {
     const params = new URLSearchParams({ perspective });
     if (characterId) params.set("character_id", characterId);
     return apiFetch<GraphData>(`/graph?${params.toString()}`);
   },
   getEntity: (id: string) => apiFetch<EntityRead>(`/entities/${id}`),
+  /** 实体摘要检索（@ 选择器/角色下拉数据源；后端 GET /api/entities?q=&type=）。 */
+  listEntities: (params?: { q?: string; type?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.q) search.set("q", params.q);
+    if (params?.type) search.set("type", params.type);
+    const qs = search.toString();
+    return apiFetch<EntityBrief[]>(`/entities${qs ? `?${qs}` : ""}`);
+  },
   createEntity: (body: EntityCreate) =>
     apiFetch<EntityRead>("/entities", { method: "POST", body: JSON.stringify(body) }),
   updateEntity: (id: string, body: EntityUpdate) =>

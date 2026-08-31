@@ -13,11 +13,13 @@ import { CreateEntityForm } from "../components/entity-panel/CreateEntityForm";
 import { CreateRelationForm } from "../components/entity-panel/CreateRelationForm";
 import { EntityPanel } from "../components/entity-panel/EntityPanel";
 import { GraphCanvas } from "../components/graph/GraphCanvas";
+import { PerspectiveSwitcher } from "../components/perspective/PerspectiveSwitcher";
 import { Button } from "../components/ui/Button";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { ENTITY_TYPES } from "../lib/entityForm";
 import { TYPE_COLORS, TYPE_LABELS } from "../lib/palette";
 import { useGraphStore } from "../stores/graphStore";
+import { PERSPECTIVE_LABELS, usePerspectiveStore } from "../stores/perspectiveStore";
 import { useSelectionStore } from "../stores/selectionStore";
 
 function AccordionSection({
@@ -56,6 +58,9 @@ export function Workbench() {
   const errorFix = useGraphStore((s) => s.errorFix);
   const loadGraph = useGraphStore((s) => s.loadGraph);
   const selectEntity = useSelectionStore((s) => s.selectEntity);
+  const perspective = usePerspectiveStore((s) => s.perspective);
+  const characterId = usePerspectiveStore((s) => s.characterId);
+  const characters = usePerspectiveStore((s) => s.characters);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // 全部区块默认折叠（用户要求）：新建组、组内实体/关系表单、筛选面板
@@ -116,6 +121,8 @@ export function Workbench() {
               ◀
             </Button>
           </div>
+
+          <PerspectiveSwitcher />
 
           <div className="flex flex-col gap-1" data-testid="create-panel">
             <AccordionSection
@@ -207,7 +214,11 @@ export function Workbench() {
           data-testid="graph-stats"
           className="absolute right-4 bottom-4 rounded-lg bg-white/70 px-3 py-1 text-xs text-slate-600 backdrop-blur dark:bg-slate-800/70 dark:text-slate-300"
         >
-          {visibleNodes.length} 节点 · {visibleEdgeCount} 边（author 视角）{isFiltered ? "（已筛选）" : ""}
+          {visibleNodes.length} 节点 · {visibleEdgeCount} 边（{PERSPECTIVE_LABELS[perspective]}视角
+          {perspective === "character"
+            ? `·${characters.find((c) => c.id === characterId)?.name ?? "未选择角色"}`
+            : ""}
+          ）{isFiltered ? "（已筛选）" : ""}
         </span>
       </GlassPanel>
 
