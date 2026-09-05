@@ -33,9 +33,10 @@
 
 - 2026-08-28: **F06 反馈修复轮（用户报告）**——切换视角节点重叠+标签隐藏、角色/观众视角边消失两 bug 修复（E09）：①硬分离监听器首跑自注销致数据变更后不再分离（重叠→标签避让隐藏名字）→改持久 afterlayout+防抖随每次数据变更重跑；②setData/render 异步管线无串行化，快速切换/StrictMode 卸载打断打坏 G6 元素控制器（边消失）→GraphCanvas 渲染链串行化+存活守卫；e2e 新增 E3 快速切换防线（零内部错误+边数据完整），vitest 69 + e2e 7 全过。详见 frontend/CONSTRAINTS 渲染性能与 git log（1aecc36）
 - 2026-08-28: **F07 @ 实体选择器完成（passing，用户需求并入：关联字段显示名称）**——后端 EntityBrief 增 audience_known（B1）；前端 schema 12 个关联字段标注 refTypes + EntityPicker（@ 检索 250ms 防抖、下拉含名称/类型/当前视角可见徽标、单值回填/多值 chip、表单态恒存 ID）+ entityIndexStore（随图刷新）+ 详情面板名称解析（未知 id 回退）；可见性判定与名称仅显示层决策入 DECISIONS。测试后端 11 + 前端 97（U1–U3/I1–I5）+ e2e 8（E1 全链路存 ID + E2 不可见徽标，截图 @-01/02）全过。详见 docs/tests/F07_entity_reference_picker.md、DECISIONS.md 与 git log（131b97d）
+- 2026-08-28: **F07 视觉反馈（用户报告）**——点击高亮黑圈改透明淡黄光环（active/selected 显式 stroke #ffe58f / lineWidth 8 / strokeOpacity 0.4，标签压回 normal）：E10 登记（内置主题向 state 注入 stroke:#000/lineWidth 4/labelFontWeight bold，自定义 state 未覆盖的键全部落主题默认——halo 后第二次复发，CONSTRAINTS 视觉小节已钉死 state 必须显式覆盖 stroke/lineWidth/labelFontWeight/halo 四键）；vitest 97 + HL e2e 截图核验全过。详见 backend/logs/error.jsonl（E10）与 git log（8024646）
 
 ## 进行中
-- F07 视觉反馈（用户报告 2026-08-28）：点击高亮黑圈改透明淡黄光环——active/selected 显式钉死 stroke #ffe58f/lineWidth 8/strokeOpacity 0.4/labelFontWeight normal（E10：内置主题向 state 注入黑描边+加粗，自定义 state 必须显式覆盖主题注入键，halo 后第二次复发）；CONSTRAINTS 视觉小节同步。待提交
+- 无
 
 ## 已知问题
 - 无
