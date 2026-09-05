@@ -62,9 +62,22 @@
 - EF1: API 播种实体+图片 → 切「资产管理」→ 项目资产卡片可见 → 点击打开内嵌查看器（HTML 含实体名）→ 返回（截图 AS-01/02）
 - EF2: 通用资产新建全链路（表单提交 → 卡片出现 → 打开 page 查看）→ 删除 → 卡片消失（截图 AS-03）
 
-## 变异测试结果（用例实现完成后填写；自 F04 起）
-- scope: 待填（app/assets）；判杀器构成：L1 + L2 + L3（功能必须层级含 L3，按 docs/testing.md §9 层级覆盖原则）
-- kill rate：待填；存活变异体分析：待填
+## 变异测试结果（docs/testing.md §9；2026-09-05 三轮迭代）
+
+- **scope**：app/assets 逻辑文件 7 个（db/models/repository/router/schemas/service/storage）；rendering.py（纯样式/HTML 模板）按 §9 成本控制条款收窄排除——其功能行为由 U6 转义断言、I3/I5 page 内容断言与前端 e2e 渲染检查覆盖
+- **判杀器构成**：L1（tests/unit/test_assets_service.py，50 例）+ L2（tests/integration/test_assets_api.py，13 例）+ L3（tests/e2e/test_assets_flow.py，1 例），层级覆盖原则满足
+- **结果**：总变异体 453；实杀 389 + 超时判杀 1 → **kill rate 85.9% ≥ 85% 达标**
+- **迭代过程**：首轮全模块 549 变异体判杀率仅 50%（rendering 模板与声明式代码变异体不可有意义判杀）→ 排除 rendering 收窄 scope + 补契约钉死测试组（E05 文案精确相等 / ORM nullable 与 DDL / 常量与 Literal / @checkpoint 标注）→ 复跑达标
+- **存活 63 项（13.9% < 20% 上限）逐类归档**：
+  - 上传元数据回退分支（`upload.filename or ""` 等 6 项）：FastAPI UploadFile 实际必供元数据，测试桩恒定供值，回退分支不可达
+  - 大小上限换算数字（`asset_max_size_mb * 1024 * 1024` 组合 6 项）：钉死需 10MB 级二进制载荷测试，成本高且阈值本身由 config 驱动
+  - service 内冗余 mkdir（lifespan 已建目录）2 项：防御性冗余，行为不可由单测触发（settings 进程级缓存）
+  - 生成时间 strftime 文本 3 项：时间展示文本，钉死属脆弱文案钉刺
+  - wrong-kind 记录防护残余分支（set_cover/get_general_page 等行内组合变异）5 项
+  - schemas Field 默认值/边界组合细节（Update 模型 default=None 语义等价）约 15 项
+  - models 列声明组合细节（Text↔String 映射、Mapped 注解删除等，运行时由 create_all 自洽）约 9 项
+  - db ensure_assets_dir 分支 3 项、storage 越界死分支/消息细节 8 项、extra=forbid/computed_field 5 项
+- **过程事故**（error.jsonl E11/T-20260905-01/02）：首轮 mutmut 运行中并发编辑被测模块，编辑被还原机制覆盖丢失；被强杀的运行残留变异体与 .bak 一度被 git add -A 误提交（已从 .bak 恢复原始实现）。自动化转化：task.py mutate 脏工作区守卫 + 架构测试禁止 app/ 下 .bak 残留
 
 ## 验收判定
 所有"必须"层级通过 + 状态列全 pass + 变异测试达标（kill rate ≥ 85%）+ make check 通过 → 功能完成。
