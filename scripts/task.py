@@ -99,6 +99,17 @@ def _run(cmd: list[str], cwd: Path) -> None:
         )
 
 
+def _run_capture(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    """在指定目录执行命令并捕获输出（不因非零退出终止）。
+
+    作用: 供需要读取命令结果（而非仅退出码）的场景使用，如 mutate 的脏工作区守卫。
+    参数: cmd — 命令及参数；cwd — 工作目录。
+    返回值: subprocess.CompletedProcess（stdout/stderr 为 str）。
+    异常: 无（调用方自行判定结果）。依赖: subprocess。
+    """
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+
 def _fail(problem: str, cause: str, fix: str) -> NoReturn:
     """输出三要素错误消息并终止。
 
@@ -291,6 +302,18 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
             f"未知模块: {module}",
             f"backend/app/{module} 目录不存在",
             "用法: python scripts/task.py mutate <module>（app/ 下的模块名，如 perspectives）",
+        )
+    # 脏工作区守卫（error.jsonl E11）：mutmut 以启动时的文件内容为还原基线，
+    # 目标模块存在未提交改动时，变异期间的用户编辑会被静默覆盖且判杀基线失真
+    dirty = _run_capture(
+        ["git", "status", "--porcelain", "--", f"backend/app/{module}/"], ROOT
+    )
+    if dirty.stdout.strip():
+        _fail(
+            f"模块 {module} 存在未提交改动，拒绝启动变异测试",
+            "mutmut 运行期会原地改写并按启动时缓存还原被测模块源文件，"
+            "未提交的编辑会被覆盖丢失，且判杀基线与工作区不一致导致 kill rate 失真",
+            "先提交该模块的全部改动（含新文件），再运行本命令",
         )
     default_test = BACKEND / "tests" / "unit" / f"test_{module}_service.py"
     tests = list(test_paths) or (

@@ -205,10 +205,406 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assets/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Images
+         * @description 图片明细列表（按归属）。
+         *
+         *     作用: 实体详情面板图片区/通用资产编辑表单的数据源路由。
+         *     参数: scope — 'general' | 'entity'（Literal 校验）；owner_id — 归属 id；
+         *         session — 资产库会话。
+         *     返回值: list[AssetImageRead]。异常: ValidationError（422 scope 非法）。
+         *     依赖: app.assets.service.list_images。
+         */
+        get: operations["list_images_api_assets_images_get"];
+        put?: never;
+        /**
+         * Upload Image
+         * @description 上传图片（multipart：file + scope + owner_id）。
+         *
+         *     作用: 图片上传路由——multipart 表单解析后委托 service（校验/写盘/入库）。
+         *     参数: file — 图片文件；scope — 'general' | 'entity'；owner_id — 归属 id；
+         *         session — 资产库会话；main_session — 主库会话。
+         *     返回值: AssetImageRead（含静态访问 url）。
+         *     异常: NotFoundError（404 归属不存在）/ ValidationError（422 类型或超限）。
+         *     依赖: app.assets.service.upload_image、双会话依赖。
+         */
+        post: operations["upload_image_api_assets_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/file/{stored_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image File
+         * @description 图片文件访问（/api 同源路由，HTML 资产页内图片引用走此地址）。
+         *
+         *     作用: 以 FileResponse 返回图片字节（mime 按扩展名推断）；路径穿越由
+         *         storage.resolve_stored_path 防线拦截。
+         *     参数: stored_name — 存储名；session — 资产库会话。返回值: FileResponse。
+         *     异常: NotFoundError（404 文件不存在）/ ValidationError（422 路径非法）。
+         *     依赖: app.assets.service.get_image_file。
+         */
+        get: operations["get_image_file_api_assets_file__stored_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Image
+         * @description 删除图片（记录 + 物理文件 + 封面引用清理）。
+         *
+         *     作用: 图片删除路由。
+         *     参数: image_id — 图片 id；session — 资产库会话。返回值: 无（204）。
+         *     异常: NotFoundError（404）。
+         *     依赖: app.assets.service.delete_image。
+         */
+        delete: operations["delete_image_api_assets_images__image_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/general": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List General
+         * @description 通用资产卡片列表（可按分类过滤）。
+         *
+         *     作用: 通用资产区数据源路由。
+         *     参数: category — 分类过滤（可空）；session — 资产库会话。
+         *     返回值: list[AssetCard]。异常: 无。
+         *     依赖: app.assets.service.list_general。
+         */
+        get: operations["list_general_api_assets_general_get"];
+        put?: never;
+        /**
+         * Create General
+         * @description 创建通用资产。
+         *
+         *     作用: 通用资产创建路由。
+         *     参数: payload — 创建载荷；session — 资产库会话。返回值: AssetRead。
+         *     异常: ValidationError（422 字段校验）。
+         *     依赖: app.assets.service.create_general。
+         */
+        post: operations["create_general_api_assets_general_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/general/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get General
+         * @description 通用资产详情（含图片明细）。
+         *
+         *     作用: 编辑表单数据源路由（列表仅有摘要）。
+         *     参数: asset_id — 资产 id；session — 资产库会话。返回值: AssetRead。
+         *     异常: NotFoundError（404）。
+         *     依赖: app.assets.service.get_general。
+         */
+        get: operations["get_general_api_assets_general__asset_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete General
+         * @description 删除通用资产（级联清理图片与文件）。
+         *
+         *     作用: 通用资产删除路由。
+         *     参数: asset_id — 资产 id；session — 资产库会话。返回值: 无（204）。
+         *     异常: NotFoundError（404）。
+         *     依赖: app.assets.service.delete_general。
+         */
+        delete: operations["delete_general_api_assets_general__asset_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update General
+         * @description 局部更新通用资产。
+         *
+         *     作用: 通用资产编辑路由。
+         *     参数: asset_id — 资产 id；payload — 更新载荷；session — 资产库会话。
+         *     返回值: AssetRead。异常: NotFoundError（404）。
+         *     依赖: app.assets.service.update_general。
+         */
+        patch: operations["update_general_api_assets_general__asset_id__patch"];
+        trace?: never;
+    };
+    "/api/assets/general/{asset_id}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get General Page
+         * @description 通用资产 HTML 页（内嵌查看器数据源）。
+         *
+         *     作用: 返回存储的自包含 HTML 全文（text/html）。
+         *     参数: asset_id — 资产 id；session — 资产库会话。返回值: HTMLResponse。
+         *     异常: NotFoundError（404）。
+         *     依赖: app.assets.service.get_general_page。
+         */
+        get: operations["get_general_page_api_assets_general__asset_id__page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/general/{asset_id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Cover
+         * @description 设置通用资产封面。
+         *
+         *     作用: 卡片缩略图人工指定路由。
+         *     参数: asset_id — 资产 id；body — 含 image_id；session — 资产库会话。
+         *     返回值: AssetRead。异常: NotFoundError / ValidationError（归属不符）。
+         *     依赖: app.assets.service.set_cover。
+         */
+        put: operations["set_cover_api_assets_general__asset_id__cover_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entity Cards
+         * @description 项目资产卡片列表（主库实体按类型分组；含孤儿清扫）。
+         *
+         *     作用: 项目资产区数据源路由。
+         *     参数: session — 资产库会话；main_session — 主库会话。
+         *     返回值: list[EntityAssetCard]（类型序 + 名称序）。异常: 无。
+         *     依赖: app.assets.service.list_entity_cards。
+         */
+        get: operations["list_entity_cards_api_assets_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assets/entity/{entity_id}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity Page
+         * @description 实体资产 HTML 页（惰性生成/过期再生）。
+         *
+         *     作用: 项目资产内嵌查看器数据源路由。
+         *     参数: entity_id — 实体 id；session — 资产库会话；main_session — 主库会话。
+         *     返回值: HTMLResponse。异常: NotFoundError（404 实体不存在）。
+         *     依赖: app.assets.service.get_entity_page。
+         */
+        get: operations["get_entity_page_api_assets_entity__entity_id__page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AssetCard
+         * @description 通用资产卡片（列表项：缩略图 + 摘要，不含 html 全文与图片明细）。
+         */
+        AssetCard: {
+            /** Id */
+            id: string;
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Cover Url */
+            cover_url: string | null;
+            /** Image Count */
+            image_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * AssetImageRead
+         * @description 图片元数据响应（url 为静态访问地址）。
+         */
+        AssetImageRead: {
+            /** Id */
+            id: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "general" | "entity";
+            /** Owner Id */
+            owner_id: string;
+            /** Filename Orig */
+            filename_orig: string;
+            /** Stored Name */
+            stored_name: string;
+            /** Mime */
+            mime: string;
+            /** Size */
+            size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Url
+             * @description 图片访问地址（/api 前缀同源路由——HTML 资产页内的图片引用在任何部署
+             *     形态下都与页面同源，开发期经 vite /api 代理，生产可经网关统一转发）。
+             */
+            readonly url: string;
+        };
+        /**
+         * AssetRead
+         * @description 通用资产完整响应（详情/创建/更新返回，含图片列表）。
+         */
+        AssetRead: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "general" | "entity";
+            /** Category */
+            category: string;
+            /** Title */
+            title: string;
+            /** Description */
+            description: string;
+            /** Attributes */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /** Cover Image Id */
+            cover_image_id: string | null;
+            /** Cover Url */
+            cover_url: string | null;
+            /** Images */
+            images: components["schemas"]["AssetImageRead"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** Body_upload_image_api_assets_images_post */
+        Body_upload_image_api_assets_images_post: {
+            /** File */
+            file: string;
+            /** Scope */
+            scope: string;
+            /** Owner Id */
+            owner_id: string;
+        };
+        /**
+         * CoverSet
+         * @description 设置封面请求体（PUT /general/{id}/cover）。
+         */
+        CoverSet: {
+            /** Image Id */
+            image_id: string;
+        };
+        /**
+         * EntityAssetCard
+         * @description 项目资产卡片（主库实体的展示面：缩略图 + 名称/概述）。
+         */
+        EntityAssetCard: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Cover Url */
+            cover_url: string | null;
+            /** Image Count */
+            image_count: number;
+        };
         /**
          * EntityBrief
          * @description 实体摘要响应（@ 检索列表，供前端选择器）。
@@ -325,6 +721,44 @@ export interface components {
             audience_known?: boolean | null;
             /** Properties */
             properties?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * GeneralAssetCreate
+         * @description 创建通用资产请求体（extra=forbid 拒绝未知字段）。
+         */
+        GeneralAssetCreate: {
+            /**
+             * Category
+             * @default
+             */
+            category: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Attributes */
+            attributes?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * GeneralAssetUpdate
+         * @description 局部更新通用资产请求体（仅更新显式提供的字段；extra=forbid）。
+         */
+        GeneralAssetUpdate: {
+            /** Category */
+            category?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Attributes */
+            attributes?: {
                 [key: string]: unknown;
             } | null;
         };
@@ -925,6 +1359,407 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GraphData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_images_api_assets_images_get: {
+        parameters: {
+            query: {
+                scope: "general" | "entity";
+                owner_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetImageRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_api_assets_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_api_assets_images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_file_api_assets_file__stored_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stored_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_api_assets_images__image_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_general_api_assets_general_get: {
+        parameters: {
+            query?: {
+                category?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_general_api_assets_general_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneralAssetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_general_api_assets_general__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_general_api_assets_general__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_general_api_assets_general__asset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneralAssetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_general_page_api_assets_general__asset_id__page_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_cover_api_assets_general__asset_id__cover_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entity_cards_api_assets_entities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityAssetCard"][];
+                };
+            };
+        };
+    };
+    get_entity_page_api_assets_entity__entity_id__page_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

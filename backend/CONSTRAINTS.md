@@ -11,7 +11,7 @@
 - 必须：所有数据库访问经由 SQLAlchemy ORM；禁止裸 SQL 字符串拼接。
 - 必须：SQLite 开启 WAL 模式与外键约束。
 - 必须：relationships.source / relationships.target 声明外键指向 entities(id)，删除策略 ON DELETE RESTRICT——应用层 ReferentialError 为前置校验（友好提示），DB 层 RESTRICT 为兜底（防旁路写入产生悬空引用/幽灵节点）；F02 首个迁移同时创建 entities 与 relationships 两表（实体删除校验依赖关系表存在）。
-- 必须：schema 变更一律通过 Alembic 迁移；禁止手改已生成的迁移文件。
+- 必须：schema 变更一律通过 Alembic 迁移；禁止手改已生成的迁移文件。例外：资产库 assets.db 为独立派生存储，经 lifespan 启动时 metadata.create_all 幂等引导，其 schema 变更须对既有文件向后兼容（加列/加表，禁删改列）——DECISIONS 2026-09-05。
 - 禁止：直接物理删除被关系引用的实体；删除前必须校验引用并返回阻断提示。
 - 必须：id 由系统生成且创建后不可变更；name 变更不得影响 id。
 - 必须：含 known_by / audience_known 的数据在写入时校验视角标记的完整性（类型与成员有效性）。

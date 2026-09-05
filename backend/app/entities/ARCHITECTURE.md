@@ -19,7 +19,8 @@
 | `update(entity_id, schema: EntityUpdate) -> EntityRead` | 局部更新，校验视角标记完整性 | NotFoundError / ValidationError |
 | `delete(entity_id: str) -> None` | 删除前校验关系引用 | NotFoundError / ReferentialError |
 | `search(q: str, type: str | None) -> list[EntityBrief]` | 名称/别名模糊检索 | — |
-| `get_many(ids: list[str]) -> list[EntityRead]` | 批量读取（供 perspectives/sync 聚合） | — |
+| `get_many(ids: list[str]) -> list[EntityRead]` | 批量读取（供 perspectives 聚合） | — |
+| `list_all() -> list[EntityRead]` | 全量读取（供 assets 项目资产卡片聚合，作者管理面） | — |
 
 ### HTTP 路由（/api/entities）
 
@@ -38,7 +39,7 @@
 ## 依赖
 
 - 依赖：core
-- 被依赖：relations（端点校验）、perspectives（图查询聚合）、assets（挂载目标校验）、sync（导入导出）、agent（建议草案落库）
+- 被依赖：relations（端点校验）、perspectives（图查询聚合）、assets（实体存在校验）、agent（建议草案落库）
 
 ## 约束
 

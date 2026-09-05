@@ -60,7 +60,7 @@ core/
 ## 依赖
 
 - 依赖：无（最底层；仅标准库与三方框架）
-- 被依赖：entities / relations / perspectives / assets / sync / agent、main.py
+- 被依赖：entities / relations / perspectives / assets / agent、main.py
 
 ## 约束
 

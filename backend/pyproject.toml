@@ -12,8 +12,6 @@ dependencies = [
     "aiosqlite>=0.20,<1.0",
     "alembic>=1.13,<2.0",
     "openai>=1.30,<2.0",
-    "markdown-it-py>=3.0,<4.0",
-    "pyyaml>=6.0,<7.0",
     "python-multipart>=0.0.9,<1.0",
     "psutil>=5.9,<7.0",
 ]
@@ -50,8 +48,8 @@ extend-exclude = ["migrations/"]
 select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.ruff.lint.flake8-bugbear]
-# FastAPI 依赖注入约定：参数默认值中调用 Depends 是官方推荐写法
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+# FastAPI 依赖注入约定：参数默认值中调用 Depends/File/Form/Query 是官方推荐写法
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.File", "fastapi.Form"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -77,25 +75,39 @@ root_packages = ["app"]
 name = "core 零业务依赖（core/CONSTRAINTS.md）"
 type = "forbidden"
 source_modules = ["app.core"]
-forbidden_modules = ["app.entities", "app.relations", "app.perspectives"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets"]
 
 [[tool.importlinter.contracts]]
 name = "entities 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
 type = "forbidden"
-source_modules = ["app.core", "app.main", "app.relations", "app.perspectives"]
+source_modules = ["app.core", "app.main", "app.relations", "app.perspectives", "app.assets"]
 forbidden_modules = ["app.entities.repository", "app.entities.models", "app.entities.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "relations 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
 type = "forbidden"
-source_modules = ["app.core", "app.main", "app.entities", "app.perspectives"]
+source_modules = ["app.core", "app.main", "app.entities", "app.perspectives", "app.assets"]
 forbidden_modules = ["app.relations.repository", "app.relations.models", "app.relations.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "perspectives 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
 type = "forbidden"
-source_modules = ["app.core", "app.main", "app.entities", "app.relations"]
+source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.assets"]
 forbidden_modules = ["app.perspectives.schemas"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "assets 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives"]
+forbidden_modules = [
+    "app.assets.repository",
+    "app.assets.models",
+    "app.assets.schemas",
+    "app.assets.db",
+    "app.assets.storage",
+    "app.assets.rendering",
+]
 allow_indirect_imports = true

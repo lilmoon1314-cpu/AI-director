@@ -38,6 +38,5 @@
 | backend/app/relations/CONSTRAINTS.md | relations 模块 | 实现/修改 relations 前必读 |
 | backend/app/perspectives/CONSTRAINTS.md | perspectives 模块 | 实现/修改 perspectives 前必读 |
 | backend/app/assets/CONSTRAINTS.md | assets 模块 | 实现/修改 assets 前必读 |
-| backend/app/sync/CONSTRAINTS.md | sync 模块 | 实现/修改 sync 前必读 |
 | backend/app/agent/CONSTRAINTS.md | agent 模块 | 实现/修改 agent 前必读 |
 | frontend/CONSTRAINTS.md | 前端全局 | 修改前端任何代码前必读 |

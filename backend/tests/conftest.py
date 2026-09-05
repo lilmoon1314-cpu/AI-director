@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 # ---- 环境隔离：必须在导入 app.* 之前执行（conftest 先于测试模块导入）----
 _TMP_ROOT = Path(tempfile.mkdtemp(prefix="ai_director_test_"))
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{(_TMP_ROOT / 'test.db').as_posix()}"
+os.environ["ASSET_DB_URL"] = f"sqlite+aiosqlite:///{(_TMP_ROOT / 'assets.db').as_posix()}"
 os.environ["ASSET_DIR"] = str(_TMP_ROOT / "assets")
 os.environ["LOG_DIR"] = str(_TMP_ROOT / "logs")
 os.environ["METRIC_SAMPLE_INTERVAL_SECONDS"] = "3600"  # 测试期关闭高频资源采样
@@ -27,12 +28,16 @@ async def _run_on_metadata(operation: str) -> None:
     """在测试临时库上执行建表/删表（不经过应用引擎单例）。
 
     作用: 为集成测试提供干净的表结构；独立引擎用后即弃，避免污染进程级单例。
+        同时处理主库（Base）与资产库（AssetsBase，F08 起双库）。
     参数: operation — "create" 或 "drop"。返回值: 无。异常: 无。依赖: SQLAlchemy。
     """
+    import app.assets.models  # noqa: F401 — 注册资产库元数据
     import app.entities.models  # noqa: F401 — 注册表元数据
     import app.relations.models  # noqa: F401 — 注册表元数据
+    from app.assets.db import dispose_assets_engine
     from app.core.db import Base
 
+    # 主库：独立引擎建/删表
     engine: AsyncEngine = create_async_engine(os.environ["DATABASE_URL"])
     try:
         async with engine.begin() as conn:
@@ -42,6 +47,18 @@ async def _run_on_metadata(operation: str) -> None:
                 await conn.run_sync(Base.metadata.drop_all)
     finally:
         await engine.dispose()
+
+    # 资产库：先释放单例引擎（避免跨用例残留连接），再独立引擎建/删表
+    await dispose_assets_engine()
+    assets_engine: AsyncEngine = create_async_engine(os.environ["ASSET_DB_URL"])
+    try:
+        async with assets_engine.begin() as conn:
+            if operation == "create":
+                await conn.run_sync(app.assets.models.AssetsBase.metadata.create_all)
+            else:
+                await conn.run_sync(app.assets.models.AssetsBase.metadata.drop_all)
+    finally:
+        await assets_engine.dispose()
 
 
 @pytest.fixture

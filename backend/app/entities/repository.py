@@ -35,7 +35,7 @@ async def get_by_id(session: AsyncSession, entity_id: str) -> Entity | None:
 async def get_many(session: AsyncSession, entity_ids: list[str]) -> list[Entity]:
     """按 id 列表批量查询实体（保持传入顺序，缺失的 id 静默跳过）。
 
-    作用: 供 perspectives/sync 聚合读取（模块外经 service.get_many 调用）。
+    作用: 供 perspectives 聚合读取（模块外经 service.get_many 调用）。
     参数: session — 数据库会话；entity_ids — 实体 id 列表。
     返回值: list[Entity]。异常: 无。依赖: SQLAlchemy ORM。
     """

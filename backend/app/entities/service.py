@@ -180,11 +180,25 @@ async def search(
 
 @checkpoint
 async def get_many(session: AsyncSession, entity_ids: list[str]) -> list[EntityRead]:
-    """按 id 列表批量读取实体（供 perspectives/sync 聚合）。
+    """按 id 列表批量读取实体（供 perspectives 聚合）。
 
     作用: 跨模块聚合读取的唯一入口；缺失 id 静默跳过（保持传入顺序）。
     参数: session — 数据库会话；entity_ids — 实体 id 列表。
     返回值: list[EntityRead]。异常: 无。依赖: app.entities.repository。
     """
     entities = await repository.get_many(session, entity_ids)
+    return [EntityRead.model_validate(e) for e in entities]
+
+
+@checkpoint
+async def list_all(session: AsyncSession) -> list[EntityRead]:
+    """读取全量实体（供 assets 项目资产卡片聚合）。
+
+    作用: 跨模块全量读取入口（F08 资产管理）；无投影收窄——资产管理是
+        作者侧管理面（DECISIONS 2026-08-28 视角作用面决策，不经过视角过滤）。
+    参数: session — 数据库会话。
+    返回值: list[EntityRead]（按名称排序）。
+    异常: 无。依赖: app.entities.repository。
+    """
+    entities = await repository.search(session)
     return [EntityRead.model_validate(e) for e in entities]

@@ -17,7 +17,7 @@
 | `get(session, relation_id: str) -> RelationRead` | 按 id 读取 | NotFoundError |
 | `update(session, relation_id, schema: RelationUpdate) -> RelationRead` | 局部更新动态属性（known_by 更新时重校验；端点与 id/type 不可变） | NotFoundError / ValidationError |
 | `delete(session, relation_id: str) -> None` | 删除关系（即解除对两端实体的引用） | NotFoundError |
-| `get_all(session, *, source/target/rel_type 可选) -> list[RelationRead]` | 条件查询（无过滤返回全量，供 perspectives/sync 聚合） | — |
+| `get_all(session, *, source/target/rel_type 可选) -> list[RelationRead]` | 条件查询（无过滤返回全量，供 perspectives 聚合） | — |
 | `count_by_entity(session, entity_id: str) -> int` | 实体被引用计数（entities.service 删除防线数据源） | — |
 
 校验取数约定: 端点/known_by 校验统一经 `entities.service.get_many` 单次批量读取
@@ -40,7 +40,7 @@
 ## 依赖
 
 - 依赖：core、entities（经 entities.service 校验端点存在）
-- 被依赖：perspectives（图查询聚合）、sync（导入导出）、agent（建议草案落库）
+- 被依赖：perspectives（图查询聚合）、agent（建议草案落库）
 
 ## 约束
 

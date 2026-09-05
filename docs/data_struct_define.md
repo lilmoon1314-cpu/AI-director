@@ -260,3 +260,39 @@
 | `audience_evidence` | string | 观众证据（已呈现内容） | 动态 |
 | `expected_inference` | string | 预期推断 | 静态 |
 | `audience_known` | boolean | 观众是否已知 | 动态 |
+
+---
+
+### 10. 资产库（独立 SQLite 文件 `data/assets.db`，F08）
+
+> 与主库隔离的资产存储（DECISIONS 2026-09-05）：HTML 形态资产 + 图片元数据；
+> 启动时 `create_all` 幂等引导（不走 Alembic），schema 变更须向后兼容（加列/加表）。
+> 图片文件本体落盘 `data/assets/`（uuid 重命名），库内仅存元数据。
+
+#### 10.1 资产记录表（`asset_records`）
+
+| 字段名 | 类型 | 说明 | 静态/动态 |
+|--------|------|------|-----------|
+| `id` | string | 唯一ID（`asset-` 前缀，系统生成） | 静态 |
+| `kind` | string | `general`（用户创建的通用资产）/ `entity`（实体 HTML 资产页缓存） | 静态 |
+| `entity_id` | string\|null | kind=entity 时指向主库实体 id（应用层引用，无跨库外键） | 静态 |
+| `category` | string | 分类标签（自由字符串，如 表情参考/风格参考/植被参考） | 静态 |
+| `title` | string | 标题 | 静态 |
+| `description` | string | 描述 | 静态 |
+| `attributes` | JSON | 自由属性键值（通用资产自定义属性兜底；模板按键值小节渲染） | 静态 |
+| `html` | text | 自包含 HTML 页全文（通用资产保存时渲染；实体页按 updated_at 惰性再生） | 动态 |
+| `cover_image_id` | string\|null | 封面图片 id（应用层引用；缺省回落首图） | 动态 |
+| `created_at` / `updated_at` | datetime | UTC 时间戳 | 静态/动态 |
+
+#### 10.2 图片元数据表（`asset_images`）
+
+| 字段名 | 类型 | 说明 | 静态/动态 |
+|--------|------|------|-----------|
+| `id` | string | 唯一ID（`img-` 前缀，系统生成） | 静态 |
+| `scope` | string | `general`（owner=资产 id）/ `entity`（owner=主库实体 id） | 静态 |
+| `owner_id` | string | 归属 id（应用层引用） | 静态 |
+| `filename_orig` | string | 原始文件名（仅展示，禁参与存储路径） | 静态 |
+| `stored_name` | string | 存储名 `{uuid}.{ext}`（唯一） | 静态 |
+| `mime` | string | 图片 MIME | 静态 |
+| `size` | number | 字节数 | 静态 |
+| `created_at` | datetime | UTC 时间戳 | 静态 |

@@ -15,13 +15,17 @@ frontend/src/
 │   ├── graphStore      # 节点/边数据 + 图数据加载
 │   ├── perspectiveStore# 当前视角（author/character/audience + character_id）
 │   ├── selectionStore  # 选中实体/关系、详情面板状态
+│   ├── assetStore      # 资产卡片列表（通用/项目）+ 内嵌查看器状态（F08）
 │   └── agentStore      # 对话消息、草案、确认流程
 ├── views/
-│   └── Workbench       # 图谱工作台（主视图，聚合图 + 侧栏 + 面板）
+│   ├── Workbench       # 工作台壳层：顶部主导航「图谱 | 资产管理」（F08 起）
+│   ├── GraphView       # 图谱页（画布 + 操作栏 + 详情面板，原 Workbench 主视图）
+│   └── AssetLibrary    # 资产管理页（通用资产 / 项目资产二级分区，F08）
 ├── components/
 │   ├── graph/          # GraphCanvas（G6 封装：布局/交互/缩放/拖拽）
 │   ├── entity-selector/# @ 触发的实体搜索选择器（含视角可见性提示）
-│   ├── entity-panel/   # 实体/关系详情（资产缩略图、编辑表单）
+│   ├── entity-panel/   # 实体/关系详情（资产图片区、编辑表单）
+│   ├── assets/         # 资产卡片/编辑表单/通用与项目资产区/HTML 内嵌查看器（F08）
 │   ├── agent-panel/    # 对话面板（SSE 渲染 + 草案确认 UI）
 │   └── ui/             # 自研轻量通用组件（毛玻璃面板/按钮/输入框，shadcn/ui 风格）
 └── lib/                # 工具（格式化、防抖等）
@@ -36,6 +40,7 @@ frontend/src/
 | graphStore | nodes/edges/loading | 视角切换、CRUD 完成后按需刷新 |
 | perspectiveStore | perspective/character_id | 视角切换控件（切换即触发 graphStore 重载） |
 | selectionStore | 选中 id、面板开合 | 图节点点击 |
+| assetStore | 通用/项目资产卡片、HTML 查看器开关 | 资产管理页挂载与写操作后刷新（F08） |
 | agentStore | 消息列表、流式缓冲、草案 | SSE 流、propose/confirm |
 
 ## 4. 渲染性能策略

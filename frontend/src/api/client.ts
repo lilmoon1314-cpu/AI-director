@@ -13,6 +13,12 @@ export type RelationCreate = components["schemas"]["RelationCreate"];
 export type RelationRead = components["schemas"]["RelationRead"];
 export type RelationUpdate = components["schemas"]["RelationUpdate"];
 export type GraphData = components["schemas"]["GraphData"];
+export type AssetCard = components["schemas"]["AssetCard"];
+export type AssetRead = components["schemas"]["AssetRead"];
+export type AssetImageRead = components["schemas"]["AssetImageRead"];
+export type EntityAssetCard = components["schemas"]["EntityAssetCard"];
+export type GeneralAssetCreate = components["schemas"]["GeneralAssetCreate"];
+export type GeneralAssetUpdate = components["schemas"]["GeneralAssetUpdate"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -42,11 +48,14 @@ export class ApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   let resp: Response;
   try {
     resp = await fetch(joinUrl(API_BASE, path), {
       headers: { "Content-Type": "application/json" },
       ...init,
+      // multipart 由浏览器自动生成含 boundary 的 Content-Type，禁止手动覆盖
+      ...(isFormData ? { headers: undefined } : {}),
     });
   } catch (cause) {
     throw new ApiError(0, {
@@ -99,4 +108,44 @@ export const api = {
   updateRelation: (id: string, body: RelationUpdate) =>
     apiFetch<RelationRead>(`/relations/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteRelation: (id: string) => apiFetch<void>(`/relations/${id}`, { method: "DELETE" }),
+  // ---- 资产管理（F08；路由总表见 backend/app/assets/ARCHITECTURE.md）----
+  /** 图片上传（multipart；scope='general'|'entity'，owner_id 为资产 id 或实体 id）。 */
+  uploadImage: (scope: "general" | "entity", ownerId: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("scope", scope);
+    form.append("owner_id", ownerId);
+    return apiFetch<AssetImageRead>("/assets/images", { method: "POST", body: form });
+  },
+  /** 图片明细列表（实体详情面板图片区/通用资产编辑表单数据源）。 */
+  listImages: (scope: "general" | "entity", ownerId: string) => {
+    const params = new URLSearchParams({ scope, owner_id: ownerId });
+    return apiFetch<AssetImageRead[]>(`/assets/images?${params.toString()}`);
+  },
+  deleteImage: (imageId: string) =>
+    apiFetch<void>(`/assets/images/${imageId}`, { method: "DELETE" }),
+  listGeneralAssets: (category?: string) => {
+    const search = new URLSearchParams();
+    if (category) search.set("category", category);
+    const qs = search.toString();
+    return apiFetch<AssetCard[]>(`/assets/general${qs ? `?${qs}` : ""}`);
+  },
+  createGeneralAsset: (body: GeneralAssetCreate) =>
+    apiFetch<AssetRead>("/assets/general", { method: "POST", body: JSON.stringify(body) }),
+  /** 通用资产详情（含图片明细；编辑表单数据源）。 */
+  getGeneralAsset: (id: string) => apiFetch<AssetRead>(`/assets/general/${id}`),
+  updateGeneralAsset: (id: string, body: GeneralAssetUpdate) =>
+    apiFetch<AssetRead>(`/assets/general/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteGeneralAsset: (id: string) =>
+    apiFetch<void>(`/assets/general/${id}`, { method: "DELETE" }),
+  setAssetCover: (id: string, imageId: string) =>
+    apiFetch<AssetRead>(`/assets/general/${id}/cover`, {
+      method: "PUT",
+      body: JSON.stringify({ image_id: imageId }),
+    }),
+  /** 项目资产卡片（主库实体按类型分组，封面对照资产库）。 */
+  listEntityCards: () => apiFetch<EntityAssetCard[]>("/assets/entities"),
+  /** 资产 HTML 页地址（iframe src 用，不 fetch——后端返回 text/html）。 */
+  assetPageUrl: (kind: "general" | "entity", id: string) =>
+    kind === "general" ? joinUrl(API_BASE, `/assets/general/${id}/page`) : joinUrl(API_BASE, `/assets/entity/${id}/page`),
 };

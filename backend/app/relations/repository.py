@@ -97,7 +97,7 @@ async def query(
 ) -> list[Relationship]:
     """按端点/类型条件查询关系（无过滤条件返回全量）。
 
-    作用: GET /api/relations 条件查询与 perspectives/sync 聚合的取数入口。
+    作用: GET /api/relations 条件查询与 perspectives 聚合的取数入口。
     参数: session — 数据库会话；source/target — 端点实体 id 过滤（可选）；
         rel_type — 关系类型过滤（可选）。
     返回值: list[Relationship]（按 id 排序，保证结果稳定）。异常: 无。

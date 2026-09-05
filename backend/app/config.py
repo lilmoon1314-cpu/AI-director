@@ -28,11 +28,13 @@ class Settings(BaseSettings):
 
     # --- 数据库 ---
     database_url: str = "sqlite+aiosqlite:///data/app.db"
+    # 独立资产库（assets 模块专用，DECISIONS 2026-09-05：启动 create_all 幂等引导）
+    asset_db_url: str = "sqlite+aiosqlite:///data/assets.db"
 
     # --- 资产上传 ---
     asset_dir: str = "data/assets"
     asset_max_size_mb: int = 10
-    asset_allowed_types: str = "png,jpg,jpeg,gif,webp,txt,md,pdf"
+    asset_allowed_types: str = "png,jpg,jpeg,gif,webp"
 
     # --- LLM（OpenAI 兼容协议）---
     llm_base_url: str = "https://api.openai.com/v1"

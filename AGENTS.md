@@ -82,7 +82,7 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
 - `backend/ARCHITECTURE.md` — 修改后端任何代码前必读（分层/异常/生命周期/API 总表）
 - `backend/CONSTRAINTS.md` — 修改后端任何代码前必读（解耦/事务/数据/异常）
 - `backend/app/<module>/ARCHITECTURE.md` — 修改该模块职责/接口/依赖前必读；变更时必须同步更新
-- `backend/app/<module>/CONSTRAINTS.md` — 实现/修改该模块任何功能前必读（core / entities / relations / perspectives / assets / sync / agent）
+- `backend/app/<module>/CONSTRAINTS.md` — 实现/修改该模块任何功能前必读（core / entities / relations / perspectives / assets / agent）
 - `frontend/ARCHITECTURE.md` — 修改前端任何代码前必读（分层/store/渲染策略/生命周期）
 - `frontend/CONSTRAINTS.md` — 修改前端任何代码前必读（API 契约/视觉/性能/生命周期）
 - `Makefile` — 新增或修改开发命令时必读（命令契约见 INIT.md）

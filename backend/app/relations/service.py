@@ -306,7 +306,7 @@ async def get_all(
     target: str | None = None,
     rel_type: str | None = None,
 ) -> list[RelationRead]:
-    """按端点/类型条件查询关系（无过滤条件返回全量，供 perspectives/sync 聚合）。
+    """按端点/类型条件查询关系（无过滤条件返回全量，供 perspectives 聚合）。
 
     作用: 条件查询业务入口；GET /api/relations 的数据源。
     参数: session — 数据库会话；source/target — 端点实体 id 过滤（可选）；

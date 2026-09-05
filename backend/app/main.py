@@ -12,6 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.assets import service as assets_service
+from app.assets.router import router as assets_router
 from app.config import get_settings
 from app.core import db, observability
 from app.entities.router import router as entities_router
@@ -39,12 +41,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     observability.emit_lifecycle("startup")
     Path(settings.asset_dir).mkdir(parents=True, exist_ok=True)
     db.get_engine()
+    await assets_service.init_database()
     app.mount("/static/assets", StaticFiles(directory=settings.asset_dir), name="assets")
     observability.emit_lifecycle("ready", data={"asset_dir": settings.asset_dir})
     try:
         yield
     finally:
         observability.emit_lifecycle("shutdown")
+        await assets_service.shutdown_engine()
         await db.dispose_engine()
 
 
@@ -80,10 +84,11 @@ def create_app() -> FastAPI:
         """健康检查端点（存活探针，供测试与运维验证服务可用）。"""
         return {"status": "ok"}
 
-    # 领域模块路由挂载（F02: entities；F03: relations；F04: perspectives；后续功能点在此追加）
+    # 领域模块路由挂载（F02 entities / F03 relations / F04 perspectives / F08 assets）
     app.include_router(entities_router)
     app.include_router(relations_router)
     app.include_router(perspectives_router)
+    app.include_router(assets_router)
 
     return app
 

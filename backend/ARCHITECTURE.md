@@ -28,8 +28,7 @@ backend/
     ├── entities/           # 实体模块
     ├── relations/          # 关系模块
     ├── perspectives/       # 视角过滤模块
-    ├── assets/             # 资产模块
-    ├── sync/               # Markdown 同步模块
+    ├── assets/             # 资产模块（独立资产库 data/assets.db）
     └── agent/              # LLM 对话模块
 ```
 
@@ -67,7 +66,7 @@ schemas.py      # Pydantic 请求/响应模型
 AppError（基类: code, problem, cause, fix, http_status, detail）
 ├── NotFoundError          # 404 资源不存在
 ├── ValidationError        # 422 业务校验失败（区别于 Pydantic 请求校验）
-├── ConflictError          # 409 冲突（如 Markdown 导入冲突、唯一约束）
+├── ConflictError          # 409 冲突（唯一约束等）
 ├── ReferentialError       # 409 删除被引用资源
 ├── PerspectiveError       # 403 视角违规（访问不可见资源）
 └── AgentError             # 502 LLM 调用失败/超时
@@ -102,8 +101,7 @@ shutdown: dispose AsyncEngine、释放 LLM 客户端连接
 | /api/entities | entities | 实体 CRUD + 搜索 |
 | /api/relations | relations | 关系 CRUD |
 | /api/graph | perspectives | 三视角过滤图查询 |
-| /api/assets | assets | 资产上传/列表/静态访问 |
-| /api/sync | sync | Markdown 导入导出 |
+| /api/assets | assets | 资产库：图片上传、通用资产 CRUD、实体资产卡片与 HTML 页 |
 | /api/agent | agent | SSE 对话、建议草案、确认写入 |
 
 OpenAPI 文档自动生成于 `/docs`（FastAPI 内建），前端类型由该 schema 派生。

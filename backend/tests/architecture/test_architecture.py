@@ -24,7 +24,6 @@ FORBIDDEN_IN_CORE = (
     "app.relations",
     "app.perspectives",
     "app.assets",
-    "app.sync",
     "app.agent",
 )
 

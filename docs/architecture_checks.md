@@ -31,6 +31,11 @@
 | 前端类型自动生成（frontend/CONSTRAINTS） | check-api-types = 重新生成 + `git diff --exit-code` | 自动 | F05 |
 | 前端禁止直连 fetch（frontend/CONSTRAINTS） | eslint no-restricted-syntax：fetch/axios 仅允许出现在 src/api/ | 自动 | F05 |
 | 上传 uuid 重命名/防穿越（assets/CONSTRAINTS） | 单元测试：路径穿越用例（`../`、绝对路径）全部拒绝 | 自动 | F08 |
+| assets 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2） | import-linter：assets 契约（forbidden: repository/models/schemas/db/storage/rendering）；entities/relations/perspectives 契约 source 面同步加入 app.assets | 自动 | F08 |
+| 资产 HTML 全量转义（XSS 防线，assets/CONSTRAINTS） | 单元测试：`<script>`/`<img onerror>` 注入被转义、属性按插入序渲染 | 自动 | F08 |
+| 实体删除资产联动（读取时孤儿清扫，DECISIONS 2026-09-05） | L2 集成：删实体后卡片消失 + 图片文件被清扫；L1 清扫用例 | 自动 | F08 |
+| mutmut 运行期禁改被测模块（error.jsonl E11） | task.py mutate 脏工作区守卫：目标模块有未提交改动即拒绝启动 | 自动 | F08 |
+| 主库 schema 变更走 Alembic；资产库（assets.db）例外 = 启动 create_all 幂等 + 向后兼容（backend/CONSTRAINTS，DECISIONS 2026-09-05） | 主库部分由迁移测试覆盖；资产库「加列/加表不破坏既有文件」为演进期人工评审项 | 混合 | F08 |
 | LLM 配置不硬编码（agent/CONSTRAINTS） | tests/architecture：agent 源码禁止端点/密钥字面量 | 自动 | F10 |
 
 ## 3. 审查清单（暂无自动检查，人工执行）
@@ -43,6 +48,7 @@
 | properties 校验"读宽容写严格" | 行为语义判断（部分由单元测试覆盖） |
 | G6 单例与增量更新 | 渲染行为判断（组件测试部分覆盖） |
 | 视觉基调与动效克制 | 视觉判断 |
+| 实体写路径禁止挂资产回调（assets→entities 单向，service 层语义） | import-linter 只拦内部层直引，service→service 环无法静态判定（代码评审把关；孤儿清扫已消除回调需求） |
 
 ## 4. 维护规则
 

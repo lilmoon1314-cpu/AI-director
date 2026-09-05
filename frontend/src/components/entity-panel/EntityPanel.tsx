@@ -5,9 +5,9 @@
  * - 后端 409（被引用）等业务错误原样展示三要素（problem + fix）。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api, ApiError, type EntityRead } from "../../api/client";
+import { api, ApiError, type AssetImageRead, type EntityRead } from "../../api/client";
 import {
   EMPTY_ENTITY_FORM,
   ENTITY_TYPES,
@@ -23,6 +23,7 @@ import {
   toPropertyFormState,
   type PropertyFormState,
 } from "../../lib/entityProperties";
+import { useAssetStore } from "../../stores/assetStore";
 import { useEntityIndexStore } from "../../stores/entityIndexStore";
 import { useGraphStore } from "../../stores/graphStore";
 import { useSelectionStore } from "../../stores/selectionStore";
@@ -64,6 +65,35 @@ export function EntityPanel() {
   const [error, setError] = useState<{ problem: string; fix: string } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 资产图片区（F08）：实体图片明细 + 上传 + 打开 HTML 资产页
+  const [images, setImages] = useState<AssetImageRead[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const openViewer = useAssetStore((s) => s.openViewer);
+
+  const refreshImages = useCallback((entityId: string) => {
+    api
+      .listImages("entity", entityId)
+      .then(setImages)
+      .catch(() => setImages([]));
+  }, []);
+
+  const uploadImages = async (files: FileList | null) => {
+    if (!entity || !files || files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        await api.uploadImage("entity", entity.id, file);
+      }
+      refreshImages(entity.id);
+    } catch (cause) {
+      const err = cause instanceof ApiError ? cause : null;
+      setError({ problem: err?.problem ?? "图片上传失败", fix: err?.fix ?? "确认文件为图片后重试" });
+    } finally {
+      setBusy(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  };
 
   useEffect(() => {
     setEntity(null);
@@ -71,6 +101,7 @@ export function EntityPanel() {
     setError(null);
     setConfirmingDelete(false);
     setPropIssues({});
+    setImages([]);
     if (!selectedEntityId) return;
     api
       .getEntity(selectedEntityId)
@@ -78,6 +109,7 @@ export function EntityPanel() {
         setEntity(e);
         setForm(fromEntity(e));
         setPropValues(toPropertyFormState(e.type, e.properties ?? {}));
+        refreshImages(e.id);
       })
       .catch((cause: unknown) => {
         const err = cause instanceof ApiError ? cause : null;
@@ -86,7 +118,7 @@ export function EntityPanel() {
           fix: err?.fix ?? "关闭面板后重试",
         });
       });
-  }, [selectedEntityId]);
+  }, [selectedEntityId, refreshImages]);
 
   if (!panelOpen || !selectedEntityId) return null;
 
@@ -308,6 +340,47 @@ export function EntityPanel() {
                 删除
               </Button>
             )}
+          </div>
+
+          <div className="mt-2 border-t border-slate-200/70 pt-2 dark:border-slate-700/70" data-testid="entity-assets">
+            <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+              资产图片（{images.length}）
+            </p>
+            {images.length > 0 ? (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {images.map((img) => (
+                  <img
+                    key={img.id}
+                    src={img.url}
+                    alt={img.filename_orig}
+                    loading="lazy"
+                    className="h-12 w-12 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/20"
+                  />
+                ))}
+              </div>
+            ) : null}
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              aria-label="上传实体图片"
+              data-testid="entity-image-input"
+              onChange={(e) => uploadImages(e.target.files)}
+              className="mb-1.5 w-full text-xs text-slate-500 dark:text-slate-400"
+            />
+            <Button
+              variant="ghost"
+              data-testid="open-entity-page"
+              onClick={() =>
+                openViewer({
+                  url: api.assetPageUrl("entity", entity.id),
+                  title: `${entity.name} · 资产页`,
+                })
+              }
+            >
+              查看资产页（HTML）
+            </Button>
           </div>
         </div>
       )}
