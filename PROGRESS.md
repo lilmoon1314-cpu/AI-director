@@ -32,12 +32,8 @@
 - 2026-08-28: **F06 视角切换 UI 完成（passing）**——perspectiveStore（三态 + characterId 回切保留 + 角色列表懒加载）+ graphStore.loadGraph 实时读视角透传（character_id 仅随 character 视角发送，不泄入其他视角请求——边界用例锁定）+ api.client 补 listEntities(type 检索) + PerspectiveSwitcher 三段切换控件（aria-pressed，character 视角角色下拉、未选角色零图请求对齐后端 missing_character_id）+ Workbench 挂载与 stats 动态视角标注（角色视角·周兰）；视角作用面决策入 DECISIONS（仅约束 /api/graph 展示面，详情/编辑保持管理面完整）。测试前端 68 例（L1 46：perspectiveStore 4 + graphStore 视角透传参数化 7；L2 20：I1–I5 三视角/缺参零请求/403 三要素/回切恢复）+ e2e 6 例（E1 三视角全链路截图 P-01~03 + E2 观众视角不泄露断言）全过；变异测试按 2026-08-28 决策豁免。详见 docs/tests/F06_perspective_switch_ui.md、DECISIONS.md 与 git log
 
 ## 进行中
-- F06 反馈修复轮（用户报告 2026-08-28：切换视角重叠+标签隐藏、角色/观众视角边消失）——已修复待提交
-  - [x] 诊断：①硬分离监听器首跑后自注销，数据变更后不再分离（重叠→标签避让隐藏名字）②setData/render 异步管线无串行化，快速切换/StrictMode 卸载打断打坏 G6 元素控制器（边消失，探查抓到 'draw' of undefined + instance destroyed）
-  - [x] 修复：GraphCanvas 渲染链串行化（chainRef + 存活守卫）+ 持久 afterlayout→防抖硬分离随每次数据变更重跑；dev 服务器快速切换实测零内部错误、138 节点分离良好、77 边完整
-  - [x] 回归：U5 适配异步渲染链 + 新增卸载排队守卫用例（前端 vitest 69 全过）+ e2e E3 快速切换防线（7 例全过）；E09 登记；CONSTRAINTS 渲染性能补两条硬约束
-  - [ ] 提交推送
-- F07 @ 实体选择器（用户需求并入：所有「关联某类实体 id」字段用选择器 + 直接显示名称而非 id）——未开工
+- F06 反馈修复轮——已提交（1aecc36，E09）
+- F07 @ 实体选择器——实现与三层测试完成，待 make check/verify/提交
 
 ## 已知问题
 - 无

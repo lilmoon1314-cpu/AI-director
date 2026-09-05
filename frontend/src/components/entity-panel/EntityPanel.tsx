@@ -5,7 +5,7 @@
  * - 后端 409（被引用）等业务错误原样展示三要素（problem + fix）。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError, type EntityRead } from "../../api/client";
 import {
@@ -18,10 +18,12 @@ import {
 import {
   buildProperties,
   displayPropertyValue,
+  displayRefValue,
   propertiesSchema,
   toPropertyFormState,
   type PropertyFormState,
 } from "../../lib/entityProperties";
+import { useEntityIndexStore } from "../../stores/entityIndexStore";
 import { useGraphStore } from "../../stores/graphStore";
 import { useSelectionStore } from "../../stores/selectionStore";
 import { Button } from "../ui/Button";
@@ -44,6 +46,14 @@ export function EntityPanel() {
   const panelOpen = useSelectionStore((s) => s.panelOpen);
   const clear = useSelectionStore((s) => s.clear);
   const reloadGraph = useGraphStore((s) => s.loadGraph);
+  const briefs = useEntityIndexStore((s) => s.briefs);
+  const loadEntities = useEntityIndexStore((s) => s.load);
+
+  // 关联实体字段名称解析索引（F07）：面板挂载即确保加载（失败静默——显示回退原始 id）
+  useEffect(() => {
+    loadEntities().catch(() => {});
+  }, [loadEntities]);
+  const nameById = useMemo(() => new Map(briefs.map((b) => [b.id, b.name])), [briefs]);
 
   const [entity, setEntity] = useState<EntityRead | null>(null);
   const [editing, setEditing] = useState(false);
@@ -249,6 +259,9 @@ export function EntityPanel() {
             <dl className="mt-1 space-y-1">
               {fields.map((f) => {
                 const value = (entity.properties ?? {})[f.key];
+                const display = f.refTypes
+                  ? displayRefValue(value, nameById)
+                  : displayPropertyValue(value);
                 return (
                   <div
                     key={f.key}
@@ -256,9 +269,7 @@ export function EntityPanel() {
                     className="rounded-lg bg-slate-100/70 px-2 py-1 text-xs dark:bg-slate-800/70"
                   >
                     <dt className="font-medium text-slate-600 dark:text-slate-300">{f.label}</dt>
-                    <dd className="break-all text-slate-700 dark:text-slate-400">
-                      {displayPropertyValue(value)}
-                    </dd>
+                    <dd className="break-all text-slate-700 dark:text-slate-400">{display}</dd>
                   </div>
                 );
               })}

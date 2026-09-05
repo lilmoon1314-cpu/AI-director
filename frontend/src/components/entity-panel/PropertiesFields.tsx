@@ -1,11 +1,14 @@
 /**
  * properties 结构化字段组（表单/编辑共用受控组件）：
  * 按类型 schema 渲染全部规定字段——text→输入框、number→数字输入、
- * list→逗号分隔输入、bool→复选框、object→JSON 文本域；errors 为逐字段错误。
+ * list→逗号分隔输入、bool→复选框、object→JSON 文本域；
+ * 标注 refTypes 的关联实体字段渲染 EntityPicker（@ 检索按名称选择回填 ID，F07）；
+ * errors 为逐字段错误。
  */
 
 import type { PropertyFieldDef } from "../../lib/entityProperties";
 import { CheckboxInput, TextArea, TextInput } from "../ui/Field";
+import { EntityPicker } from "./EntityPicker";
 
 interface PropertiesFieldsProps {
   fields: PropertyFieldDef[];
@@ -43,6 +46,20 @@ export function PropertiesFields({ fields, values, errors, idPrefix, onChange }:
               error={error}
               rows={3}
               onChange={(e) => onChange(f.key, e.target.value)}
+            />
+          );
+        }
+        if (f.refTypes && f.refTypes.length > 0) {
+          return (
+            <EntityPicker
+              key={f.key}
+              id={id}
+              label={f.label}
+              refTypes={f.refTypes}
+              mode={f.kind === "list" ? "multi" : "single"}
+              value={value}
+              error={error}
+              onChange={(raw) => onChange(f.key, raw)}
             />
           );
         }

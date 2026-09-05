@@ -212,6 +212,9 @@ export interface components {
         /**
          * EntityBrief
          * @description 实体摘要响应（@ 检索列表，供前端选择器）。
+         *
+         *     audience_known 供选择器提示「实体对当前视角是否可见」（F07，判定基准
+         *     为前端已加载图数据的节点集合，audience 视角下未收录实体不可见）。
          */
         EntityBrief: {
             /** Id */
@@ -225,6 +228,8 @@ export interface components {
             name: string;
             /** Aliases */
             aliases: string[];
+            /** Audience Known */
+            audience_known: boolean;
         };
         /**
          * EntityCreate

@@ -264,3 +264,19 @@ async def test_search_matches_name_and_alias(store: dict[str, Entity]) -> None:
     assert len(by_alias) == 1 and by_alias[0].name == "周兰"
     typed = await service.search(_SESSION, q="", entity_type="location")
     assert all(b.type == "location" for b in typed) and len(typed) == 1
+
+
+async def test_search_brief_carries_audience_known(store: dict[str, Entity]) -> None:
+    """B1（F07）摘要契约：EntityBrief 携带 audience_known，值与库一致。
+
+    前置: 一真一假两个实体；动作: search 全量；预期: 两条摘要 audience_known 各自
+        为 True/False（@ 选择器视角可见性提示的数据来源）。
+    """
+    await service.create(_SESSION, EntityCreate(type="character", name="周兰", audience_known=True))
+    await service.create(
+        _SESSION, EntityCreate(type="character", name="沈墨", audience_known=False)
+    )
+    briefs = await service.search(_SESSION)
+    by_name = {b.name: b.audience_known for b in briefs}
+    assert by_name["周兰"] is True
+    assert by_name["沈墨"] is False

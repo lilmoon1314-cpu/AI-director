@@ -4,7 +4,7 @@
  * @antv/g6 为测试桩（test.alias），节点点击经桩实例 emit 触发真实回调链。
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -71,6 +71,21 @@ const server = setupServer(
       return HttpResponse.json({ code: "INVALID", problem: "仅支持 author" }, { status: 400 });
     }
     return HttpResponse.json(graphBody());
+  }),
+  http.get("*/api/entities", ({ request }) => {
+    // F07：实体摘要列表（@ 选择器数据源），briefs 含 audience_known
+    const url = new URL(request.url);
+    const type = url.searchParams.get("type");
+    const list = type ? entities.filter((e) => e.type === type) : entities;
+    return HttpResponse.json(
+      list.map((e) => ({
+        id: e.id,
+        type: e.type,
+        name: e.name,
+        aliases: e.aliases,
+        audience_known: e.audience_known,
+      })),
+    );
   }),
   http.get("*/api/entities/:id", ({ params }) => {
     const found = entities.find((e) => e.id === params.id);
@@ -257,29 +272,36 @@ describe("Workbench 集成（I1–I8）", () => {
     Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
     const props = await screen.findByTestId("entity-properties");
     expect(props).toHaveTextContent("知晓角色");
-    expect(props).toHaveTextContent("char-b");
+    expect(props).toHaveTextContent("沈墨");
     expect(props).toHaveTextContent("参与角色"); // 空字段也列出
     const knownBy = screen.getByTestId("prop-known_by");
-    expect(knownBy).toHaveTextContent("char-b");
+    expect(knownBy).toHaveTextContent("沈墨"); // F07：关联字段显示名称而非 id
     const emptyField = screen.getByTestId("prop-participants");
     expect(emptyField).toHaveTextContent("—");
   });
 
-  it("I10: 结构化字段编辑（known_by 逗号分隔）→ PATCH 携带解析后列表 → 面板更新", async () => {
-    // 设计依据: 增强轮—按 schema 字段修改主路径（list 逗号分隔提交解析为数组）
+  it("I10: 结构化字段编辑（known_by 走 @ 选择器追加）→ PATCH 携带解析后列表 → 面板更新", async () => {
+    // 设计依据: F07 起 list 型关联字段为 @ 选择器（名称检索回填 ID，逗号列表仍由 buildProperties 解析）
     const user = await renderWorkbench();
     Graph.instances[0]?.emit("node:click", { target: { id: "event-e" } });
     await user.click(await screen.findByRole("button", { name: "编辑" }));
-    const knownByInput = screen.getByLabelText("知晓角色（关联 character ID，逗号分隔）");
-    await user.clear(knownByInput);
-    await user.type(knownByInput, "char-a, char-b");
+    const knownByInput = screen.getByTestId("edit-prop-known_by");
+    await user.type(knownByInput, "@兰");
+    await waitFor(() =>
+      expect(screen.getByTestId("edit-prop-known_by-options")).toHaveTextContent("周兰"),
+    );
+    await user.click(
+      within(screen.getByTestId("edit-prop-known_by-options")).getByRole("button", { name: /周兰/ }),
+    );
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
       const props = (lastPatchBody ?? {}) as { properties?: Record<string, unknown> };
-      expect(props.properties).toMatchObject({ known_by: ["char-a", "char-b"] });
+      expect(props.properties?.known_by).toEqual(
+        expect.arrayContaining(["char-a", "char-b"]), // 原 char-b 保留 + 追加 char-a
+      );
     });
     const panel = await screen.findByTestId("entity-panel");
-    await waitFor(() => expect(panel).toHaveTextContent("char-a"));
+    await waitFor(() => expect(panel).toHaveTextContent("周兰")); // F07：面板显示名称
   });
 
   it("I11: 新建两层手风琴默认折叠——逐层展开实体/关系表单，再点收起", async () => {

@@ -18,6 +18,7 @@ import { Button } from "../components/ui/Button";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { ENTITY_TYPES } from "../lib/entityForm";
 import { TYPE_COLORS, TYPE_LABELS } from "../lib/palette";
+import { useEntityIndexStore } from "../stores/entityIndexStore";
 import { useGraphStore } from "../stores/graphStore";
 import { PERSPECTIVE_LABELS, usePerspectiveStore } from "../stores/perspectiveStore";
 import { useSelectionStore } from "../stores/selectionStore";
@@ -61,6 +62,12 @@ export function Workbench() {
   const perspective = usePerspectiveStore((s) => s.perspective);
   const characterId = usePerspectiveStore((s) => s.characterId);
   const characters = usePerspectiveStore((s) => s.characters);
+  const loadEntities = useEntityIndexStore((s) => s.load);
+
+  // 实体摘要索引随图数据刷新（实体增删改后 reloadGraph → 索引同步，F07 名称解析保持新鲜）
+  useEffect(() => {
+    loadEntities(true).catch(() => {});
+  }, [graph, loadEntities]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // 全部区块默认折叠（用户要求）：新建组、组内实体/关系表单、筛选面板

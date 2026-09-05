@@ -1,8 +1,8 @@
 /**
  * 各实体类型的 properties 结构化定义（来源：docs/data_struct_define.md §各类型 properties 蓝图）。
  * 表单/详情/编辑三处统一由本 schema 驱动：选择类型后列出该类型全部规定字段；
- * 关联 ID 类字段（如 abilities/affiliation）按底层类型渲染，值由用户填实体 ID
- * （@ 选择器属 F07 范围）。
+ * 关联 ID 类字段以 refTypes 标注可引用的实体类型（F07）：表单渲染 @ 实体选择器
+ * （按名称选择回填 ID），详情面板将 ID 解析为名称显示（未知 id 回退原始值）。
  */
 
 export type PropertyKind = "text" | "number" | "list" | "bool" | "object";
@@ -11,6 +11,8 @@ export interface PropertyFieldDef {
   key: string;
   label: string;
   kind: PropertyKind;
+  /** 关联实体字段：可引用的实体类型（text=单引用存单个 id；list=多引用存 id 数组） */
+  refTypes?: string[];
 }
 
 export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
@@ -21,7 +23,7 @@ export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
     { key: "social_class", label: "阶层", kind: "text" },
     { key: "resources", label: "资源列表（逗号分隔）", kind: "list" },
     { key: "obligations", label: "义务/责任（逗号分隔）", kind: "list" },
-    { key: "abilities", label: "能力（关联 skill ID，逗号分隔）", kind: "list" },
+    { key: "abilities", label: "能力（关联 skill，逗号分隔选择）", kind: "list", refTypes: ["skill"] },
     { key: "weaknesses", label: "弱点（逗号分隔）", kind: "list" },
     { key: "habits", label: "习惯（JSON：quirks/diet/daily_routine/hobbies/unconscious_actions）", kind: "object" },
     { key: "outer_desire", label: "外在欲望", kind: "text" },
@@ -43,7 +45,7 @@ export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
     { key: "worldview_initial", label: "初期世界观", kind: "text" },
     { key: "life_view_initial", label: "初期人生观", kind: "text" },
     { key: "value_view_initial", label: "初期价值观", kind: "text" },
-    { key: "affiliation", label: "所属门派（关联 faction ID）", kind: "text" },
+    { key: "affiliation", label: "所属门派（关联 faction）", kind: "text", refTypes: ["faction"] },
     { key: "origin", label: "出身地", kind: "text" },
     { key: "cultivation", label: "能力体系（JSON）", kind: "object" },
     { key: "pressure_behaviors", label: "压力下行为（JSON 数组）", kind: "object" },
@@ -54,8 +56,8 @@ export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
   ],
   faction: [
     { key: "description", label: "宗旨、历史", kind: "text" },
-    { key: "headquarters", label: "驻地（关联 location ID）", kind: "text" },
-    { key: "members", label: "成员角色（关联 character ID，逗号分隔）", kind: "list" },
+    { key: "headquarters", label: "驻地（关联 location）", kind: "text", refTypes: ["location"] },
+    { key: "members", label: "成员角色（关联 character，逗号分隔选择）", kind: "list", refTypes: ["character"] },
     { key: "resources", label: "势力资源（逗号分隔）", kind: "list" },
     { key: "doctrine", label: "教义/规则", kind: "text" },
     { key: "public_relations", label: "对外关系（JSON 数组）", kind: "object" },
@@ -63,7 +65,7 @@ export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
   location: [
     { key: "location_type", label: "类型（region/terrain/building/site）", kind: "text" },
     { key: "description", label: "基础描述", kind: "text" },
-    { key: "parent_location", label: "上级地点 ID", kind: "text" },
+    { key: "parent_location", label: "上级地点（关联 location）", kind: "text", refTypes: ["location"] },
     { key: "climate", label: "气候", kind: "text" },
     { key: "season", label: "当前季节", kind: "text" },
     { key: "weather", label: "当前天气", kind: "text" },
@@ -77,24 +79,24 @@ export const PROPERTY_SCHEMAS: Record<string, PropertyFieldDef[]> = {
     { key: "appearance", label: "外观描述", kind: "text" },
     { key: "authenticity", label: "真伪状态", kind: "text" },
     { key: "damage", label: "损坏情况", kind: "text" },
-    { key: "location", label: "当前位置（关联 location/character ID）", kind: "text" },
-    { key: "holder", label: "当前持有人（关联 character ID）", kind: "text" },
-    { key: "seen_by", label: "见过的角色（关联 character ID，逗号分隔）", kind: "list" },
+    { key: "location", label: "当前位置（关联 location/character）", kind: "text", refTypes: ["location", "character"] },
+    { key: "holder", label: "当前持有人（关联 character）", kind: "text", refTypes: ["character"] },
+    { key: "seen_by", label: "见过的角色（关联 character，逗号分隔选择）", kind: "list", refTypes: ["character"] },
   ],
   skill: [
     { key: "description", label: "技能描述", kind: "text" },
-    { key: "owner", label: "拥有者（关联 character ID）", kind: "text" },
+    { key: "owner", label: "拥有者（关联 character）", kind: "text", refTypes: ["character"] },
     { key: "cost", label: "使用代价/限制", kind: "text" },
     { key: "level", label: "熟练度/境界", kind: "text" },
     { key: "category", label: "分类（功法/魔法/科技）", kind: "text" },
   ],
   event: [
     { key: "description", label: "事件描述", kind: "text" },
-    { key: "participants", label: "参与角色（关联 character ID，逗号分隔）", kind: "list" },
-    { key: "location", label: "发生地点（关联 location ID）", kind: "text" },
+    { key: "participants", label: "参与角色（关联 character，逗号分隔选择）", kind: "list", refTypes: ["character"] },
+    { key: "location", label: "发生地点（关联 location）", kind: "text", refTypes: ["location"] },
     { key: "time", label: "发生时间（世界时间）", kind: "text" },
     { key: "is_public", label: "是否对观众公开", kind: "bool" },
-    { key: "known_by", label: "知晓角色（关联 character ID，逗号分隔）", kind: "list" },
+    { key: "known_by", label: "知晓角色（关联 character，逗号分隔选择）", kind: "list", refTypes: ["character"] },
   ],
   concept: [
     { key: "concept_type", label: "概念类型（flora/fauna/cuisine/custom/myth 等）", kind: "text" },
@@ -182,4 +184,19 @@ export function displayPropertyValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "是" : "否";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+/** 关联实体字段值 → 显示文本：ID 经索引解析为名称，未知 id 回退原始值（F07）。
+ *  nameById 由调用方注入（entityIndexStore 派生），本模块保持无依赖。 */
+export function displayRefValue(
+  value: unknown,
+  nameById: Map<string, string>,
+): string {
+  const resolve = (v: unknown): string => {
+    const id = String(v);
+    return nameById.get(id) ?? id;
+  };
+  if (value === undefined || value === null || value === "") return "—";
+  if (Array.isArray(value)) return value.length > 0 ? value.map(resolve).join("、") : "—";
+  return resolve(value);
 }
