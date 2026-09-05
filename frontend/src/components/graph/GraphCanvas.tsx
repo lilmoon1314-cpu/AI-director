@@ -219,10 +219,29 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
           labelText: (d: { data?: { name?: string } }) => d.data?.name ?? "",
         },
         state: {
-          // 高亮 = 在原样式上提高透明度（不叠色、不加粗、不改字重）；
-          // halo:false 显式关闭——G6 5 内置主题会给 active/selected 默认叠加光晕
-          active: { size: 16, fillOpacity: 1, strokeOpacity: 1, labelOpacity: 1, halo: false },
-          selected: { size: 16, fillOpacity: 1, strokeOpacity: 1, labelOpacity: 1, halo: false },
+          // 高亮 = 原样式提亮 + 外围透明淡黄光环（模拟光圈）；halo:false 关闭内置光晕。
+          // stroke/lineWidth/labelFontWeight 必须显式钉死——内置主题向 selected/active
+          // 注入黑色描边(lineWidth 4, #000)+标签加粗（E10：黑圈与擅自加粗的根因）
+          active: {
+            size: 16,
+            fillOpacity: 1,
+            stroke: "#ffe58f",
+            lineWidth: 8,
+            strokeOpacity: 0.4,
+            labelOpacity: 1,
+            labelFontWeight: "normal",
+            halo: false,
+          },
+          selected: {
+            size: 16,
+            fillOpacity: 1,
+            stroke: "#ffe58f",
+            lineWidth: 8,
+            strokeOpacity: 0.4,
+            labelOpacity: 1,
+            labelFontWeight: "normal",
+            halo: false,
+          },
           inactive: { fillOpacity: 0.5, strokeOpacity: 0.42, labelOpacity: 0.4, halo: false },
         },
         // 动画阶段：进场淡入 + 筛选显隐淡入淡出（位置动画仍禁用，只有透明度）
@@ -242,8 +261,8 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
           labelOpacity: 0,
         },
         state: {
-          active: { opacity: 0.7, labelOpacity: 1 },
-          selected: { opacity: 0.7, labelOpacity: 1 },
+          active: { opacity: 0.7, labelOpacity: 1, labelFontWeight: "normal" },
+          selected: { opacity: 0.7, labelOpacity: 1, labelFontWeight: "normal" },
           inactive: { opacity: 0.1, labelOpacity: 0 },
         },
         animation: {
