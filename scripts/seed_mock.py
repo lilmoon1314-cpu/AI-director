@@ -1,14 +1,18 @@
 """模拟数据播种工具：向运行中的后端（默认 http://localhost:8000）清库并播种
 演示/负载世界——20 人物 / 8 功法 / 6 门派 / 20 物体 / 20 地点 / 80 事件 / 40 概念
 + 208 关系。仅操作运行中服务的开发库，e2e 各自使用独立临时库不受影响。
+请求按 --workers 并发（实体先于关系；同阶段内并发，SQLite 单写者由后端排队）。
 
-用法: uv run python scripts/seed_mock.py [--base http://localhost:8000]
+用法: uv run python scripts/seed_mock.py [--base http://localhost:8000] [--workers 4]
 """
 
 import argparse
 import json
 import random
 import urllib.request
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from typing import TypeVar
 
 CHAR_NAMES = [
     "林长风", "苏晚晴", "叶青崖", "萧子衿", "陆云深", "沈若尘", "顾惊鸿", "白照影",
@@ -58,11 +62,21 @@ class Api:
             assert r.status == 204
 
 
-def reset(api: Api) -> None:
-    for r in api.get("/api/relations"):
-        api.delete(f"/api/relations/{r['id']}")
-    for e in api.get("/api/entities"):
-        api.delete(f"/api/entities/{e['id']}")
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+def _parallel(fn: Callable[[T], R], items: Sequence[T], workers: int) -> list[R]:
+    """并发映射并保持提交顺序（workers<=1 退化为串行，便于排障）。"""
+    if workers <= 1 or len(items) <= 1:
+        return [fn(x) for x in items]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(fn, items))
+
+
+def reset(api: Api, workers: int) -> None:
+    _parallel(lambda r: api.delete(f"/api/relations/{r['id']}"), api.get("/api/relations"), workers)
+    _parallel(lambda e: api.delete(f"/api/entities/{e['id']}"), api.get("/api/entities"), workers)
 
 
 def pick(arr, i):
@@ -72,15 +86,21 @@ def pick(arr, i):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://localhost:8000")
+    parser.add_argument("--workers", type=int, default=4, help="并发请求数（默认 4）")
     args = parser.parse_args()
     api = Api(args.base)
+    workers = args.workers
     random.seed(42)
 
-    reset(api)
+    reset(api, workers)
 
-    char_ids = [api.post("/api/entities", {
-        "type": "character", "name": n, "aliases": [], "audience_known": i % 2 == 0,
-    })["id"] for i, n in enumerate(CHAR_NAMES)]
+    char_ids = _parallel(
+        lambda pair: api.post("/api/entities", {
+            "type": "character", "name": pair[1], "aliases": [], "audience_known": pair[0] % 2 == 0,
+        })["id"],
+        list(enumerate(CHAR_NAMES)),
+        workers,
+    )
 
     def rand_chars(n):
         return [random.choice(char_ids) for _ in range(n)]
@@ -109,8 +129,9 @@ def main() -> None:
         payloads.append({"type": "concept", "name": name, "aliases": [], "audience_known": True})
 
     ids = {"character": char_ids}
-    for p in payloads:
-        ids.setdefault(p["type"], []).append(api.post("/api/entities", p)["id"])
+    created = _parallel(lambda p: api.post("/api/entities", p)["id"], payloads, workers)
+    for p, pid in zip(payloads, created):
+        ids.setdefault(p["type"], []).append(pid)
 
     rels = []
     for i in range(15):
@@ -132,8 +153,7 @@ def main() -> None:
     for i in range(12):
         rels.append({"source": char_ids[(i + 5) % 20], "target": ids["skill"][i % 8], "type": "MASTERS", "audience_known": True})
 
-    for r in rels:
-        api.post("/api/relations", r)
+    _parallel(lambda r: api.post("/api/relations", r), rels, workers)
 
     total = sum(len(v) for v in ids.values())
     print(f"播种完成: {total} 实体 / {len(rels)} 关系 → {api.base}")
