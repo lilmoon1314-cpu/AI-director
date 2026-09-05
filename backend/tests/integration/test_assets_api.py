@@ -19,6 +19,7 @@ pytestmark = pytest.mark.integration
 
 # conftest 在导入阶段设置的环境变量（与被测应用共享同一临时目录）
 _ASSET_DIR = os.environ["ASSET_DIR"]
+_ASSET_DB_URL = os.environ["ASSET_DB_URL"]
 
 # 最小 PNG 字节流（内容不参与图片解码，仅作上传载体）
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake-png-data"
@@ -321,3 +322,31 @@ def test_image_file_route_same_origin(client: TestClient) -> None:
 
     missing = client.get("/api/assets/file/deadbeef.png")
     assert missing.status_code == 404, "不存在的存储名应 404"
+
+
+# ---------------- I11: 实体页资产记录唯一性（repository kind 过滤防翻转） ----------------
+
+
+def test_entity_page_creates_single_record(client: TestClient) -> None:
+    """I11: 两次 GET 实体页仅产生一条资产记录（fresh 命中不重复建行）。"""
+    import sqlite3
+
+    entity = _create_entity(client, name="陆云深")
+    page1 = client.get(f"/api/assets/entity/{entity['id']}/page")
+    assert page1.status_code == 200
+    page2 = client.get(f"/api/assets/entity/{entity['id']}/page")
+    assert page2.status_code == 200
+
+    db_path = _ASSET_DB_URL.removeprefix("sqlite+aiosqlite:///")
+    conn = sqlite3.connect(db_path)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM asset_records WHERE entity_id = ?", (entity["id"],)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 1, (
+        f"【问题】实体页重复生成资产记录（{count} 条）\n"
+        "【原因】get_entity_record 的 kind/entity_id 过滤或惰性命中失效\n"
+        "【修复】检查 repository.get_entity_record 过滤条件"
+    )

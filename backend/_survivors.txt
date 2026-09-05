@@ -1,0 +1,3583 @@
+
+===== MUTANT 1 =====
+--- app/assets/db.py
++++ app/assets/db.py
+@@ -21,7 +21,7 @@
+ from app.assets.models import AssetsBase
+ from app.config import get_settings
+ 
+-_SQLITE_PREFIX = "sqlite+aiosqlite:///"
++_SQLITE_PREFIX = "XXsqlite+aiosqlite:///XX"
+ 
+ # 进程级单例（模块私有，经函数访问；与主库 core.db 单例相互独立）
+ _engine: AsyncEngine | None = None
+
+
+===== MUTANT 8 =====
+--- app/assets/db.py
++++ app/assets/db.py
+@@ -36,7 +36,7 @@
+     """
+     if database_url.startswith(_SQLITE_PREFIX):
+         db_path = Path(database_url.removeprefix(_SQLITE_PREFIX))
+-        if str(db_path) not in ("", ":memory:"):
++        if str(db_path)  in ("", ":memory:"):
+             db_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+ 
+
+
+===== MUTANT 9 =====
+--- app/assets/db.py
++++ app/assets/db.py
+@@ -36,7 +36,7 @@
+     """
+     if database_url.startswith(_SQLITE_PREFIX):
+         db_path = Path(database_url.removeprefix(_SQLITE_PREFIX))
+-        if str(db_path) not in ("", ":memory:"):
++        if str(db_path) not in ("XXXX", ":memory:"):
+             db_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+ 
+
+
+===== MUTANT 10 =====
+--- app/assets/db.py
++++ app/assets/db.py
+@@ -36,7 +36,7 @@
+     """
+     if database_url.startswith(_SQLITE_PREFIX):
+         db_path = Path(database_url.removeprefix(_SQLITE_PREFIX))
+-        if str(db_path) not in ("", ":memory:"):
++        if str(db_path) not in ("", "XX:memory:XX"):
+             db_path.parent.mkdir(parents=True, exist_ok=True)
+ 
+ 
+
+
+===== MUTANT 11 =====
+--- app/assets/db.py
++++ app/assets/db.py
+@@ -37,7 +37,7 @@
+     if database_url.startswith(_SQLITE_PREFIX):
+         db_path = Path(database_url.removeprefix(_SQLITE_PREFIX))
+         if str(db_path) not in ("", ":memory:"):
+-            db_path.parent.mkdir(parents=True, exist_ok=True)
++            db_path.parent.mkdir(parents=False, exist_ok=True)
+ 
+ 
+ def _set_sqlite_pragma(dbapi_connection: object, _connection_record: object) -> None:
+
+
+===== MUTANT 26 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -43,7 +43,7 @@
+         entity_id 指向主库实体 id，应用层引用无跨库外键）。
+     """
+ 
+-    __tablename__ = "asset_records"
++    __tablename__ = "XXasset_recordsXX"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+
+===== MUTANT 30 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -46,7 +46,7 @@
+     __tablename__ = "asset_records"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    kind: Mapped[str] = mapped_column(String, nullable=True, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 31 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -46,7 +46,7 @@
+     __tablename__ = "asset_records"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    kind: Mapped[str] = mapped_column(String, nullable=False, index=False)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 32 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -46,7 +46,7 @@
+     __tablename__ = "asset_records"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    kind: Mapped[str] = None
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 35 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -47,7 +47,7 @@
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
++    entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=False)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+===== MUTANT 36 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -47,7 +47,7 @@
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
++    entity_id: Mapped[str | None] = None
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+===== MUTANT 37 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -48,7 +48,7 @@
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+-    category: Mapped[str] = mapped_column(String, nullable=False, default="")
++    category: Mapped[str] = mapped_column(String, nullable=True, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+===== MUTANT 38 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -48,7 +48,7 @@
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+-    category: Mapped[str] = mapped_column(String, nullable=False, default="")
++    category: Mapped[str] = mapped_column(String, nullable=False, default="XXXX")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+===== MUTANT 39 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -48,7 +48,7 @@
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+-    category: Mapped[str] = mapped_column(String, nullable=False, default="")
++    category: Mapped[str] = None
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+
+
+===== MUTANT 40 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -49,7 +49,7 @@
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+-    title: Mapped[str] = mapped_column(String, nullable=False)
++    title: Mapped[str] = mapped_column(String, nullable=True)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+===== MUTANT 41 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -49,7 +49,7 @@
+     kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+-    title: Mapped[str] = mapped_column(String, nullable=False)
++    title: Mapped[str] = None
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+===== MUTANT 42 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -50,7 +50,7 @@
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    description: Mapped[str] = mapped_column(Text, nullable=True, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+===== MUTANT 43 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -50,7 +50,7 @@
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    description: Mapped[str] = mapped_column(Text, nullable=False, default="XXXX")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+===== MUTANT 44 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -50,7 +50,7 @@
+     entity_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    description: Mapped[str] = None
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+===== MUTANT 45 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -51,7 +51,7 @@
+     category: Mapped[str] = mapped_column(String, nullable=False, default="")
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+-    attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
++    attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=True, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+===== MUTANT 47 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -52,7 +52,7 @@
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+-    html: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    html: Mapped[str] = mapped_column(Text, nullable=True, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+
+
+===== MUTANT 48 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -52,7 +52,7 @@
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+-    html: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    html: Mapped[str] = mapped_column(Text, nullable=False, default="XXXX")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+
+
+===== MUTANT 49 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -52,7 +52,7 @@
+     title: Mapped[str] = mapped_column(String, nullable=False)
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+-    html: Mapped[str] = mapped_column(Text, nullable=False, default="")
++    html: Mapped[str] = None
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+
+
+===== MUTANT 52 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -53,7 +53,7 @@
+     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+-    cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
++    cover_image_id: Mapped[str | None] = None
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
+
+
+===== MUTANT 53 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -54,7 +54,7 @@
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
++    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=True, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
+     )
+
+
+===== MUTANT 54 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -54,7 +54,7 @@
+     attributes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+     html: Mapped[str] = mapped_column(Text, nullable=False, default="")
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
++    created_at: Mapped[datetime] = None
+     updated_at: Mapped[datetime] = mapped_column(
+         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
+     )
+
+
+===== MUTANT 55 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -56,7 +56,7 @@
+     cover_image_id: Mapped[str | None] = mapped_column(String, nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+     updated_at: Mapped[datetime] = mapped_column(
+-        UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
++        UTCDateTime(), nullable=True, default=_utcnow, onupdate=_utcnow
+     )
+ 
+ 
+
+
+===== MUTANT 57 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -69,7 +69,7 @@
+         实体删除后的清理由孤儿清扫完成，见 service.list_entity_cards）。
+     """
+ 
+-    __tablename__ = "asset_images"
++    __tablename__ = "XXasset_imagesXX"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+
+===== MUTANT 61 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -72,7 +72,7 @@
+     __tablename__ = "asset_images"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    scope: Mapped[str] = mapped_column(String, nullable=True, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+
+===== MUTANT 62 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -72,7 +72,7 @@
+     __tablename__ = "asset_images"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    scope: Mapped[str] = mapped_column(String, nullable=False, index=False)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+
+===== MUTANT 63 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -72,7 +72,7 @@
+     __tablename__ = "asset_images"
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+-    scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    scope: Mapped[str] = None
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+
+
+===== MUTANT 64 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -73,7 +73,7 @@
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    owner_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 65 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -73,7 +73,7 @@
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    owner_id: Mapped[str] = mapped_column(String, nullable=False, index=False)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 66 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -73,7 +73,7 @@
+ 
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
++    owner_id: Mapped[str] = None
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+
+
+===== MUTANT 67 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -74,7 +74,7 @@
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    filename_orig: Mapped[str] = mapped_column(String, nullable=False)
++    filename_orig: Mapped[str] = mapped_column(String, nullable=True)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+
+
+===== MUTANT 68 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -74,7 +74,7 @@
+     id: Mapped[str] = mapped_column(String, primary_key=True)
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+-    filename_orig: Mapped[str] = mapped_column(String, nullable=False)
++    filename_orig: Mapped[str] = None
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+
+
+===== MUTANT 69 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -75,7 +75,7 @@
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+-    stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
++    stored_name: Mapped[str] = mapped_column(String, nullable=True, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+===== MUTANT 70 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -75,7 +75,7 @@
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+-    stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
++    stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=False)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+===== MUTANT 71 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -75,7 +75,7 @@
+     scope: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+-    stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
++    stored_name: Mapped[str] = None
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+===== MUTANT 72 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -76,7 +76,7 @@
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+-    mime: Mapped[str] = mapped_column(String, nullable=False)
++    mime: Mapped[str] = mapped_column(String, nullable=True)
+     size: Mapped[int] = mapped_column(nullable=False)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+ 
+
+
+===== MUTANT 73 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -76,7 +76,7 @@
+     owner_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+-    mime: Mapped[str] = mapped_column(String, nullable=False)
++    mime: Mapped[str] = None
+     size: Mapped[int] = mapped_column(nullable=False)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+ 
+
+
+===== MUTANT 74 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -77,6 +77,6 @@
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+-    size: Mapped[int] = mapped_column(nullable=False)
++    size: Mapped[int] = mapped_column(nullable=True)
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+ 
+
+
+===== MUTANT 75 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -77,6 +77,6 @@
+     filename_orig: Mapped[str] = mapped_column(String, nullable=False)
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+-    size: Mapped[int] = mapped_column(nullable=False)
++    size: Mapped[int] = None
+     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+ 
+
+
+===== MUTANT 76 =====
+--- app/assets/models.py
++++ app/assets/models.py
+@@ -78,5 +78,5 @@
+     stored_name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+     mime: Mapped[str] = mapped_column(String, nullable=False)
+     size: Mapped[int] = mapped_column(nullable=False)
+-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
++    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=True, default=_utcnow)
+ 
+
+
+===== MUTANT 78 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -23,7 +23,6 @@
+         天然满足该协议（结构化鸭子类型；成员声明为只读 property 以兼容 Literal 子类型）。
+     """
+ 
+-    @property
+     def id(self) -> str: ...
+ 
+     @property
+
+
+===== MUTANT 79 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -26,7 +26,6 @@
+     @property
+     def id(self) -> str: ...
+ 
+-    @property
+     def type(self) -> str: ...
+ 
+     @property
+
+
+===== MUTANT 80 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -29,7 +29,6 @@
+     @property
+     def type(self) -> str: ...
+ 
+-    @property
+     def name(self) -> str: ...
+ 
+     @property
+
+
+===== MUTANT 81 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -32,7 +32,6 @@
+     @property
+     def name(self) -> str: ...
+ 
+-    @property
+     def aliases(self) -> list[str]: ...
+ 
+     @property
+
+
+===== MUTANT 82 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -35,7 +35,6 @@
+     @property
+     def aliases(self) -> list[str]: ...
+ 
+-    @property
+     def description(self) -> str: ...
+ 
+     @property
+
+
+===== MUTANT 83 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -38,7 +38,6 @@
+     @property
+     def description(self) -> str: ...
+ 
+-    @property
+     def properties(self) -> dict[str, Any]: ...
+ 
+ 
+
+
+===== MUTANT 84 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -42,54 +42,7 @@
+     def properties(self) -> dict[str, Any]: ...
+ 
+ 
+-_CSS = """
+-:root { color-scheme: light dark; }
+-* { box-sizing: border-box; margin: 0; padding: 0; }
+-body {
+-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+-  background: #f4f5f7; color: #1d2129; line-height: 1.65; padding: 32px 16px;
+-}
+-@media (prefers-color-scheme: dark) {
+-  body { background: #17181c; color: #e8eaed; }
+-  .card, .attr-item { background: #23252b !important; }
+-  .chip { background: #2c2e35 !important; color: #cfd3da !important; }
+-}
+-.page { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+-.card {
+-  background: #ffffff; border-radius: 16px; padding: 24px 28px;
+-  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+-}
+-h1 { font-size: 26px; font-weight: 650; letter-spacing: .2px; }
+-h2 { font-size: 15px; font-weight: 600; opacity: .55; margin-bottom: 12px; letter-spacing: .5px; }
+-.chip {
+-  display: inline-block; padding: 2px 12px; border-radius: 999px;
+-  background: #eef0f3; color: #4e5661; font-size: 13px; margin-right: 8px;
+-}
+-.header-meta { margin-top: 8px; }
+-.aliases { color: #6b7280; font-size: 14px; margin-top: 6px; }
+-.desc-text { white-space: pre-wrap; }
+-dl.attrs { display: grid; grid-template-columns: 1fr; gap: 10px; }
+-.attr-item {
+-  background: #f8f9fb; border-radius: 12px; padding: 10px 16px;
+-  display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: baseline;
+-}
+-.attr-key { font-size: 13px; color: #6b7280; word-break: break-all; }
+-.attr-val { font-size: 14px; min-width: 0; }
+-.attr-val ul { padding-left: 18px; }
+-.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+-.gallery figure {
+-  border-radius: 12px; overflow: hidden; background: #f8f9fb;
+-  border: 1px solid rgba(0,0,0,.05);
+-}
+-.gallery img { width: 100%; height: 180px; object-fit: cover; display: block; }
+-.gallery figcaption {
+-  font-size: 12px; color: #6b7280; padding: 6px 10px;
+-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+-}
+-.gallery-empty { color: #9ca3af; font-size: 14px; }
+-footer { text-align: center; font-size: 12px; color: #9ca3af; padding: 8px 0 20px; }
+-@media (max-width: 640px) { .attr-item { grid-template-columns: 1fr; gap: 2px; } }
+-"""
++_CSS = None
+ 
+ 
+ def _esc(value: Any) -> str:
+
+
+===== MUTANT 85 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -98,7 +98,7 @@
+     作用: 任意值转 string 后做全量 HTML 转义（含引号），供安全插值。
+     参数: value — 任意动态值。返回值: str — 转义后文本。异常: 无。依赖: html.escape。
+     """
+-    return html.escape(str(value), quote=True)
++    return html.escape(str(value), quote=False)
+ 
+ 
+ def _format_scalar(value: Any) -> str:
+
+
+===== MUTANT 86 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -107,7 +107,7 @@
+     作用: 属性值的叶级渲染。
+     参数: value — 标量值。返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+-    if value is None:
++    if value is not None:
+         return "<span class='attr-val'>—</span>"
+     if isinstance(value, bool):
+         return _esc("是" if value else "否")
+
+
+===== MUTANT 87 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -108,7 +108,7 @@
+     参数: value — 标量值。返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+     if value is None:
+-        return "<span class='attr-val'>—</span>"
++        return "XX<span class='attr-val'>—</span>XX"
+     if isinstance(value, bool):
+         return _esc("是" if value else "否")
+     return _esc(value)
+
+
+===== MUTANT 88 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -110,7 +110,7 @@
+     if value is None:
+         return "<span class='attr-val'>—</span>"
+     if isinstance(value, bool):
+-        return _esc("是" if value else "否")
++        return _esc("XX是XX" if value else "否")
+     return _esc(value)
+ 
+ 
+
+
+===== MUTANT 89 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -110,7 +110,7 @@
+     if value is None:
+         return "<span class='attr-val'>—</span>"
+     if isinstance(value, bool):
+-        return _esc("是" if value else "否")
++        return _esc("是" if value else "XX否XX")
+     return _esc(value)
+ 
+ 
+
+
+===== MUTANT 90 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -122,7 +122,7 @@
+     参数: value — 任意 JSON 值。返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+     if isinstance(value, dict):
+-        rows = "".join(
++        rows = "XXXX".join(
+             f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+             f"<span class='attr-val'>{_render_value(v)}</span></div>"
+             for k, v in value.items()
+
+
+===== MUTANT 91 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -123,7 +123,7 @@
+     """
+     if isinstance(value, dict):
+         rows = "".join(
+-            f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
++            f"XX<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>XX"
+             f"<span class='attr-val'>{_render_value(v)}</span></div>"
+             for k, v in value.items()
+         )
+
+
+===== MUTANT 92 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -124,7 +124,7 @@
+     if isinstance(value, dict):
+         rows = "".join(
+             f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+-            f"<span class='attr-val'>{_render_value(v)}</span></div>"
++            f"XX<span class='attr-val'>{_render_value(v)}</span></div>XX"
+             for k, v in value.items()
+         )
+         return f"<div class='attr-val'>{rows}</div>"
+
+
+===== MUTANT 93 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -122,11 +122,7 @@
+     参数: value — 任意 JSON 值。返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+     if isinstance(value, dict):
+-        rows = "".join(
+-            f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+-            f"<span class='attr-val'>{_render_value(v)}</span></div>"
+-            for k, v in value.items()
+-        )
++        rows = None
+         return f"<div class='attr-val'>{rows}</div>"
+     if isinstance(value, list):
+         if not value:
+
+
+===== MUTANT 94 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -127,7 +127,7 @@
+             f"<span class='attr-val'>{_render_value(v)}</span></div>"
+             for k, v in value.items()
+         )
+-        return f"<div class='attr-val'>{rows}</div>"
++        return f"XX<div class='attr-val'>{rows}</div>XX"
+     if isinstance(value, list):
+         if not value:
+             return "<span class='attr-val'>—</span>"
+
+
+===== MUTANT 95 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -129,7 +129,7 @@
+         )
+         return f"<div class='attr-val'>{rows}</div>"
+     if isinstance(value, list):
+-        if not value:
++        if  value:
+             return "<span class='attr-val'>—</span>"
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+
+
+===== MUTANT 96 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -130,7 +130,7 @@
+         return f"<div class='attr-val'>{rows}</div>"
+     if isinstance(value, list):
+         if not value:
+-            return "<span class='attr-val'>—</span>"
++            return "XX<span class='attr-val'>—</span>XX"
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+         items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
+
+
+===== MUTANT 97 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -131,7 +131,7 @@
+     if isinstance(value, list):
+         if not value:
+             return "<span class='attr-val'>—</span>"
+-        if all(not isinstance(v, (list, dict)) for v in value):
++        if all( isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+         items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
+         return f"<ul>{items}</ul>"
+
+
+===== MUTANT 98 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -132,7 +132,7 @@
+         if not value:
+             return "<span class='attr-val'>—</span>"
+         if all(not isinstance(v, (list, dict)) for v in value):
+-            return _esc("、".join(str(v) for v in value))
++            return _esc("XX、XX".join(str(v) for v in value))
+         items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
+         return f"<ul>{items}</ul>"
+     return _format_scalar(value)
+
+
+===== MUTANT 99 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -133,7 +133,7 @@
+             return "<span class='attr-val'>—</span>"
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+-        items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
++        items = "XXXX".join(f"<li>{_render_value(v)}</li>" for v in value)
+         return f"<ul>{items}</ul>"
+     return _format_scalar(value)
+ 
+
+
+===== MUTANT 100 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -133,7 +133,7 @@
+             return "<span class='attr-val'>—</span>"
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+-        items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
++        items = "".join(f"XX<li>{_render_value(v)}</li>XX" for v in value)
+         return f"<ul>{items}</ul>"
+     return _format_scalar(value)
+ 
+
+
+===== MUTANT 101 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -133,7 +133,7 @@
+             return "<span class='attr-val'>—</span>"
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+-        items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
++        items = None
+         return f"<ul>{items}</ul>"
+     return _format_scalar(value)
+ 
+
+
+===== MUTANT 102 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -134,7 +134,7 @@
+         if all(not isinstance(v, (list, dict)) for v in value):
+             return _esc("、".join(str(v) for v in value))
+         items = "".join(f"<li>{_render_value(v)}</li>" for v in value)
+-        return f"<ul>{items}</ul>"
++        return f"XX<ul>{items}</ul>XX"
+     return _format_scalar(value)
+ 
+ 
+
+
+===== MUTANT 104 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -146,7 +146,7 @@
+     返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc、_render_value。
+     """
+     if not pairs:
+-        return ""
++        return "XXXX"
+     rows = "".join(
+         f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+         f"<span class='attr-val'>{_render_value(v)}</span></div>"
+
+
+===== MUTANT 105 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -147,7 +147,7 @@
+     """
+     if not pairs:
+         return ""
+-    rows = "".join(
++    rows = "XXXX".join(
+         f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+         f"<span class='attr-val'>{_render_value(v)}</span></div>"
+         for k, v in pairs
+
+
+===== MUTANT 106 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -148,7 +148,7 @@
+     if not pairs:
+         return ""
+     rows = "".join(
+-        f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
++        f"XX<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>XX"
+         f"<span class='attr-val'>{_render_value(v)}</span></div>"
+         for k, v in pairs
+     )
+
+
+===== MUTANT 107 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -149,7 +149,7 @@
+         return ""
+     rows = "".join(
+         f"<div class='attr-item'><span class='attr-key'>{_esc(k)}</span>"
+-        f"<span class='attr-val'>{_render_value(v)}</span></div>"
++        f"XX<span class='attr-val'>{_render_value(v)}</span></div>XX"
+         for k, v in pairs
+     )
+     return f"<section class='card'><h2>{_esc(title)}</h2><dl class='attrs'>{rows}</dl></section>"
+
+
+===== MUTANT 109 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -152,7 +152,7 @@
+         f"<span class='attr-val'>{_render_value(v)}</span></div>"
+         for k, v in pairs
+     )
+-    return f"<section class='card'><h2>{_esc(title)}</h2><dl class='attrs'>{rows}</dl></section>"
++    return f"XX<section class='card'><h2>{_esc(title)}</h2><dl class='attrs'>{rows}</dl></section>XX"
+ 
+ 
+ def _render_gallery(images: list[AssetImageRead]) -> str:
+
+
+===== MUTANT 111 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -163,7 +163,7 @@
+     返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+     if not images:
+-        section_title = "<h2>图片（0）</h2>"
++        section_title = "XX<h2>图片（0）</h2>XX"
+         return (
+             f"<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>"
+         )
+
+
+===== MUTANT 112 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -163,7 +163,7 @@
+     返回值: str — 安全 HTML 片段。异常: 无。依赖: _esc。
+     """
+     if not images:
+-        section_title = "<h2>图片（0）</h2>"
++        section_title = None
+         return (
+             f"<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>"
+         )
+
+
+===== MUTANT 113 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -165,7 +165,7 @@
+     if not images:
+         section_title = "<h2>图片（0）</h2>"
+         return (
+-            f"<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>"
++            f"XX<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>XX"
+         )
+     figures = "".join(
+         "<figure><img loading='lazy' src='"
+
+
+===== MUTANT 114 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -167,7 +167,7 @@
+         return (
+             f"<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>"
+         )
+-    figures = "".join(
++    figures = "XXXX".join(
+         "<figure><img loading='lazy' src='"
+         + _esc(img.url)
+         + "' alt='"
+
+
+===== MUTANT 115 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -168,7 +168,7 @@
+             f"<section class='card'>{section_title}<p class='gallery-empty'>暂无图片</p></section>"
+         )
+     figures = "".join(
+-        "<figure><img loading='lazy' src='"
++        "XX<figure><img loading='lazy' src='XX"
+         + _esc(img.url)
+         + "' alt='"
+         + _esc(img.filename_orig)
+
+
+===== MUTANT 118 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -170,7 +170,7 @@
+     figures = "".join(
+         "<figure><img loading='lazy' src='"
+         + _esc(img.url)
+-        + "' alt='"
++        + "XX' alt='XX"
+         + _esc(img.filename_orig)
+         + "'><figcaption>"
+         + _esc(img.filename_orig)
+
+
+===== MUTANT 121 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -172,7 +172,7 @@
+         + _esc(img.url)
+         + "' alt='"
+         + _esc(img.filename_orig)
+-        + "'><figcaption>"
++        + "XX'><figcaption>XX"
+         + _esc(img.filename_orig)
+         + "</figcaption></figure>"
+         for img in images
+
+
+===== MUTANT 124 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -174,7 +174,7 @@
+         + _esc(img.filename_orig)
+         + "'><figcaption>"
+         + _esc(img.filename_orig)
+-        + "</figcaption></figure>"
++        + "XX</figcaption></figure>XX"
+         for img in images
+     )
+     return (
+
+
+===== MUTANT 126 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -178,7 +178,7 @@
+         for img in images
+     )
+     return (
+-        f"<section class='card'><h2>图片（{len(images)}）</h2>"
++        f"XX<section class='card'><h2>图片（{len(images)}）</h2>XX"
+         f"<div class='gallery'>{figures}</div></section>"
+     )
+ 
+
+
+===== MUTANT 127 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -179,7 +179,7 @@
+     )
+     return (
+         f"<section class='card'><h2>图片（{len(images)}）</h2>"
+-        f"<div class='gallery'>{figures}</div></section>"
++        f"XX<div class='gallery'>{figures}</div></section>XX"
+     )
+ 
+ 
+
+
+===== MUTANT 128 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -191,7 +191,7 @@
+     返回值: str — 完整 HTML。异常: 无。依赖: _esc。
+     """
+     return (
+-        "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
++        "XX<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>XX"
+         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+         f"<title>{title} · AI Director 资产</title>"
+         f"<style>{_CSS}</style></head><body><main class='page'>{body}"
+
+
+===== MUTANT 129 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -192,7 +192,7 @@
+     """
+     return (
+         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
+-        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
++        "XX<meta name='viewport' content='width=device-width, initial-scale=1'>XX"
+         f"<title>{title} · AI Director 资产</title>"
+         f"<style>{_CSS}</style></head><body><main class='page'>{body}"
+         f"<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>"
+
+
+===== MUTANT 130 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -193,7 +193,7 @@
+     return (
+         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
+         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+-        f"<title>{title} · AI Director 资产</title>"
++        f"XX<title>{title} · AI Director 资产</title>XX"
+         f"<style>{_CSS}</style></head><body><main class='page'>{body}"
+         f"<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>"
+         "</main></body></html>"
+
+
+===== MUTANT 131 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -194,7 +194,7 @@
+         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
+         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+         f"<title>{title} · AI Director 资产</title>"
+-        f"<style>{_CSS}</style></head><body><main class='page'>{body}"
++        f"XX<style>{_CSS}</style></head><body><main class='page'>{body}XX"
+         f"<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>"
+         "</main></body></html>"
+     )
+
+
+===== MUTANT 132 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -195,7 +195,7 @@
+         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+         f"<title>{title} · AI Director 资产</title>"
+         f"<style>{_CSS}</style></head><body><main class='page'>{body}"
+-        f"<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>"
++        f"XX<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>XX"
+         "</main></body></html>"
+     )
+ 
+
+
+===== MUTANT 133 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -196,7 +196,7 @@
+         f"<title>{title} · AI Director 资产</title>"
+         f"<style>{_CSS}</style></head><body><main class='page'>{body}"
+         f"<footer>AI Director 资产库 · 生成于 {_esc(generated_at)}</footer>"
+-        "</main></body></html>"
++        "XX</main></body></html>XX"
+     )
+ 
+ 
+
+
+===== MUTANT 134 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -221,7 +221,7 @@
+     依赖: _page_shell、_render_attrs、_render_gallery、_esc。
+     """
+     header = (
+-        "<section class='card'><div>"
++        "XX<section class='card'><div>XX"
+         + (f"<span class='chip'>{_esc(category)}</span>" if category else "")
+         + f"</div><h1>{_esc(title)}</h1>"
+         + (
+
+
+===== MUTANT 136 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -222,7 +222,7 @@
+     """
+     header = (
+         "<section class='card'><div>"
+-        + (f"<span class='chip'>{_esc(category)}</span>" if category else "")
++        + (f"XX<span class='chip'>{_esc(category)}</span>XX" if category else "")
+         + f"</div><h1>{_esc(title)}</h1>"
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+
+
+===== MUTANT 137 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -222,7 +222,7 @@
+     """
+     header = (
+         "<section class='card'><div>"
+-        + (f"<span class='chip'>{_esc(category)}</span>" if category else "")
++        + (f"<span class='chip'>{_esc(category)}</span>" if category else "XXXX")
+         + f"</div><h1>{_esc(title)}</h1>"
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+
+
+===== MUTANT 139 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -223,7 +223,7 @@
+     header = (
+         "<section class='card'><div>"
+         + (f"<span class='chip'>{_esc(category)}</span>" if category else "")
+-        + f"</div><h1>{_esc(title)}</h1>"
++        + f"XX</div><h1>{_esc(title)}</h1>XX"
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+             f"<p class='desc-text'>{_esc(description)}</p></section>"
+
+
+===== MUTANT 141 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -225,7 +225,7 @@
+         + (f"<span class='chip'>{_esc(category)}</span>" if category else "")
+         + f"</div><h1>{_esc(title)}</h1>"
+         + (
+-            f"<section class='header-meta'><h2>概述</h2>"
++            f"XX<section class='header-meta'><h2>概述</h2>XX"
+             f"<p class='desc-text'>{_esc(description)}</p></section>"
+             if description
+             else ""
+
+
+===== MUTANT 142 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -226,7 +226,7 @@
+         + f"</div><h1>{_esc(title)}</h1>"
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+-            f"<p class='desc-text'>{_esc(description)}</p></section>"
++            f"XX<p class='desc-text'>{_esc(description)}</p></section>XX"
+             if description
+             else ""
+         )
+
+
+===== MUTANT 143 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -228,7 +228,7 @@
+             f"<section class='header-meta'><h2>概述</h2>"
+             f"<p class='desc-text'>{_esc(description)}</p></section>"
+             if description
+-            else ""
++            else "XXXX"
+         )
+         + "</section>"
+     )
+
+
+===== MUTANT 145 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -230,7 +230,7 @@
+             if description
+             else ""
+         )
+-        + "</section>"
++        + "XX</section>XX"
+     )
+     body = header + _render_attrs("自定义属性", list(attributes.items())) + _render_gallery(images)
+     return _page_shell(_esc(title), body, generated_at)
+
+
+===== MUTANT 148 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -232,7 +232,7 @@
+         )
+         + "</section>"
+     )
+-    body = header + _render_attrs("自定义属性", list(attributes.items())) + _render_gallery(images)
++    body = header + _render_attrs("XX自定义属性XX", list(attributes.items())) + _render_gallery(images)
+     return _page_shell(_esc(title), body, generated_at)
+ 
+ 
+
+
+===== MUTANT 152 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -253,7 +253,7 @@
+     依赖: _page_shell、_render_attrs、_render_gallery、_esc。
+     """
+     type_label = ENTITY_TYPE_LABELS.get(entity.type, entity.type)
+-    aliases_text = "、".join(entity.aliases)
++    aliases_text = "XX、XX".join(entity.aliases)
+     header = (
+         "<section class='card'><div>"
+         f"<span class='chip'>{_esc(type_label)}</span>"
+
+
+===== MUTANT 153 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -253,7 +253,7 @@
+     依赖: _page_shell、_render_attrs、_render_gallery、_esc。
+     """
+     type_label = ENTITY_TYPE_LABELS.get(entity.type, entity.type)
+-    aliases_text = "、".join(entity.aliases)
++    aliases_text = None
+     header = (
+         "<section class='card'><div>"
+         f"<span class='chip'>{_esc(type_label)}</span>"
+
+
+===== MUTANT 154 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -255,7 +255,7 @@
+     type_label = ENTITY_TYPE_LABELS.get(entity.type, entity.type)
+     aliases_text = "、".join(entity.aliases)
+     header = (
+-        "<section class='card'><div>"
++        "XX<section class='card'><div>XX"
+         f"<span class='chip'>{_esc(type_label)}</span>"
+         f"<span class='chip'>{_esc(entity.id)}</span></div>"
+         f"<h1>{_esc(entity.name)}</h1>"
+
+
+===== MUTANT 155 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -256,7 +256,7 @@
+     aliases_text = "、".join(entity.aliases)
+     header = (
+         "<section class='card'><div>"
+-        f"<span class='chip'>{_esc(type_label)}</span>"
++        f"XX<span class='chip'>{_esc(type_label)}</span>XX"
+         f"<span class='chip'>{_esc(entity.id)}</span></div>"
+         f"<h1>{_esc(entity.name)}</h1>"
+         + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
+
+
+===== MUTANT 156 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -257,7 +257,7 @@
+     header = (
+         "<section class='card'><div>"
+         f"<span class='chip'>{_esc(type_label)}</span>"
+-        f"<span class='chip'>{_esc(entity.id)}</span></div>"
++        f"XX<span class='chip'>{_esc(entity.id)}</span></div>XX"
+         f"<h1>{_esc(entity.name)}</h1>"
+         + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
+         + (
+
+
+===== MUTANT 157 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -258,7 +258,7 @@
+         "<section class='card'><div>"
+         f"<span class='chip'>{_esc(type_label)}</span>"
+         f"<span class='chip'>{_esc(entity.id)}</span></div>"
+-        f"<h1>{_esc(entity.name)}</h1>"
++        f"XX<h1>{_esc(entity.name)}</h1>XX"
+         + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+
+
+===== MUTANT 159 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -259,7 +259,7 @@
+         f"<span class='chip'>{_esc(type_label)}</span>"
+         f"<span class='chip'>{_esc(entity.id)}</span></div>"
+         f"<h1>{_esc(entity.name)}</h1>"
+-        + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
++        + (f"XX<p class='aliases'>别名：{_esc(aliases_text)}</p>XX" if aliases_text else "")
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+             f"<p class='desc-text'>{_esc(entity.description)}</p></section>"
+
+
+===== MUTANT 160 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -259,7 +259,7 @@
+         f"<span class='chip'>{_esc(type_label)}</span>"
+         f"<span class='chip'>{_esc(entity.id)}</span></div>"
+         f"<h1>{_esc(entity.name)}</h1>"
+-        + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
++        + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "XXXX")
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+             f"<p class='desc-text'>{_esc(entity.description)}</p></section>"
+
+
+===== MUTANT 162 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -261,7 +261,7 @@
+         f"<h1>{_esc(entity.name)}</h1>"
+         + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
+         + (
+-            f"<section class='header-meta'><h2>概述</h2>"
++            f"XX<section class='header-meta'><h2>概述</h2>XX"
+             f"<p class='desc-text'>{_esc(entity.description)}</p></section>"
+             if entity.description
+             else ""
+
+
+===== MUTANT 163 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -262,7 +262,7 @@
+         + (f"<p class='aliases'>别名：{_esc(aliases_text)}</p>" if aliases_text else "")
+         + (
+             f"<section class='header-meta'><h2>概述</h2>"
+-            f"<p class='desc-text'>{_esc(entity.description)}</p></section>"
++            f"XX<p class='desc-text'>{_esc(entity.description)}</p></section>XX"
+             if entity.description
+             else ""
+         )
+
+
+===== MUTANT 164 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -264,7 +264,7 @@
+             f"<section class='header-meta'><h2>概述</h2>"
+             f"<p class='desc-text'>{_esc(entity.description)}</p></section>"
+             if entity.description
+-            else ""
++            else "XXXX"
+         )
+         + "</section>"
+     )
+
+
+===== MUTANT 166 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -266,7 +266,7 @@
+             if entity.description
+             else ""
+         )
+-        + "</section>"
++        + "XX</section>XX"
+     )
+     body = (
+         header
+
+
+===== MUTANT 169 =====
+--- app/assets/rendering.py
++++ app/assets/rendering.py
+@@ -270,7 +270,7 @@
+     )
+     body = (
+         header
+-        + _render_attrs("类型属性", list(entity.properties.items()))
++        + _render_attrs("XX类型属性XX", list(entity.properties.items()))
+         + _render_gallery(images)
+     )
+     return _page_shell(_esc(entity.name), body, generated_at)
+
+
+===== MUTANT 172 =====
+--- app/assets/repository.py
++++ app/assets/repository.py
+@@ -30,7 +30,7 @@
+     返回值: AssetRecord 或 None。异常: 无。依赖: SQLAlchemy ORM。
+     """
+     stmt = select(AssetRecord).where(
+-        AssetRecord.kind == "entity", AssetRecord.entity_id == entity_id
++        AssetRecord.kind != "entity", AssetRecord.entity_id == entity_id
+     )
+     return (await session.scalars(stmt)).first()
+ 
+
+
+===== MUTANT 173 =====
+--- app/assets/repository.py
++++ app/assets/repository.py
+@@ -30,7 +30,7 @@
+     返回值: AssetRecord 或 None。异常: 无。依赖: SQLAlchemy ORM。
+     """
+     stmt = select(AssetRecord).where(
+-        AssetRecord.kind == "entity", AssetRecord.entity_id == entity_id
++        AssetRecord.kind == "XXentityXX", AssetRecord.entity_id == entity_id
+     )
+     return (await session.scalars(stmt)).first()
+ 
+
+
+===== MUTANT 174 =====
+--- app/assets/repository.py
++++ app/assets/repository.py
+@@ -30,7 +30,7 @@
+     返回值: AssetRecord 或 None。异常: 无。依赖: SQLAlchemy ORM。
+     """
+     stmt = select(AssetRecord).where(
+-        AssetRecord.kind == "entity", AssetRecord.entity_id == entity_id
++        AssetRecord.kind == "entity", AssetRecord.entity_id != entity_id
+     )
+     return (await session.scalars(stmt)).first()
+ 
+
+
+===== MUTANT 189 =====
+--- app/assets/repository.py
++++ app/assets/repository.py
+@@ -164,7 +164,7 @@
+     """
+     await session.execute(
+         update(AssetRecord)
+-        .where(AssetRecord.cover_image_id == image_id)
++        .where(AssetRecord.cover_image_id != image_id)
+         .values(cover_image_id=None)
+     )
+ 
+
+
+===== MUTANT 190 =====
+--- app/assets/repository.py
++++ app/assets/repository.py
+@@ -176,7 +176,7 @@
+     参数: session — 资产库会话；scope — 归属面；owner_id — 归属 id。
+     返回值: int。异常: 无。依赖: SQLAlchemy ORM。
+     """
+-    images = await list_images(session, scope, owner_id)
++    images = None
+     return len(images)
+ 
+ 
+
+
+===== MUTANT 192 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -24,7 +24,7 @@
+ )
+ from app.core.db import get_session
+ 
+-router = APIRouter(prefix="/api/assets", tags=["assets"])
++router = APIRouter(prefix="/api/assets", tags=["XXassetsXX"])
+ 
+ 
+ @router.post("/images", response_model=AssetImageRead, status_code=201)
+
+
+===== MUTANT 202 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -83,7 +83,7 @@
+     return FileResponse(path)
+ 
+ 
+-@router.delete("/images/{image_id}", status_code=204)
++@router.delete("XX/images/{image_id}XX", status_code=204)
+ async def delete_image(
+     image_id: str,
+     session: AsyncSession = Depends(get_assets_session),
+
+
+===== MUTANT 203 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -83,7 +83,7 @@
+     return FileResponse(path)
+ 
+ 
+-@router.delete("/images/{image_id}", status_code=204)
++@router.delete("/images/{image_id}", status_code=205)
+ async def delete_image(
+     image_id: str,
+     session: AsyncSession = Depends(get_assets_session),
+
+
+===== MUTANT 204 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -82,8 +82,6 @@
+     path: Path = await service.get_image_file(session, stored_name)
+     return FileResponse(path)
+ 
+-
+-@router.delete("/images/{image_id}", status_code=204)
+ async def delete_image(
+     image_id: str,
+     session: AsyncSession = Depends(get_assets_session),
+
+
+===== MUTANT 215 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -159,7 +159,7 @@
+     await service.delete_general(session, asset_id)
+ 
+ 
+-@router.get("/general/{asset_id}", response_model=AssetRead)
++@router.get("XX/general/{asset_id}XX", response_model=AssetRead)
+ async def get_general(
+     asset_id: str,
+     session: AsyncSession = Depends(get_assets_session),
+
+
+===== MUTANT 216 =====
+--- app/assets/router.py
++++ app/assets/router.py
+@@ -158,8 +158,6 @@
+     """
+     await service.delete_general(session, asset_id)
+ 
+-
+-@router.get("/general/{asset_id}", response_model=AssetRead)
+ async def get_general(
+     asset_id: str,
+     session: AsyncSession = Depends(get_assets_session),
+
+
+===== MUTANT 226 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -10,7 +10,7 @@
+ from pydantic import BaseModel, ConfigDict, Field, computed_field
+ 
+ # 资产种类：general=通用资产（用户创建）；entity=实体资产页（系统按主库实体生成）
+-AssetKind = Literal["general", "entity"]
++AssetKind = Literal["general", "XXentityXX"]
+ # 图片归属面：general 图片挂通用资产；entity 图片挂主库实体 id
+ AssetScope = Literal["general", "entity"]
+ 
+
+
+===== MUTANT 232 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -18,7 +18,7 @@
+ # 独立常量声明——跨模块禁止 import entities.schemas 内部类型）
+ ENTITY_TYPE_ORDER: tuple[str, ...] = (
+     "character",
+-    "faction",
++    "XXfactionXX",
+     "location",
+     "item",
+     "skill",
+
+
+===== MUTANT 233 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -19,7 +19,7 @@
+ ENTITY_TYPE_ORDER: tuple[str, ...] = (
+     "character",
+     "faction",
+-    "location",
++    "XXlocationXX",
+     "item",
+     "skill",
+     "event",
+
+
+===== MUTANT 234 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -20,7 +20,7 @@
+     "character",
+     "faction",
+     "location",
+-    "item",
++    "XXitemXX",
+     "skill",
+     "event",
+     "concept",
+
+
+===== MUTANT 235 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -21,7 +21,7 @@
+     "faction",
+     "location",
+     "item",
+-    "skill",
++    "XXskillXX",
+     "event",
+     "concept",
+ )
+
+
+===== MUTANT 236 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -22,7 +22,7 @@
+     "location",
+     "item",
+     "skill",
+-    "event",
++    "XXeventXX",
+     "concept",
+ )
+ 
+
+
+===== MUTANT 237 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -23,7 +23,7 @@
+     "item",
+     "skill",
+     "event",
+-    "concept",
++    "XXconceptXX",
+ )
+ 
+ # 实体类型中文名（HTML 页与卡片展示用）
+
+
+===== MUTANT 240 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -28,7 +28,7 @@
+ 
+ # 实体类型中文名（HTML 页与卡片展示用）
+ ENTITY_TYPE_LABELS: dict[str, str] = {
+-    "character": "人物",
++    "character": "XX人物XX",
+     "faction": "门派",
+     "location": "地点",
+     "item": "物件",
+
+
+===== MUTANT 241 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -29,7 +29,7 @@
+ # 实体类型中文名（HTML 页与卡片展示用）
+ ENTITY_TYPE_LABELS: dict[str, str] = {
+     "character": "人物",
+-    "faction": "门派",
++    "XXfactionXX": "门派",
+     "location": "地点",
+     "item": "物件",
+     "skill": "功法",
+
+
+===== MUTANT 242 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -29,7 +29,7 @@
+ # 实体类型中文名（HTML 页与卡片展示用）
+ ENTITY_TYPE_LABELS: dict[str, str] = {
+     "character": "人物",
+-    "faction": "门派",
++    "faction": "XX门派XX",
+     "location": "地点",
+     "item": "物件",
+     "skill": "功法",
+
+
+===== MUTANT 243 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -30,7 +30,7 @@
+ ENTITY_TYPE_LABELS: dict[str, str] = {
+     "character": "人物",
+     "faction": "门派",
+-    "location": "地点",
++    "XXlocationXX": "地点",
+     "item": "物件",
+     "skill": "功法",
+     "event": "事件",
+
+
+===== MUTANT 244 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -30,7 +30,7 @@
+ ENTITY_TYPE_LABELS: dict[str, str] = {
+     "character": "人物",
+     "faction": "门派",
+-    "location": "地点",
++    "location": "XX地点XX",
+     "item": "物件",
+     "skill": "功法",
+     "event": "事件",
+
+
+===== MUTANT 245 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -31,7 +31,7 @@
+     "character": "人物",
+     "faction": "门派",
+     "location": "地点",
+-    "item": "物件",
++    "XXitemXX": "物件",
+     "skill": "功法",
+     "event": "事件",
+     "concept": "概念",
+
+
+===== MUTANT 246 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -31,7 +31,7 @@
+     "character": "人物",
+     "faction": "门派",
+     "location": "地点",
+-    "item": "物件",
++    "item": "XX物件XX",
+     "skill": "功法",
+     "event": "事件",
+     "concept": "概念",
+
+
+===== MUTANT 247 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -32,7 +32,7 @@
+     "faction": "门派",
+     "location": "地点",
+     "item": "物件",
+-    "skill": "功法",
++    "XXskillXX": "功法",
+     "event": "事件",
+     "concept": "概念",
+ }
+
+
+===== MUTANT 248 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -32,7 +32,7 @@
+     "faction": "门派",
+     "location": "地点",
+     "item": "物件",
+-    "skill": "功法",
++    "skill": "XX功法XX",
+     "event": "事件",
+     "concept": "概念",
+ }
+
+
+===== MUTANT 249 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -33,7 +33,7 @@
+     "location": "地点",
+     "item": "物件",
+     "skill": "功法",
+-    "event": "事件",
++    "XXeventXX": "事件",
+     "concept": "概念",
+ }
+ 
+
+
+===== MUTANT 250 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -33,7 +33,7 @@
+     "location": "地点",
+     "item": "物件",
+     "skill": "功法",
+-    "event": "事件",
++    "event": "XX事件XX",
+     "concept": "概念",
+ }
+ 
+
+
+===== MUTANT 251 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -34,7 +34,7 @@
+     "item": "物件",
+     "skill": "功法",
+     "event": "事件",
+-    "concept": "概念",
++    "XXconceptXX": "概念",
+ }
+ 
+ 
+
+
+===== MUTANT 252 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -34,7 +34,7 @@
+     "item": "物件",
+     "skill": "功法",
+     "event": "事件",
+-    "concept": "概念",
++    "concept": "XX概念XX",
+ }
+ 
+ 
+
+
+===== MUTANT 254 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -46,7 +46,7 @@
+     """
+     import uuid
+ 
+-    return f"asset-{uuid.uuid4().hex[:12]}"
++    return f"asset-{uuid.uuid4().hex[:13]}"
+ 
+ 
+ def generate_image_id() -> str:
+
+
+===== MUTANT 255 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -46,7 +46,7 @@
+     """
+     import uuid
+ 
+-    return f"asset-{uuid.uuid4().hex[:12]}"
++    return f"XXasset-{uuid.uuid4().hex[:12]}XX"
+ 
+ 
+ def generate_image_id() -> str:
+
+
+===== MUTANT 256 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -57,7 +57,7 @@
+     """
+     import uuid
+ 
+-    return f"img-{uuid.uuid4().hex[:12]}"
++    return f"img-{uuid.uuid4().hex[:13]}"
+ 
+ 
+ class AssetImageRead(BaseModel):
+
+
+===== MUTANT 257 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -57,7 +57,7 @@
+     """
+     import uuid
+ 
+-    return f"img-{uuid.uuid4().hex[:12]}"
++    return f"XXimg-{uuid.uuid4().hex[:12]}XX"
+ 
+ 
+ class AssetImageRead(BaseModel):
+
+
+===== MUTANT 261 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -75,7 +75,7 @@
+     created_at: datetime
+ 
+     @computed_field  # type: ignore[prop-decorator]
+-    @property
++
+     def url(self) -> str:
+         """图片访问地址（/api 前缀同源路由——HTML 资产页内的图片引用在任何部署
+         形态下都与页面同源，开发期经 vite /api 代理，生产可经网关统一转发）。"""
+
+
+===== MUTANT 264 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -85,7 +85,7 @@
+ class GeneralAssetCreate(BaseModel):
+     """创建通用资产请求体（extra=forbid 拒绝未知字段）。"""
+ 
+-    model_config = ConfigDict(extra="forbid")
++    model_config = None
+ 
+     category: str = Field(default="", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+
+
+===== MUTANT 265 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -87,7 +87,7 @@
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    category: str = Field(default="", max_length=100)
++    category: str = Field(default="XXXX", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+     description: str = Field(default="", max_length=20000)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+===== MUTANT 266 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -87,7 +87,7 @@
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    category: str = Field(default="", max_length=100)
++    category: str = Field(default="", max_length=101)
+     title: str = Field(min_length=1, max_length=200)
+     description: str = Field(default="", max_length=20000)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+===== MUTANT 267 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -87,7 +87,7 @@
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    category: str = Field(default="", max_length=100)
++    category: str = None
+     title: str = Field(min_length=1, max_length=200)
+     description: str = Field(default="", max_length=20000)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+===== MUTANT 268 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -88,7 +88,7 @@
+     model_config = ConfigDict(extra="forbid")
+ 
+     category: str = Field(default="", max_length=100)
+-    title: str = Field(min_length=1, max_length=200)
++    title: str = Field(min_length=2, max_length=200)
+     description: str = Field(default="", max_length=20000)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+ 
+
+
+===== MUTANT 271 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -89,7 +89,7 @@
+ 
+     category: str = Field(default="", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+-    description: str = Field(default="", max_length=20000)
++    description: str = Field(default="XXXX", max_length=20000)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+ 
+ 
+
+
+===== MUTANT 272 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -89,7 +89,7 @@
+ 
+     category: str = Field(default="", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+-    description: str = Field(default="", max_length=20000)
++    description: str = Field(default="", max_length=20001)
+     attributes: dict[str, Any] = Field(default_factory=dict)
+ 
+ 
+
+
+===== MUTANT 273 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -89,7 +89,7 @@
+ 
+     category: str = Field(default="", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+-    description: str = Field(default="", max_length=20000)
++    description: str = None
+     attributes: dict[str, Any] = Field(default_factory=dict)
+ 
+ 
+
+
+===== MUTANT 274 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -90,7 +90,7 @@
+     category: str = Field(default="", max_length=100)
+     title: str = Field(min_length=1, max_length=200)
+     description: str = Field(default="", max_length=20000)
+-    attributes: dict[str, Any] = Field(default_factory=dict)
++    attributes: dict[str, Any] = None
+ 
+ 
+ class GeneralAssetUpdate(BaseModel):
+
+
+===== MUTANT 276 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -96,7 +96,7 @@
+ class GeneralAssetUpdate(BaseModel):
+     """局部更新通用资产请求体（仅更新显式提供的字段；extra=forbid）。"""
+ 
+-    model_config = ConfigDict(extra="forbid")
++    model_config = None
+ 
+     category: str | None = Field(default=None, max_length=100)
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+===== MUTANT 278 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -98,7 +98,7 @@
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    category: str | None = Field(default=None, max_length=100)
++    category: str | None = Field(default=None, max_length=101)
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+     description: str | None = Field(default=None, max_length=20000)
+     attributes: dict[str, Any] | None = None
+
+
+===== MUTANT 279 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -98,7 +98,7 @@
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    category: str | None = Field(default=None, max_length=100)
++    category: str | None = None
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+     description: str | None = Field(default=None, max_length=20000)
+     attributes: dict[str, Any] | None = None
+
+
+===== MUTANT 281 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -99,7 +99,7 @@
+     model_config = ConfigDict(extra="forbid")
+ 
+     category: str | None = Field(default=None, max_length=100)
+-    title: str | None = Field(default=None, min_length=1, max_length=200)
++    title: str | None = Field(default=None, min_length=2, max_length=200)
+     description: str | None = Field(default=None, max_length=20000)
+     attributes: dict[str, Any] | None = None
+ 
+
+
+===== MUTANT 282 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -99,7 +99,7 @@
+     model_config = ConfigDict(extra="forbid")
+ 
+     category: str | None = Field(default=None, max_length=100)
+-    title: str | None = Field(default=None, min_length=1, max_length=200)
++    title: str | None = Field(default=None, min_length=1, max_length=201)
+     description: str | None = Field(default=None, max_length=20000)
+     attributes: dict[str, Any] | None = None
+ 
+
+
+===== MUTANT 283 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -99,7 +99,7 @@
+     model_config = ConfigDict(extra="forbid")
+ 
+     category: str | None = Field(default=None, max_length=100)
+-    title: str | None = Field(default=None, min_length=1, max_length=200)
++    title: str | None = None
+     description: str | None = Field(default=None, max_length=20000)
+     attributes: dict[str, Any] | None = None
+ 
+
+
+===== MUTANT 285 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -100,7 +100,7 @@
+ 
+     category: str | None = Field(default=None, max_length=100)
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+-    description: str | None = Field(default=None, max_length=20000)
++    description: str | None = Field(default=None, max_length=20001)
+     attributes: dict[str, Any] | None = None
+ 
+ 
+
+
+===== MUTANT 286 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -100,7 +100,7 @@
+ 
+     category: str | None = Field(default=None, max_length=100)
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+-    description: str | None = Field(default=None, max_length=20000)
++    description: str | None = None
+     attributes: dict[str, Any] | None = None
+ 
+ 
+
+
+===== MUTANT 288 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -101,7 +101,7 @@
+     category: str | None = Field(default=None, max_length=100)
+     title: str | None = Field(default=None, min_length=1, max_length=200)
+     description: str | None = Field(default=None, max_length=20000)
+-    attributes: dict[str, Any] | None = None
++    attributes: dict[str, Any] | None = ""
+ 
+ 
+ class CoverSet(BaseModel):
+
+
+===== MUTANT 290 =====
+--- app/assets/schemas.py
++++ app/assets/schemas.py
+@@ -107,7 +107,7 @@
+ class CoverSet(BaseModel):
+     """设置封面请求体（PUT /general/{id}/cover）。"""
+ 
+-    model_config = ConfigDict(extra="forbid")
++    model_config = None
+ 
+     image_id: str
+ 
+
+
+===== MUTANT 291 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -39,7 +39,7 @@
+     参数: asset_id — 资产 id。返回值: NotFoundError。异常: 无。依赖: 无。
+     """
+     return NotFoundError(
+-        problem="资产不存在",
++        problem="XX资产不存在XX",
+         cause=f"id '{asset_id}' 未在资产库中",
+         fix="先调用 GET /api/assets/general 确认资产 id",
+         detail={"asset_id": asset_id},
+
+
+===== MUTANT 292 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -40,7 +40,7 @@
+     """
+     return NotFoundError(
+         problem="资产不存在",
+-        cause=f"id '{asset_id}' 未在资产库中",
++        cause=f"XXid '{asset_id}' 未在资产库中XX",
+         fix="先调用 GET /api/assets/general 确认资产 id",
+         detail={"asset_id": asset_id},
+     )
+
+
+===== MUTANT 293 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -41,7 +41,7 @@
+     return NotFoundError(
+         problem="资产不存在",
+         cause=f"id '{asset_id}' 未在资产库中",
+-        fix="先调用 GET /api/assets/general 确认资产 id",
++        fix="XX先调用 GET /api/assets/general 确认资产 idXX",
+         detail={"asset_id": asset_id},
+     )
+ 
+
+
+===== MUTANT 294 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -42,7 +42,7 @@
+         problem="资产不存在",
+         cause=f"id '{asset_id}' 未在资产库中",
+         fix="先调用 GET /api/assets/general 确认资产 id",
+-        detail={"asset_id": asset_id},
++        detail={"XXasset_idXX": asset_id},
+     )
+ 
+ 
+
+
+===== MUTANT 295 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -53,7 +53,7 @@
+     参数: image_id — 图片 id。返回值: NotFoundError。异常: 无。依赖: 无。
+     """
+     return NotFoundError(
+-        problem="图片不存在",
++        problem="XX图片不存在XX",
+         cause=f"id '{image_id}' 未在资产库中",
+         fix="先调用 GET /api/assets/general/{id} 确认图片归属",
+         detail={"image_id": image_id},
+
+
+===== MUTANT 296 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -54,7 +54,7 @@
+     """
+     return NotFoundError(
+         problem="图片不存在",
+-        cause=f"id '{image_id}' 未在资产库中",
++        cause=f"XXid '{image_id}' 未在资产库中XX",
+         fix="先调用 GET /api/assets/general/{id} 确认图片归属",
+         detail={"image_id": image_id},
+     )
+
+
+===== MUTANT 297 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -55,7 +55,7 @@
+     return NotFoundError(
+         problem="图片不存在",
+         cause=f"id '{image_id}' 未在资产库中",
+-        fix="先调用 GET /api/assets/general/{id} 确认图片归属",
++        fix="XX先调用 GET /api/assets/general/{id} 确认图片归属XX",
+         detail={"image_id": image_id},
+     )
+ 
+
+
+===== MUTANT 298 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -56,7 +56,7 @@
+         problem="图片不存在",
+         cause=f"id '{image_id}' 未在资产库中",
+         fix="先调用 GET /api/assets/general/{id} 确认图片归属",
+-        detail={"image_id": image_id},
++        detail={"XXimage_idXX": image_id},
+     )
+ 
+ 
+
+
+===== MUTANT 299 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -68,8 +68,6 @@
+     """
+     return datetime.now(UTC)
+ 
+-
+-@checkpoint
+ async def init_database() -> None:
+     """资产库建表引导（应用启动组合根入口）。
+ 
+
+
+===== MUTANT 300 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -80,8 +80,6 @@
+     """
+     await assets_db.init_assets_db()
+ 
+-
+-@checkpoint
+ async def shutdown_engine() -> None:
+     """释放资产库引擎（应用停机组合根入口）。
+ 
+
+
+===== MUTANT 310 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -129,8 +129,6 @@
+         updated_at=record.updated_at,
+     )
+ 
+-
+-@checkpoint
+ async def upload_image(
+     session: AsyncSession,
+     main_session: AsyncSession,
+
+
+===== MUTANT 312 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -153,7 +153,7 @@
+     """
+     settings = get_settings()
+     ext = storage.validate_upload(
+-        filename=upload.filename or "",
++        filename=upload.filename or "XXXX",
+         content_type=upload.content_type or "",
+         max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
+         allowed_extensions=settings.asset_allowed_type_list,
+
+
+===== MUTANT 314 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -154,7 +154,7 @@
+     settings = get_settings()
+     ext = storage.validate_upload(
+         filename=upload.filename or "",
+-        content_type=upload.content_type or "",
++        content_type=upload.content_type or "XXXX",
+         max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
+         allowed_extensions=settings.asset_allowed_type_list,
+     )
+
+
+===== MUTANT 316 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -155,7 +155,7 @@
+     ext = storage.validate_upload(
+         filename=upload.filename or "",
+         content_type=upload.content_type or "",
+-        max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
++        max_size_bytes=settings.asset_max_size_mb / 1024 * 1024,
+         allowed_extensions=settings.asset_allowed_type_list,
+     )
+     if scope == "entity":
+
+
+===== MUTANT 317 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -155,7 +155,7 @@
+     ext = storage.validate_upload(
+         filename=upload.filename or "",
+         content_type=upload.content_type or "",
+-        max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
++        max_size_bytes=settings.asset_max_size_mb * 1025 * 1024,
+         allowed_extensions=settings.asset_allowed_type_list,
+     )
+     if scope == "entity":
+
+
+===== MUTANT 318 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -155,7 +155,7 @@
+     ext = storage.validate_upload(
+         filename=upload.filename or "",
+         content_type=upload.content_type or "",
+-        max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
++        max_size_bytes=settings.asset_max_size_mb * 1024 / 1024,
+         allowed_extensions=settings.asset_allowed_type_list,
+     )
+     if scope == "entity":
+
+
+===== MUTANT 319 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -155,7 +155,7 @@
+     ext = storage.validate_upload(
+         filename=upload.filename or "",
+         content_type=upload.content_type or "",
+-        max_size_bytes=settings.asset_max_size_mb * 1024 * 1024,
++        max_size_bytes=settings.asset_max_size_mb * 1024 * 1025,
+         allowed_extensions=settings.asset_allowed_type_list,
+     )
+     if scope == "entity":
+
+
+===== MUTANT 327 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -162,7 +162,7 @@
+         await entities_service.get(main_session, owner_id)  # 不存在即 NotFound
+     else:
+         record = await repository.get_record(session, owner_id)
+-        if record is None or record.kind != "general":
++        if record is None and record.kind != "general":
+             raise _not_found_asset(owner_id)
+ 
+     stored_name = storage.build_stored_name(ext)
+
+
+===== MUTANT 330 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -167,7 +167,7 @@
+ 
+     stored_name = storage.build_stored_name(ext)
+     dest = storage.resolve_stored_path(stored_name, settings.asset_dir)
+-    Path(settings.asset_dir).mkdir(parents=True, exist_ok=True)
++    Path(settings.asset_dir).mkdir(parents=False, exist_ok=True)
+     size = await storage.write_stream(upload, dest, settings.asset_max_size_mb * 1024 * 1024)
+ 
+     now = _now()
+
+
+===== MUTANT 333 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -168,7 +168,7 @@
+     stored_name = storage.build_stored_name(ext)
+     dest = storage.resolve_stored_path(stored_name, settings.asset_dir)
+     Path(settings.asset_dir).mkdir(parents=True, exist_ok=True)
+-    size = await storage.write_stream(upload, dest, settings.asset_max_size_mb * 1024 * 1024)
++    size = await storage.write_stream(upload, dest, settings.asset_max_size_mb * 1025 * 1024)
+ 
+     now = _now()
+     image = await repository.add_image(
+
+
+===== MUTANT 335 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -168,7 +168,7 @@
+     stored_name = storage.build_stored_name(ext)
+     dest = storage.resolve_stored_path(stored_name, settings.asset_dir)
+     Path(settings.asset_dir).mkdir(parents=True, exist_ok=True)
+-    size = await storage.write_stream(upload, dest, settings.asset_max_size_mb * 1024 * 1024)
++    size = await storage.write_stream(upload, dest, settings.asset_max_size_mb * 1024 * 1025)
+ 
+     now = _now()
+     image = await repository.add_image(
+
+
+===== MUTANT 338 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -177,7 +177,7 @@
+             image_id=generate_image_id(),
+             scope=scope,
+             owner_id=owner_id,
+-            filename_orig=upload.filename or stored_name,
++            filename_orig=upload.filename and stored_name,
+             stored_name=stored_name,
+             mime=upload.content_type or "application/octet-stream",
+             size=size,
+
+
+===== MUTANT 339 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -179,7 +179,7 @@
+             owner_id=owner_id,
+             filename_orig=upload.filename or stored_name,
+             stored_name=stored_name,
+-            mime=upload.content_type or "application/octet-stream",
++            mime=upload.content_type or "XXapplication/octet-streamXX",
+             size=size,
+             now=now,
+         ),
+
+
+===== MUTANT 340 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -179,7 +179,7 @@
+             owner_id=owner_id,
+             filename_orig=upload.filename or stored_name,
+             stored_name=stored_name,
+-            mime=upload.content_type or "application/octet-stream",
++            mime=upload.content_type and "application/octet-stream",
+             size=size,
+             now=now,
+         ),
+
+
+===== MUTANT 349 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -191,8 +191,6 @@
+     await session.commit()
+     return AssetImageRead.model_validate(image)
+ 
+-
+-@checkpoint
+ async def list_images(session: AsyncSession, *, scope: str, owner_id: str) -> list[AssetImageRead]:
+     """图片明细列表（按归属；实体详情面板图片区数据源）。
+ 
+
+
+===== MUTANT 351 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -204,8 +204,6 @@
+     images = await repository.list_images(session, scope, owner_id)
+     return [AssetImageRead.model_validate(img) for img in images]
+ 
+-
+-@checkpoint
+ async def get_image_file(session: AsyncSession, stored_name: str) -> Path:
+     """解析图片物理文件路径（图片访问路由的数据源）。
+ 
+
+
+===== MUTANT 354 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -220,8 +220,6 @@
+         raise storage.not_found(stored_name)
+     return path
+ 
+-
+-@checkpoint
+ async def delete_image(session: AsyncSession, image_id: str) -> None:
+     """删除图片（记录 + 物理文件 + 封面引用清空）。
+ 
+
+
+===== MUTANT 357 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -238,8 +238,6 @@
+     await repository.delete_image(session, image)
+     await session.commit()
+ 
+-
+-@checkpoint
+ async def set_cover(session: AsyncSession, asset_id: str, image_id: str) -> AssetRead:
+     """设置通用资产封面（图片必须归属该资产）。
+ 
+
+
+===== MUTANT 362 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -250,7 +250,7 @@
+     依赖: repository。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None and record.kind != "general":
+         raise _not_found_asset(asset_id)
+     image = await repository.get_image(session, image_id)
+     if image is None:
+
+
+===== MUTANT 368 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -255,7 +255,7 @@
+     image = await repository.get_image(session, image_id)
+     if image is None:
+         raise _not_found_image(image_id)
+-    if image.scope != "general" or image.owner_id != asset_id:
++    if image.scope != "general" and image.owner_id != asset_id:
+         raise ValidationError(
+             problem="封面图片归属不符",
+             cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
+
+
+===== MUTANT 369 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -257,7 +257,7 @@
+         raise _not_found_image(image_id)
+     if image.scope != "general" or image.owner_id != asset_id:
+         raise ValidationError(
+-            problem="封面图片归属不符",
++            problem="XX封面图片归属不符XX",
+             cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
+             fix="请先上传该资产名下的图片，再从其图片列表中选择封面",
+             detail={"asset_id": asset_id, "image_id": image_id},
+
+
+===== MUTANT 370 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -258,7 +258,7 @@
+     if image.scope != "general" or image.owner_id != asset_id:
+         raise ValidationError(
+             problem="封面图片归属不符",
+-            cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
++            cause=f"XX图片 '{image_id}' 不属于资产 '{asset_id}'XX",
+             fix="请先上传该资产名下的图片，再从其图片列表中选择封面",
+             detail={"asset_id": asset_id, "image_id": image_id},
+         )
+
+
+===== MUTANT 371 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -259,7 +259,7 @@
+         raise ValidationError(
+             problem="封面图片归属不符",
+             cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
+-            fix="请先上传该资产名下的图片，再从其图片列表中选择封面",
++            fix="XX请先上传该资产名下的图片，再从其图片列表中选择封面XX",
+             detail={"asset_id": asset_id, "image_id": image_id},
+         )
+     record.cover_image_id = image_id
+
+
+===== MUTANT 372 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -260,7 +260,7 @@
+             problem="封面图片归属不符",
+             cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
+             fix="请先上传该资产名下的图片，再从其图片列表中选择封面",
+-            detail={"asset_id": asset_id, "image_id": image_id},
++            detail={"XXasset_idXX": asset_id, "image_id": image_id},
+         )
+     record.cover_image_id = image_id
+     record = await repository.save_record(session, record)
+
+
+===== MUTANT 373 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -260,7 +260,7 @@
+             problem="封面图片归属不符",
+             cause=f"图片 '{image_id}' 不属于资产 '{asset_id}'",
+             fix="请先上传该资产名下的图片，再从其图片列表中选择封面",
+-            detail={"asset_id": asset_id, "image_id": image_id},
++            detail={"asset_id": asset_id, "XXimage_idXX": image_id},
+         )
+     record.cover_image_id = image_id
+     record = await repository.save_record(session, record)
+
+
+===== MUTANT 376 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -264,7 +264,7 @@
+         )
+     record.cover_image_id = image_id
+     record = await repository.save_record(session, record)
+-    images = await repository.list_images(session, "general", asset_id)
++    images = await repository.list_images(session, "XXgeneralXX", asset_id)
+     await session.commit()
+     return _asset_read(record, images)
+ 
+
+
+===== MUTANT 378 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -268,8 +268,6 @@
+     await session.commit()
+     return _asset_read(record, images)
+ 
+-
+-@checkpoint
+ async def create_general(session: AsyncSession, payload: GeneralAssetCreate) -> AssetRead:
+     """创建通用资产（基础字段 + attributes 自由属性 → 模板渲染 HTML 存库）。
+ 
+
+
+===== MUTANT 381 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -296,7 +296,7 @@
+                 description=payload.description,
+                 attributes=payload.attributes,
+                 images=[],
+-                generated_at=now.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
++                generated_at=now.astimezone(UTC).strftime("XX%Y-%m-%d %H:%M UTCXX"),
+             ),
+             now=now,
+         ),
+
+
+===== MUTANT 383 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -304,8 +304,6 @@
+     await session.commit()
+     return _asset_read(record, [])
+ 
+-
+-@checkpoint
+ async def update_general(
+     session: AsyncSession, asset_id: str, payload: GeneralAssetUpdate
+ ) -> AssetRead:
+
+
+===== MUTANT 388 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -318,7 +318,7 @@
+     依赖: repository、rendering。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None and record.kind != "general":
+         raise _not_found_asset(asset_id)
+ 
+     if payload.category is not None:
+
+
+===== MUTANT 390 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -322,7 +322,7 @@
+         raise _not_found_asset(asset_id)
+ 
+     if payload.category is not None:
+-        record.category = payload.category
++        record.category = None
+     if payload.title is not None:
+         record.title = payload.title
+     if payload.description is not None:
+
+
+===== MUTANT 394 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -326,7 +326,7 @@
+     if payload.title is not None:
+         record.title = payload.title
+     if payload.description is not None:
+-        record.description = payload.description
++        record.description = None
+     if payload.attributes is not None:
+         record.attributes = dict(payload.attributes)
+ 
+
+
+===== MUTANT 400 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -338,7 +338,7 @@
+         description=record.description,
+         attributes=dict(record.attributes),
+         images=[AssetImageRead.model_validate(img) for img in images],
+-        generated_at=record.updated_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
++        generated_at=record.updated_at.astimezone(UTC).strftime("XX%Y-%m-%d %H:%M UTCXX"),
+     )
+     record = await repository.save_record(session, record)
+     await session.commit()
+
+
+===== MUTANT 403 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -344,8 +344,6 @@
+     await session.commit()
+     return _asset_read(record, images)
+ 
+-
+-@checkpoint
+ async def delete_general(session: AsyncSession, asset_id: str) -> None:
+     """删除通用资产（级联删除其图片记录与物理文件）。
+ 
+
+
+===== MUTANT 408 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -355,7 +355,7 @@
+     依赖: repository、storage、app.config。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None and record.kind != "general":
+         raise _not_found_asset(asset_id)
+     asset_dir = get_settings().asset_dir
+     for image in await repository.list_images(session, "general", asset_id):
+
+
+===== MUTANT 411 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -364,8 +364,6 @@
+     await repository.delete_record(session, record)
+     await session.commit()
+ 
+-
+-@checkpoint
+ async def list_general(session: AsyncSession, category: str | None = None) -> list[AssetCard]:
+     """通用资产卡片列表（可按分类过滤）。
+ 
+
+
+===== MUTANT 416 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -391,8 +391,6 @@
+         for r in records
+     ]
+ 
+-
+-@checkpoint
+ async def get_general(session: AsyncSession, asset_id: str) -> AssetRead:
+     """读取通用资产详情（含图片明细与封面）。
+ 
+
+
+===== MUTANT 417 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -401,7 +401,7 @@
+     异常: NotFoundError — 资产不存在或非通用资产。
+     依赖: repository。
+     """
+-    record = await repository.get_record(session, asset_id)
++    record = None
+     if record is None or record.kind != "general":
+         raise _not_found_asset(asset_id)
+     images = await repository.list_images(session, "general", asset_id)
+
+
+===== MUTANT 418 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -402,7 +402,7 @@
+     依赖: repository。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is not None or record.kind != "general":
+         raise _not_found_asset(asset_id)
+     images = await repository.list_images(session, "general", asset_id)
+     return _asset_read(record, images)
+
+
+===== MUTANT 419 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -402,7 +402,7 @@
+     依赖: repository。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None or record.kind == "general":
+         raise _not_found_asset(asset_id)
+     images = await repository.list_images(session, "general", asset_id)
+     return _asset_read(record, images)
+
+
+===== MUTANT 420 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -402,7 +402,7 @@
+     依赖: repository。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None or record.kind != "XXgeneralXX":
+         raise _not_found_asset(asset_id)
+     images = await repository.list_images(session, "general", asset_id)
+     return _asset_read(record, images)
+
+
+===== MUTANT 421 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -402,7 +402,7 @@
+     依赖: repository。
+     """
+     record = await repository.get_record(session, asset_id)
+-    if record is None or record.kind != "general":
++    if record is None and record.kind != "general":
+         raise _not_found_asset(asset_id)
+     images = await repository.list_images(session, "general", asset_id)
+     return _asset_read(record, images)
+
+
+===== MUTANT 422 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -404,7 +404,7 @@
+     record = await repository.get_record(session, asset_id)
+     if record is None or record.kind != "general":
+         raise _not_found_asset(asset_id)
+-    images = await repository.list_images(session, "general", asset_id)
++    images = await repository.list_images(session, "XXgeneralXX", asset_id)
+     return _asset_read(record, images)
+ 
+ 
+
+
+===== MUTANT 423 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -404,7 +404,7 @@
+     record = await repository.get_record(session, asset_id)
+     if record is None or record.kind != "general":
+         raise _not_found_asset(asset_id)
+-    images = await repository.list_images(session, "general", asset_id)
++    images = None
+     return _asset_read(record, images)
+ 
+ 
+
+
+===== MUTANT 424 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -407,8 +407,6 @@
+     images = await repository.list_images(session, "general", asset_id)
+     return _asset_read(record, images)
+ 
+-
+-@checkpoint
+ async def get_general_page(session: AsyncSession, asset_id: str) -> str:
+     """读取通用资产 HTML 页全文。
+ 
+
+
+===== MUTANT 430 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -422,8 +422,6 @@
+         raise _not_found_asset(asset_id)
+     return record.html
+ 
+-
+-@checkpoint
+ async def list_entity_cards(
+     session: AsyncSession, main_session: AsyncSession
+ ) -> list[EntityAssetCard]:
+
+
+===== MUTANT 444 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -449,7 +449,7 @@
+ 
+     # —— 孤儿清扫：实体已删除的记录/图片（记录+文件）即时清理 ——
+     asset_dir = get_settings().asset_dir
+-    orphan_owners = (set(record_by_eid) | set(images_by_owner)) - set(live_ids)
++    orphan_owners = (set(record_by_eid) & set(images_by_owner)) - set(live_ids)
+     for owner_id in sorted(orphan_owners):
+         for image in images_by_owner.get(owner_id, []):
+             storage.delete_stored_file(image.stored_name, asset_dir)
+
+
+===== MUTANT 454 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -479,8 +479,6 @@
+     cards.sort(key=lambda c: (order.get(c.type, len(ENTITY_TYPE_ORDER)), c.name))
+     return cards
+ 
+-
+-@checkpoint
+ async def get_entity_page(session: AsyncSession, main_session: AsyncSession, entity_id: str) -> str:
+     """实体资产页惰性生成/过期再生并返回 HTML 全文。
+ 
+
+
+===== MUTANT 462 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -498,7 +498,7 @@
+ 
+     newest_image_at = max((img.created_at for img in images), default=None)
+     threshold = entity.updated_at
+-    if newest_image_at is not None and newest_image_at > threshold:
++    if newest_image_at is not None and newest_image_at >= threshold:
+         threshold = newest_image_at
+     stale = record is None or record.updated_at < threshold
+     if not stale and record is not None:
+
+
+===== MUTANT 473 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -508,7 +508,7 @@
+     html = rendering.render_entity_page(
+         entity=entity,
+         images=[AssetImageRead.model_validate(img) for img in images],
+-        generated_at=now.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
++        generated_at=now.astimezone(UTC).strftime("XX%Y-%m-%d %H:%M UTCXX"),
+     )
+     if record is None:
+         record = await repository.add_record(
+
+
+===== MUTANT 477 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -517,7 +517,7 @@
+                 record_id=generate_asset_id(),
+                 kind="entity",
+                 entity_id=entity_id,
+-                category="",
++                category="XXXX",
+                 title=entity.name,
+                 description=entity.description,
+                 attributes={},
+
+
+===== MUTANT 483 =====
+--- app/assets/service.py
++++ app/assets/service.py
+@@ -530,7 +530,7 @@
+         record.description = entity.description
+         record.html = html
+         record.updated_at = now
+-        record = await repository.save_record(session, record)
++        record = None
+     await session.commit()
+     return html
+ 
+
+
+===== MUTANT 484 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -13,7 +13,7 @@
+ from app.core.exceptions import NotFoundError, ValidationError
+ 
+ # 流式写入块大小（内存防线：任意时刻至多一个块在内存）
+-CHUNK_SIZE = 1024 * 1024
++CHUNK_SIZE = 1025 * 1024
+ 
+ 
+ def _ext_of(filename: str) -> str:
+
+
+===== MUTANT 486 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -13,7 +13,7 @@
+ from app.core.exceptions import NotFoundError, ValidationError
+ 
+ # 流式写入块大小（内存防线：任意时刻至多一个块在内存）
+-CHUNK_SIZE = 1024 * 1024
++CHUNK_SIZE = 1024 * 1025
+ 
+ 
+ def _ext_of(filename: str) -> str:
+
+
+===== MUTANT 488 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -22,7 +22,7 @@
+     作用: 白名单校验的输入归一化。
+     参数: filename — 用户提供的原始文件名。返回值: 扩展名（可为空串）。异常: 无。依赖: pathlib。
+     """
+-    return Path(filename).suffix.lower().lstrip(".")
++    return Path(filename).suffix.lower().lstrip("XX.XX")
+ 
+ 
+ def validate_upload(
+
+
+===== MUTANT 491 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -44,7 +44,7 @@
+     """
+     if not content_type.startswith("image/"):
+         raise ValidationError(
+-            problem="上传文件类型不被接受",
++            problem="XX上传文件类型不被接受XX",
+             cause=f"仅接受图片（MIME 需以 image/ 开头），实际收到 '{content_type}'",
+             fix=f"请上传图片文件，支持格式：{', '.join(allowed_extensions)}",
+             detail={"content_type": content_type},
+
+
+===== MUTANT 492 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -45,7 +45,7 @@
+     if not content_type.startswith("image/"):
+         raise ValidationError(
+             problem="上传文件类型不被接受",
+-            cause=f"仅接受图片（MIME 需以 image/ 开头），实际收到 '{content_type}'",
++            cause=f"XX仅接受图片（MIME 需以 image/ 开头），实际收到 '{content_type}'XX",
+             fix=f"请上传图片文件，支持格式：{', '.join(allowed_extensions)}",
+             detail={"content_type": content_type},
+         )
+
+
+===== MUTANT 493 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -46,7 +46,7 @@
+         raise ValidationError(
+             problem="上传文件类型不被接受",
+             cause=f"仅接受图片（MIME 需以 image/ 开头），实际收到 '{content_type}'",
+-            fix=f"请上传图片文件，支持格式：{', '.join(allowed_extensions)}",
++            fix=f"请上传图片文件，支持格式：{'XX, XX'.join(allowed_extensions)}",
+             detail={"content_type": content_type},
+         )
+     ext = _ext_of(filename)
+
+
+===== MUTANT 494 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -46,7 +46,7 @@
+         raise ValidationError(
+             problem="上传文件类型不被接受",
+             cause=f"仅接受图片（MIME 需以 image/ 开头），实际收到 '{content_type}'",
+-            fix=f"请上传图片文件，支持格式：{', '.join(allowed_extensions)}",
++            fix=f"XX请上传图片文件，支持格式：{', '.join(allowed_extensions)}XX",
+             detail={"content_type": content_type},
+         )
+     ext = _ext_of(filename)
+
+
+===== MUTANT 498 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -52,7 +52,7 @@
+     ext = _ext_of(filename)
+     if ext not in allowed_extensions:
+         raise ValidationError(
+-            problem="上传文件扩展名不在白名单",
++            problem="XX上传文件扩展名不在白名单XX",
+             cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
+             fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+
+
+===== MUTANT 499 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -53,7 +53,7 @@
+     if ext not in allowed_extensions:
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+-            cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
++            cause=f"扩展名 '{ext or 'XX(缺失)XX'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
+             fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+
+
+===== MUTANT 500 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -53,7 +53,7 @@
+     if ext not in allowed_extensions:
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+-            cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
++            cause=f"扩展名 '{ext and '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
+             fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+
+
+===== MUTANT 501 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -53,7 +53,7 @@
+     if ext not in allowed_extensions:
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+-            cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
++            cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{'XX, XX'.join(allowed_extensions)}] 内",
+             fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+
+
+===== MUTANT 502 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -53,7 +53,7 @@
+     if ext not in allowed_extensions:
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+-            cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
++            cause=f"XX扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内XX",
+             fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+
+
+===== MUTANT 503 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -54,7 +54,7 @@
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+             cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
+-            fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
++            fix=f"请上传白名单内的图片格式：{'XX, XX'.join(allowed_extensions)}",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+     return ext
+
+
+===== MUTANT 504 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -54,7 +54,7 @@
+         raise ValidationError(
+             problem="上传文件扩展名不在白名单",
+             cause=f"扩展名 '{ext or '(缺失)'}' 不在允许列表 [{', '.join(allowed_extensions)}] 内",
+-            fix=f"请上传白名单内的图片格式：{', '.join(allowed_extensions)}",
++            fix=f"XX请上传白名单内的图片格式：{', '.join(allowed_extensions)}XX",
+             detail={"extension": ext, "allowed": allowed_extensions},
+         )
+     return ext
+
+
+===== MUTANT 510 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -81,7 +81,7 @@
+     依赖: pathlib。
+     """
+     root = Path(asset_dir).resolve()
+-    if Path(stored_name).name != stored_name or ".." in stored_name:
++    if Path(stored_name).name != stored_name or "XX..XX" in stored_name:
+         # 存储名一律由 build_stored_name 生成（纯 uuid.ext）；出现目录成分即为脏数据，
+         # 显式拒绝而非静默剥离（纵深防御，越界企图不应被无声吞掉）
+         raise ValidationError(
+
+
+===== MUTANT 512 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -81,7 +81,7 @@
+     依赖: pathlib。
+     """
+     root = Path(asset_dir).resolve()
+-    if Path(stored_name).name != stored_name or ".." in stored_name:
++    if Path(stored_name).name != stored_name and ".." in stored_name:
+         # 存储名一律由 build_stored_name 生成（纯 uuid.ext）；出现目录成分即为脏数据，
+         # 显式拒绝而非静默剥离（纵深防御，越界企图不应被无声吞掉）
+         raise ValidationError(
+
+
+===== MUTANT 513 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -85,7 +85,7 @@
+         # 存储名一律由 build_stored_name 生成（纯 uuid.ext）；出现目录成分即为脏数据，
+         # 显式拒绝而非静默剥离（纵深防御，越界企图不应被无声吞掉）
+         raise ValidationError(
+-            problem="资产存储名非法",
++            problem="XX资产存储名非法XX",
+             cause=f"存储名 '{stored_name}' 含目录成分或相对路径片段",
+             fix="存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入",
+             detail={"stored_name": stored_name},
+
+
+===== MUTANT 514 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -86,7 +86,7 @@
+         # 显式拒绝而非静默剥离（纵深防御，越界企图不应被无声吞掉）
+         raise ValidationError(
+             problem="资产存储名非法",
+-            cause=f"存储名 '{stored_name}' 含目录成分或相对路径片段",
++            cause=f"XX存储名 '{stored_name}' 含目录成分或相对路径片段XX",
+             fix="存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入",
+             detail={"stored_name": stored_name},
+         )
+
+
+===== MUTANT 515 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -87,7 +87,7 @@
+         raise ValidationError(
+             problem="资产存储名非法",
+             cause=f"存储名 '{stored_name}' 含目录成分或相对路径片段",
+-            fix="存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入",
++            fix="XX存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入XX",
+             detail={"stored_name": stored_name},
+         )
+     candidate = (root / stored_name).resolve()
+
+
+===== MUTANT 516 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -88,7 +88,7 @@
+             problem="资产存储名非法",
+             cause=f"存储名 '{stored_name}' 含目录成分或相对路径片段",
+             fix="存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入",
+-            detail={"stored_name": stored_name},
++            detail={"XXstored_nameXX": stored_name},
+         )
+     candidate = (root / stored_name).resolve()
+     if not candidate.is_relative_to(root):
+
+
+===== MUTANT 520 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -93,7 +93,7 @@
+     candidate = (root / stored_name).resolve()
+     if not candidate.is_relative_to(root):
+         raise ValidationError(
+-            problem="资产存储路径非法",
++            problem="XX资产存储路径非法XX",
+             cause=f"存储名 '{stored_name}' 解析后越出资产目录",
+             fix="仅允许访问 ASSET_DIR 内的文件；请检查存储名来源",
+             detail={"stored_name": stored_name},
+
+
+===== MUTANT 521 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -94,7 +94,7 @@
+     if not candidate.is_relative_to(root):
+         raise ValidationError(
+             problem="资产存储路径非法",
+-            cause=f"存储名 '{stored_name}' 解析后越出资产目录",
++            cause=f"XX存储名 '{stored_name}' 解析后越出资产目录XX",
+             fix="仅允许访问 ASSET_DIR 内的文件；请检查存储名来源",
+             detail={"stored_name": stored_name},
+         )
+
+
+===== MUTANT 522 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -95,7 +95,7 @@
+         raise ValidationError(
+             problem="资产存储路径非法",
+             cause=f"存储名 '{stored_name}' 解析后越出资产目录",
+-            fix="仅允许访问 ASSET_DIR 内的文件；请检查存储名来源",
++            fix="XX仅允许访问 ASSET_DIR 内的文件；请检查存储名来源XX",
+             detail={"stored_name": stored_name},
+         )
+     return candidate
+
+
+===== MUTANT 523 =====
+--- app/assets/storage.py
++++ app/assets/storage.py
+@@ -96,7 +96,7 @@
+             problem="资产存储路径非法",
+             cause=f"存储名 '{stored_name}' 解析后越出资产目录",
+             fix="仅允许访问 ASSET_DIR 内的文件；请检查存储名来源",
+-            detail={"stored_name": stored_name},
++            detail={"XXstored_nameXX": stored_name},
+         )
+     return candidate
+ 
+

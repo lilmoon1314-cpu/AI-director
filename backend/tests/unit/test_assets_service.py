@@ -703,3 +703,294 @@ async def test_get_general_page_not_found(store: dict) -> None:
     assert exc_info.value.problem and exc_info.value.cause and exc_info.value.fix, (
         "【问题】NotFoundError 三要素缺失\n【原因】异常构造不完整\n【修复】补全三要素"
     )
+
+
+# ---------------- 契约钉死（E05：错误文案精确相等；常量/约束钉死击杀声明类变异） ----------------
+
+
+def test_orm_non_nullable_columns_pinned() -> None:
+    """钉死 ORM 列 nullable 声明（除设计允许为空的两列外全部 NOT NULL）。"""
+    from app.assets.models import AssetImage, AssetRecord
+
+    nullable_allow = {"entity_id", "cover_image_id"}
+    for model in (AssetRecord, AssetImage):
+        for column in model.__table__.columns:
+            expected = column.name in nullable_allow
+            assert column.nullable == expected, (
+                f"【问题】{model.__tablename__}.{column.name} nullable 声明漂移: "
+                f"{column.nullable} != {expected}\n【原因】ORM 列约束被改动\n"
+                "【修复】对照 docs/data_struct_define.md §10 恢复列声明"
+            )
+
+
+def test_table_names_and_columns_pinned() -> None:
+    """钉死表名与列名（物理 schema 契约，create_all/查询自洽但外部可见）。"""
+    assert AssetRecord.__tablename__ == "asset_records"
+    assert AssetImage.__tablename__ == "asset_images"
+    assert [c.name for c in AssetRecord.__table__.columns] == [
+        "id",
+        "kind",
+        "entity_id",
+        "category",
+        "title",
+        "description",
+        "attributes",
+        "html",
+        "cover_image_id",
+        "created_at",
+        "updated_at",
+    ]
+    assert [c.name for c in AssetImage.__table__.columns] == [
+        "id",
+        "scope",
+        "owner_id",
+        "filename_orig",
+        "stored_name",
+        "mime",
+        "size",
+        "created_at",
+    ]
+
+
+def test_kind_scope_literals_and_order_pinned() -> None:
+    """钉死资产种类/归属面 Literal 与实体类型序（枚举值即校验集合，禁止漂移）。"""
+    from typing import get_args
+
+    from app.assets.schemas import (
+        ENTITY_TYPE_LABELS,
+        ENTITY_TYPE_ORDER,
+        AssetKind,
+        AssetScope,
+    )
+
+    assert get_args(AssetKind) == ("general", "entity")
+    assert get_args(AssetScope) == ("general", "entity")
+    assert ENTITY_TYPE_ORDER == (
+        "character",
+        "faction",
+        "location",
+        "item",
+        "skill",
+        "event",
+        "concept",
+    )
+    assert ENTITY_TYPE_LABELS == {
+        "character": "人物",
+        "faction": "门派",
+        "location": "地点",
+        "item": "物件",
+        "skill": "功法",
+        "event": "事件",
+        "concept": "概念",
+    }
+
+
+def test_id_formats_pinned() -> None:
+    """钉死 id 前缀与长度（asset-/img- + 12 位 hex）。"""
+    import re
+
+    from app.assets.schemas import generate_asset_id, generate_image_id
+
+    assert re.fullmatch(r"asset-[0-9a-f]{12}", generate_asset_id())
+    assert re.fullmatch(r"img-[0-9a-f]{12}", generate_image_id())
+
+
+def test_image_url_and_cover_builder_pinned() -> None:
+    """钉死图片规范地址前缀与封面回落顺序（/api 同源路由契约）。"""
+    from app.assets.schemas import AssetImageRead
+
+    record = _record()
+    first = _image("img-a", stored_name="aaa.png")
+    second = _image("img-b", stored_name="bbb.png")
+    read = AssetImageRead.model_validate(first)
+    assert read.url == "/api/assets/file/aaa.png", "图片规范地址前缀必须为 /api/assets/file/"
+    assert service._cover_url(None, []) is None
+    assert service._cover_url(None, [first, second]) == "/api/assets/file/aaa.png", (
+        "无显式封面应回落首图（第一张图自动为封面）"
+    )
+    record.cover_image_id = "img-b"
+    assert service._cover_url(record, [first, second]) == "/api/assets/file/bbb.png", (
+        "显式封面优先于首图"
+    )
+    record.cover_image_id = "img-ghost"
+    assert service._cover_url(record, [first, second]) == "/api/assets/file/aaa.png", (
+        "封面指向缺失图片时回落首图"
+    )
+
+
+def test_chunk_size_pinned() -> None:
+    """钉死流式块大小（内存防线参数：1MB）。"""
+    assert storage.CHUNK_SIZE == 1024 * 1024
+
+
+def test_db_sqlite_prefix_and_pragma_pinned() -> None:
+    """钉死资产库连接串前缀与 WAL PRAGMA（连接基础设施契约）。"""
+    from app.assets import db as assets_db
+
+    assert assets_db._SQLITE_PREFIX == "sqlite+aiosqlite:///"
+
+    executed: list[str] = []
+
+    class CursorStub:
+        def execute(self, sql: str) -> None:
+            executed.append(sql)
+
+        def close(self) -> None:
+            return None
+
+    class ConnStub:
+        def cursor(self) -> CursorStub:
+            return CursorStub()
+
+    assets_db._set_sqlite_pragma(ConnStub(), None)
+    assert executed == ["PRAGMA journal_mode=WAL"], (
+        f"【问题】资产库连接 PRAGMA 漂移: {executed}\n【原因】WAL 约束语句被改动\n"
+        "【修复】恢复 PRAGMA journal_mode=WAL"
+    )
+
+
+def test_error_messages_pinned_exact() -> None:
+    """E05 范式：错误三要素文案精确相等 + detail 字典整体相等（文案是响应体行为契约）。"""
+    err = service._not_found_asset("a1")
+    assert (err.problem, err.cause, err.fix) == (
+        "资产不存在",
+        "id 'a1' 未在资产库中",
+        "先调用 GET /api/assets/general 确认资产 id",
+    )
+    assert err.detail == {"asset_id": "a1"}
+
+    err = service._not_found_image("i1")
+    assert (err.problem, err.cause, err.fix) == (
+        "图片不存在",
+        "id 'i1' 未在资产库中",
+        "先调用 GET /api/assets/general/{id} 确认图片归属",
+    )
+    assert err.detail == {"image_id": "i1"}
+
+    err = storage.not_found("x.png")
+    assert (err.problem, err.cause, err.fix) == (
+        "图片文件不存在",
+        "存储名 'x.png' 对应的文件不在资产目录中",
+        "确认文件未被手动删除，或重新上传图片",
+    )
+    assert err.detail == {"stored_name": "x.png"}
+
+
+def test_upload_validation_messages_pinned_exact() -> None:
+    """E05 范式：上传校验错误文案与 detail 精确相等（含大小上限换算）。"""
+    allowed = get_settings().asset_allowed_type_list
+    with pytest.raises(ValidationError) as exc_info:
+        storage.validate_upload(
+            filename="a.png",
+            content_type="text/plain",
+            max_size_bytes=10 * 1024 * 1024,
+            allowed_extensions=allowed,
+        )
+    err = exc_info.value
+    assert err.problem == "上传文件类型不被接受"
+    assert err.cause == "仅接受图片（MIME 需以 image/ 开头），实际收到 'text/plain'"
+    assert err.fix == f"请上传图片文件，支持格式：{', '.join(allowed)}"
+    assert err.detail == {"content_type": "text/plain"}
+
+    with pytest.raises(ValidationError) as exc_info:
+        storage.validate_upload(
+            filename="a.exe",
+            content_type="image/png",
+            max_size_bytes=10 * 1024 * 1024,
+            allowed_extensions=allowed,
+        )
+    err = exc_info.value
+    assert err.problem == "上传文件扩展名不在白名单"
+    assert err.cause == (f"扩展名 'exe' 不在允许列表 [{', '.join(allowed)}] 内")
+    assert err.fix == f"请上传白名单内的图片格式：{', '.join(allowed)}"
+    assert err.detail == {"extension": "exe", "allowed": allowed}
+
+
+def test_write_stream_overflow_message_pinned(tmp_path: Path) -> None:
+    """E05 范式：超限错误三要素精确相等 + 半成品文件清理。"""
+    import asyncio
+
+    dest = tmp_path / "over.png"
+    upload = FakeUpload(b"x" * 6, "over.png", "image/png")
+    with pytest.raises(ValidationError) as exc_info:
+        asyncio.run(storage.write_stream(upload, dest, 5))
+    err = exc_info.value
+    assert err.problem == "上传文件超过大小上限"
+    assert err.cause == "写入累计 6 字节，超过上限 5 字节"
+    assert err.fix == "压缩或裁剪文件至 0MB 以内后重试"
+    assert err.detail == {"written": 6, "max_size_bytes": 5}
+    assert not dest.exists(), "超限后半成品文件必须清理"
+
+
+def test_resolve_path_messages_pinned(tmp_path: Path) -> None:
+    """E05 范式：路径防线错误文案精确相等。"""
+    with pytest.raises(ValidationError) as exc_dir:
+        storage.resolve_stored_path("a/b.png", str(tmp_path))
+    assert exc_dir.value.problem == "资产存储名非法"
+    assert exc_dir.value.cause == "存储名 'a/b.png' 含目录成分或相对路径片段"
+    assert exc_dir.value.fix == (
+        "存储名只能来自库内 asset_images.stored_name（uuid.ext），禁止拼接用户输入"
+    )
+    assert exc_dir.value.detail == {"stored_name": "a/b.png"}
+
+
+def test_general_schema_bounds_pinned() -> None:
+    """schemas 数值边界钉死（category 100 / description 20000 / title 200）。"""
+    from pydantic import ValidationError as PydanticValidationError
+
+    assert GeneralAssetCreate(title="t" * 200).title == "t" * 200
+    with pytest.raises(PydanticValidationError):
+        GeneralAssetCreate(title="t" * 201)
+    assert GeneralAssetCreate(title="t", category="c" * 100).category == "c" * 100
+    with pytest.raises(PydanticValidationError):
+        GeneralAssetCreate(title="t", category="c" * 101)
+    assert GeneralAssetCreate(title="t", description="d" * 20000).description == "d" * 20000
+    with pytest.raises(PydanticValidationError):
+        GeneralAssetCreate(title="t", description="d" * 20001)
+
+
+def test_service_public_functions_checkpointed() -> None:
+    """钉死关键 service 路径的 @checkpoint 标注（backend/CONSTRAINTS 观测性约束）。"""
+    import inspect
+
+    public_fns = [
+        obj
+        for name, obj in vars(service).items()
+        if inspect.iscoroutinefunction(obj)
+        and not name.startswith("_")
+        and obj.__module__ == service.__name__
+    ]
+    assert public_fns, "service 公共 async 函数应存在"
+    not_wrapped = [fn.__name__ for fn in public_fns if not hasattr(fn, "__wrapped__")]
+    assert not not_wrapped, (
+        f"【问题】以下 service 公共函数缺少 @checkpoint 标注: {not_wrapped}\n"
+        "【原因】关键路径未接入信号采集（backend/CONSTRAINTS.md）\n"
+        "【修复】为对应函数加 @checkpoint 装饰器"
+    )
+
+
+def test_router_prefix_and_tag_pinned() -> None:
+    """钉死路由前缀与 tags（OpenAPI 契约，check-api-types 链的稳定锚点）。"""
+    from app.assets.router import router
+
+    assert router.prefix == "/api/assets"
+    assert router.tags == ["assets"]
+
+
+def test_set_cover_mismatch_message_pinned(store: dict) -> None:
+    """E05 范式：封面归属不符错误三要素精确相等。"""
+    record = _record()
+    store["records"][record.id] = record
+    store["images"]["img-other-asset"] = _image(
+        "img-other-asset", scope="general", owner_id="asset-r2"
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        await_err = service.set_cover(SessionStub(), record.id, "img-other-asset")
+        import asyncio
+
+        asyncio.run(await_err)
+    err = exc_info.value
+    assert err.problem == "封面图片归属不符"
+    assert err.cause == f"图片 'img-other-asset' 不属于资产 '{record.id}'"
+    assert err.fix == "请先上传该资产名下的图片，再从其图片列表中选择封面"
+    assert err.detail == {"asset_id": record.id, "image_id": "img-other-asset"}
