@@ -209,3 +209,20 @@ def test_relationships_fk_declared_on_delete_restrict() -> None:
         "【原因】ORM 声明与迁移 DDL 脱节（库表实际缺少约束）\n"
         "【修复】重新生成 Alembic 迁移使 DDL 与 ORM 模型一致"
     )
+
+
+def test_no_bak_residue_in_app() -> None:
+    """app/ 下禁止 .bak 残留文件（error.jsonl T-20260905-02：mutmut 中断残留变异体被误提交）。
+
+    失败含义:
+        【问题】app/ 下存在 .bak 备份残留文件
+        【原因】mutmut 运行中被终止时以 .bak 暂存原文件，变异体残留在正式文件内；
+            git add -A 会把两者一并提交，污染代码基线
+        【修复】用对应 .bak 还原正式文件后删除 .bak；git add 前确认 mutmut 已完全退出
+    """
+    residue = [str(p.relative_to(APP_DIR)) for p in APP_DIR.rglob("*.bak")]
+    assert not residue, (
+        f"【问题】app/ 下存在 .bak 残留: {residue}\n"
+        "【原因】mutmut 中断残留（变异体可能已写入正式文件）\n"
+        "【修复】以 .bak 还原正式文件后删除 .bak，并复查对应文件的完整性"
+    )

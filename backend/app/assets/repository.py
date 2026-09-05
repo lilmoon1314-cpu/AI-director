@@ -133,6 +133,17 @@ async def list_images_for_owners(
     return grouped
 
 
+async def list_images_by_scope(session: AsyncSession, scope: str) -> list[AssetImage]:
+    """列出某归属面全部图片（孤儿清扫取数：不预设归属白名单，残留才能被看见）。
+
+    作用: 实体删除联动清扫的数据源——孤儿图片的 owner 可能已不在任何存活集合中。
+    参数: session — 资产库会话；scope — 'general' | 'entity'。
+    返回值: list[AssetImage]（创建时间升序）。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    stmt = select(AssetImage).where(AssetImage.scope == scope).order_by(AssetImage.created_at.asc())
+    return list(await session.scalars(stmt))
+
+
 async def add_image(session: AsyncSession, image: AssetImage) -> AssetImage:
     """插入一条图片元数据。
 
@@ -167,17 +178,6 @@ async def clear_cover_reference(session: AsyncSession, image_id: str) -> None:
         .where(AssetRecord.cover_image_id == image_id)
         .values(cover_image_id=None)
     )
-
-
-async def count_images(session: AsyncSession, scope: str, owner_id: str) -> int:
-    """统计归属下的图片数量（保留接口：单资产计数）。
-
-    作用: 详情页图片计数。
-    参数: session — 资产库会话；scope — 归属面；owner_id — 归属 id。
-    返回值: int。异常: 无。依赖: SQLAlchemy ORM。
-    """
-    images = await list_images(session, scope, owner_id)
-    return len(images)
 
 
 def new_record(

@@ -443,9 +443,11 @@ async def list_entity_cards(
 
     records = await repository.list_records(session, kind="entity")
     record_by_eid = {r.entity_id: r for r in records if r.entity_id is not None}
-    # 图片取数须覆盖「存活 + 记录残留」的归属并集：孤儿图片不进查询就永远无法被清扫
-    all_owner_ids = sorted({*live_ids, *(eid for eid in record_by_eid if eid is not None)})
-    images_by_owner = await repository.list_images_for_owners(session, "entity", all_owner_ids)
+    # 孤儿取数按 scope 全量：仅记录残留 / 仅图片残留两类孤儿都必须进入清扫集合
+    all_entity_images = await repository.list_images_by_scope(session, "entity")
+    images_by_owner: dict[str, list[AssetImage]] = {}
+    for image in all_entity_images:
+        images_by_owner.setdefault(image.owner_id, []).append(image)
 
     # —— 孤儿清扫：实体已删除的记录/图片（记录+文件）即时清理 ——
     asset_dir = get_settings().asset_dir

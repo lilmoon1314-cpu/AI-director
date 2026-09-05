@@ -179,6 +179,10 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 grouped.setdefault(image.owner_id, []).append(image)
         return {k: sorted(v, key=lambda i: i.created_at) for k, v in grouped.items()}
 
+    async def fake_list_images_by_scope(_s: Any, scope: str) -> list[AssetImage]:
+        rows = [i for i in images.values() if i.scope == scope]
+        return sorted(rows, key=lambda i: i.created_at)
+
     async def fake_add_image(_s: Any, image: AssetImage) -> AssetImage:
         images[image.id] = image
         return image
@@ -215,6 +219,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(repository, "get_image", fake_get_image)
     monkeypatch.setattr(repository, "list_images", fake_list_images)
     monkeypatch.setattr(repository, "list_images_for_owners", fake_list_images_for_owners)
+    monkeypatch.setattr(repository, "list_images_by_scope", fake_list_images_by_scope)
     monkeypatch.setattr(repository, "add_image", fake_add_image)
     monkeypatch.setattr(repository, "delete_image", fake_delete_image)
     monkeypatch.setattr(repository, "clear_cover_reference", fake_clear_cover)
@@ -994,3 +999,184 @@ def test_set_cover_mismatch_message_pinned(store: dict) -> None:
     assert err.cause == f"图片 'img-other-asset' 不属于资产 '{record.id}'"
     assert err.fix == "请先上传该资产名下的图片，再从其图片列表中选择封面"
     assert err.detail == {"asset_id": record.id, "image_id": "img-other-asset"}
+
+
+# ---------------- 第二批击杀测试（models DDL / 存储边界 / 路由契约 / 服务分支） ----------------
+
+
+def test_models_column_ddl_pinned() -> None:
+    """钉死列 DDL 细节（类型/索引/唯一/默认值——物理 schema 契约）。"""
+    from app.assets.models import AssetImage, AssetRecord
+
+    r, i = AssetRecord.__table__, AssetImage.__table__
+    # 索引列
+    for col in ("kind", "entity_id"):
+        assert r.c[col].index is True, f"asset_records.{col} 应有索引"
+    for col in ("scope", "owner_id"):
+        assert i.c[col].index is True, f"asset_images.{col} 应有索引"
+    # 唯一列
+    assert i.c["stored_name"].unique is True
+    # 类型（Text 长文本 vs String）
+    assert "TEXT" in str(r.c["html"].type).upper()
+    assert "TEXT" in str(r.c["description"].type).upper()
+    assert "VARCHAR" in str(r.c["title"].type).upper() or "TEXT" in str(r.c["title"].type).upper()
+    assert "INT" in str(i.c["size"].type).upper()
+    # 默认值
+    for col in ("category", "description"):
+        assert r.c[col].default is not None and r.c[col].default.arg == ""
+    assert r.c["attributes"].default is not None
+    for col in ("created_at", "updated_at"):
+        assert r.c[col].default is not None and callable(r.c[col].default.arg)
+    assert r.c["updated_at"].onupdate is not None, "updated_at 应有 onupdate 刷新"
+    assert r.c["created_at"].onupdate is None, "created_at 不应有 onupdate"
+    assert i.c["created_at"].default is not None
+
+
+def test_ensure_assets_dir_behavior(tmp_path: Path) -> None:
+    """ensure_assets_dir：普通路径建父目录；:memory: 不建任何目录。"""
+    from app.assets.db import ensure_assets_dir
+
+    target = tmp_path / "nested" / "assets.db"
+    ensure_assets_dir(f"sqlite+aiosqlite:///{target.as_posix()}")
+    assert target.parent.is_dir(), "普通路径应自动建父目录"
+
+    before = {p.name for p in tmp_path.rglob("*")}
+    ensure_assets_dir("sqlite+aiosqlite:///:memory:")
+    assert {p.name for p in tmp_path.rglob("*")} == before, ":memory: 不应触发建目录"
+
+
+@pytest.mark.parametrize(
+    "filename", ["B.PNG", "photo.JPG", "pic.WebP"], ids=["png-upper", "jpg-upper", "webp-mixed"]
+)
+def test_ext_normalization_case_insensitive(filename: str) -> None:
+    """扩展名归一化大小写不敏感（.lower 契约）。"""
+    allowed = get_settings().asset_allowed_type_list
+    ext = storage.validate_upload(
+        filename=filename,
+        content_type="image/png",
+        max_size_bytes=1024,
+        allowed_extensions=allowed,
+    )
+    assert ext == filename.rsplit(".", 1)[-1].lower()
+
+
+def test_validate_upload_missing_ext_message_pinned() -> None:
+    """无扩展名上传的错误文案钉死（'(缺失)' 回退分支）。"""
+    allowed = get_settings().asset_allowed_type_list
+    with pytest.raises(ValidationError) as exc_info:
+        storage.validate_upload(
+            filename="noext",
+            content_type="image/png",
+            max_size_bytes=1024,
+            allowed_extensions=allowed,
+        )
+    assert exc_info.value.cause == (f"扩展名 '(缺失)' 不在允许列表 [{', '.join(allowed)}] 内")
+
+
+def test_resolve_path_dotdot_inside_name_rejected(tmp_path: Path) -> None:
+    """存储名内嵌 `..`（合法路径成分但属脏数据）必须被拒绝。"""
+    with pytest.raises(ValidationError):
+        storage.resolve_stored_path("a..b.png", str(tmp_path))
+
+
+async def test_staleness_image_equal_boundary(store: dict) -> None:
+    """U7 补充（边界值）：图片时间 == 记录时间 → fresh（严格大于才再生）。"""
+    from datetime import UTC, datetime
+
+    base = datetime.now(UTC)
+    entity = _entity(updated_at=base)
+    store["state"]["entity"] = entity
+    record = _record("asset-ent", kind="entity", entity_id=entity.id, updated_at=base)
+    store["records"][record.id] = record
+    image = _image("img-ent", scope="entity", owner_id=entity.id, created_at=base)
+    store["images"]["img-ent"] = image
+
+    html = await service.get_entity_page(SessionStub(), SessionStub(), entity.id)
+    assert html == "<!doctype html><html>OLD</html>", (
+        "图片时间等于记录时间应判 fresh（阈值比较为严格大于）"
+    )
+
+
+async def test_orphan_sweep_union_semantics(store: dict) -> None:
+    """U8 补充：仅记录残留 / 仅图片残留两类孤儿都必须被清扫（并集语义）。"""
+    live = _entity("char-live")
+    store["state"]["entities"] = [live]
+    # 孤儿 A：仅记录（页面生成后图片全删）
+    store["records"]["asset-dead-a"] = _record(
+        "asset-dead-a", kind="entity", entity_id="char-dead-a"
+    )
+    # 孤儿 B：仅图片（传图后未生成页面）
+    store["images"]["img-dead-b"] = _image("img-dead-b", scope="entity", owner_id="char-dead-b")
+
+    cards = await service.list_entity_cards(SessionStub(), SessionStub())
+    assert [c.id for c in cards] == ["char-live"], "卡片仅含存活实体"
+    assert "asset-dead-a" not in store["records"], "仅记录残留的孤儿应被清扫"
+    assert "img-dead-b" not in store["images"], "仅图片残留的孤儿应被清扫"
+
+
+async def test_set_cover_wrong_kind_record_rejected(store: dict) -> None:
+    """wrong-kind 防护（service 层）：entity 页记录不可作为通用资产操作目标。"""
+    entity_record = _record("asset-ent", kind="entity", entity_id="char-e1")
+    store["records"][entity_record.id] = entity_record
+    with pytest.raises(NotFoundError):
+        await service.update_general(SessionStub(), entity_record.id, GeneralAssetUpdate(title="x"))
+    with pytest.raises(NotFoundError):
+        await service.get_general(SessionStub(), entity_record.id)
+    with pytest.raises(NotFoundError):
+        await service.delete_general(SessionStub(), entity_record.id)
+    with pytest.raises(NotFoundError):
+        await service.get_general_page(SessionStub(), entity_record.id)
+
+
+async def test_upload_general_owner_wrong_kind_rejected(store: dict) -> None:
+    """wrong-kind 防护：scope=general 上传的 owner 是 entity 页记录 → NotFound。"""
+    entity_record = _record("asset-ent", kind="entity", entity_id="char-e1")
+    store["records"][entity_record.id] = entity_record
+    upload = FakeUpload(b"png", "a.png", "image/png")
+    with pytest.raises(NotFoundError):
+        await service.upload_image(
+            SessionStub(), SessionStub(), scope="general", owner_id=entity_record.id, upload=upload
+        )
+
+
+def test_generated_at_format_pinned() -> None:
+    """页面生成时间戳格式钉死（strftime 契约）。"""
+    from app.assets import rendering
+
+    html = rendering.render_general_page(
+        title="t",
+        category="",
+        description="",
+        attributes={},
+        images=[],
+        generated_at="2026-09-05 10:08 UTC",
+    )
+    assert "生成于 2026-09-05 10:08 UTC" in html
+
+
+def test_router_routes_pinned() -> None:
+    """钉死路由注册面（方法+路径；防装饰器删除/status_code 漂移）。"""
+    from app.assets.router import router
+
+    paths = {r.path for r in router.routes}
+    assert "/api/assets/images" in paths
+    assert "/api/assets/images/{image_id}" in paths
+    assert "/api/assets/general" in paths
+    assert "/api/assets/general/{asset_id}" in paths
+    assert "/api/assets/general/{asset_id}/page" in paths
+    assert "/api/assets/general/{asset_id}/cover" in paths
+    assert "/api/assets/entities" in paths
+    assert "/api/assets/entity/{entity_id}/page" in paths
+    assert "/api/assets/file/{stored_name}" in paths
+    delete_route = next(
+        r
+        for r in router.routes
+        if r.path == "/api/assets/images/{image_id}" and "DELETE" in r.methods
+    )
+    assert delete_route.status_code == 204
+    del_asset = next(
+        r
+        for r in router.routes
+        if r.path == "/api/assets/general/{asset_id}" and "DELETE" in r.methods
+    )
+    assert del_asset.status_code == 204

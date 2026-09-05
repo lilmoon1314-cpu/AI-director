@@ -120,7 +120,7 @@ async def write_stream(upload: object, dest: Path, max_size_bytes: int) -> int:
             chunk = await upload.read(CHUNK_SIZE)  # type: ignore[attr-defined]
             if not chunk:
                 break
-            written = len(chunk)
+            written += len(chunk)
             if written > max_size_bytes:
                 out.close()
                 dest.unlink(missing_ok=True)
