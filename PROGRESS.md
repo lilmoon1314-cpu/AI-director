@@ -2,7 +2,7 @@
 
 ## 当前状态
 - 最新commit：F05 前端图谱工作台完成（见 git log）
-- 测试状态：后端 100 通过 + mutmut（F04 perspectives kill rate 95.4%）；前端 68（unit 46：stores/lib/GraphCanvas/约定检查 + integration 20（MSW）+ App 冒烟 2）+ Playwright e2e 6
+- 测试状态：后端 101 通过 + mutmut（F04 perspectives kill rate 95.4%）；前端 97（unit 53 + integration 42 + App 冒烟 2）+ Playwright e2e 8
 - Lint：make check 全绿（后端 ruff/format/lint-imports/mypy/pytest + 前端 check-api-types/typecheck/lint/build，check-api-types F05 起挂链）
 - 功能清单：F01–F05 passing（F06–F10 not_started）
 
@@ -31,13 +31,15 @@
 
 - 2026-08-28: **F06 视角切换 UI 完成（passing）**——perspectiveStore（三态 + characterId 回切保留 + 角色列表懒加载）+ graphStore.loadGraph 实时读视角透传（character_id 仅随 character 视角发送，不泄入其他视角请求——边界用例锁定）+ api.client 补 listEntities(type 检索) + PerspectiveSwitcher 三段切换控件（aria-pressed，character 视角角色下拉、未选角色零图请求对齐后端 missing_character_id）+ Workbench 挂载与 stats 动态视角标注（角色视角·周兰）；视角作用面决策入 DECISIONS（仅约束 /api/graph 展示面，详情/编辑保持管理面完整）。测试前端 68 例（L1 46：perspectiveStore 4 + graphStore 视角透传参数化 7；L2 20：I1–I5 三视角/缺参零请求/403 三要素/回切恢复）+ e2e 6 例（E1 三视角全链路截图 P-01~03 + E2 观众视角不泄露断言）全过；变异测试按 2026-08-28 决策豁免。详见 docs/tests/F06_perspective_switch_ui.md、DECISIONS.md 与 git log
 
+- 2026-08-28: **F06 反馈修复轮（用户报告）**——切换视角节点重叠+标签隐藏、角色/观众视角边消失两 bug 修复（E09）：①硬分离监听器首跑自注销致数据变更后不再分离（重叠→标签避让隐藏名字）→改持久 afterlayout+防抖随每次数据变更重跑；②setData/render 异步管线无串行化，快速切换/StrictMode 卸载打断打坏 G6 元素控制器（边消失）→GraphCanvas 渲染链串行化+存活守卫；e2e 新增 E3 快速切换防线（零内部错误+边数据完整），vitest 69 + e2e 7 全过。详见 frontend/CONSTRAINTS 渲染性能与 git log（1aecc36）
+- 2026-08-28: **F07 @ 实体选择器完成（passing，用户需求并入：关联字段显示名称）**——后端 EntityBrief 增 audience_known（B1）；前端 schema 12 个关联字段标注 refTypes + EntityPicker（@ 检索 250ms 防抖、下拉含名称/类型/当前视角可见徽标、单值回填/多值 chip、表单态恒存 ID）+ entityIndexStore（随图刷新）+ 详情面板名称解析（未知 id 回退）；可见性判定与名称仅显示层决策入 DECISIONS。测试后端 11 + 前端 97（U1–U3/I1–I5）+ e2e 8（E1 全链路存 ID + E2 不可见徽标，截图 @-01/02）全过。详见 docs/tests/F07_entity_reference_picker.md、DECISIONS.md 与 git log（131b97d）
+
 ## 进行中
-- F06 反馈修复轮——已提交（1aecc36，E09）
-- F07 @ 实体选择器——实现与三层测试完成，待 make check/verify/提交
+- 无
 
 ## 已知问题
 - 无
 
 # 下一步
-1. 执行 F07（@ 实体选择器）：输入 @ 触发防抖检索，选择插入引用，提示该实体对当前视角是否可见（开工时 `python scripts/task.py verify F07 --activate`）；首任务：撰写测试文档 docs/tests/F07
-2. F07–F10 依次逐功能实现（一次一个，端到端通过后再下一个）
+1. 执行 F08（资产上传与查看）：POST /api/assets（白名单/上限/uuid 重命名/流式写盘）；节点详情展示缩略图与链接；删除同步清理引用（开工时 `python scripts/task.py verify F08 --activate`）；首任务：撰写测试文档 docs/tests/F08
+2. F08–F10 依次逐功能实现（一次一个，端到端通过后再下一个）
