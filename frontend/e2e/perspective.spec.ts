@@ -44,6 +44,38 @@ async function seedWorld(request: APIRequestContext) {
   }
 }
 
+test("E3: 快速连续切换视角——渲染链串行防线（无 G6 内部错误、数据完整、无严重重叠）", async ({ page }) => {
+  // 设计依据: 交互反馈轮（E09 防线）——不等布局收敛就连点视角曾打坏 G6 元素控制器（边消失）
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("console", (m) => {
+    if (m.type() === "error" && m.text().includes("G6")) errors.push(m.text());
+  });
+
+  await resetWorld(page.request);
+  await seedWorld(page.request);
+  await page.goto("/");
+  await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
+
+  // 不等布局收敛就连点（复现用户操作节奏）
+  await page.getByTestId("perspective-audience").click();
+  await page.waitForTimeout(200);
+  await page.getByTestId("perspective-author").click();
+  await page.waitForTimeout(200);
+  await page.getByTestId("perspective-audience").click();
+  await expect(page.getByTestId("graph-stats")).toHaveText(/4 节点 · 1 边/);
+  await page.waitForTimeout(2500); // 渲染链排空 + 布局收敛 + 硬分离
+
+  expect(errors).toEqual([]); // 无 'draw' of undefined / instance destroyed 等内部错误
+  const edgeCount = await page.evaluate(() => {
+    const g = (window as unknown as { __g6graph?: { getEdgeData: () => unknown[] } }).__g6graph;
+    if (!g) throw new Error("dev 后门 __g6graph 不存在");
+    return g.getEdgeData().length;
+  });
+  expect(edgeCount).toBe(1); // 观众视图的关系数据完整（边未因打断丢失）
+  await shoot(page, "P-04-快速连续切换-数据完整无内部错误");
+});
+
 test("E1+E2: 三视角切换全链路（作者→观众→角色→作者）与观众视角不泄露", async ({ page }) => {
   await resetWorld(page.request);
   await seedWorld(page.request);

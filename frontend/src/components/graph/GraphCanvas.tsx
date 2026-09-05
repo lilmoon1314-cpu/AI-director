@@ -1,7 +1,13 @@
 /**
  * GraphCanvas：G6 5.x 封装（frontend/CONSTRAINTS.md「渲染性能」）：
  * - 实例单例：仅挂载时创建、卸载时 destroy，数据变更走 setData（禁止整图重建）；
+ * - 渲染链串行化：所有 setData/render/后处理经 Promise 链排队执行（E09——异步管线
+ *   互相打断会打坏 G6 元素控制器，表现为边不渲染/'draw' of undefined）；每个任务执行前
+ *   校验实例存活（StrictMode 双挂载销毁首实例后，排队任务必须静默跳过）；
  * - auto-adapt-label：标签避让（视口空间 + 重叠检测，按度中心性排序显示优先级）；
+ * - 布局收敛 → 硬分离：afterlayout 持久监听 + 防抖 600ms 执行 separateOverlaps，
+ *   每次数据变更（如视角切换）重跑——力导碰撞是软约束会残余重叠，重叠又触发标签避让
+ *   隐藏节点名（E09：分离监听器曾首跑后自注销，切换视角后不再生效）；
  * - hover-activate：悬停高亮一跳邻域（active）+ 无关元素淡出（inactiveState），
  *   持续选中期间经 enable 门控整体禁用（选中视图不被悬停扰动）；
  * - 点击：该节点及其邻接边/对端节点持续高亮（selected），其余淡出（inactive），
@@ -9,8 +15,7 @@
  * - 类型筛选：hideElement/showElement 增量显隐（不触发重布局），边随双端可见性联动；
  * - 节点/边颜色由数据驱动（palette.ts：类型色 / 边随非人端淡化）；
  * - 动画：状态过渡与显隐淡入淡出（element.animation show/hide/enter 阶段 + API animation 参数）；
- * - 深浅色跟随系统：matchMedia 监听 → graph.setTheme 切换 G6 内置主题；
- * - 高频交互（缩放/拖拽）交由 G6 behaviors，状态不进全局 store。
+ * - 深浅色跟随系统：matchMedia 监听 → graph.setTheme 切换 G6 内置主题。
  */
 
 import { Graph } from "@antv/g6";
@@ -30,6 +35,7 @@ const MIN_NODE_DISTANCE = 120;
 
 /** 硬分离重叠节点对：多轮推开直至无重叠（实时取节点数据——闭包首帧是空图，勿传）。 */
 function separateOverlaps(graph: Graph): void {
+  if (graph.destroyed) return;
   const MIN_DIST_SQ = MIN_NODE_DISTANCE * MIN_NODE_DISTANCE;
   const nodes = graph.getNodeData();
   const positions = new Map<string, number[]>(
@@ -74,7 +80,7 @@ function separateOverlaps(graph: Graph): void {
     const p = positions.get(n.id);
     if (p) target[n.id] = new Float32Array([p[0], p[1], 0]);
   }
-  graph.translateElementTo(target, false);
+  void graph.translateElementTo(target, false);
 }
 
 function prefersDark(): boolean {
@@ -105,6 +111,7 @@ function hiddenTargets(graph: Graph, visibleTypes: Set<string>): Set<string> {
 /** 点击持续高亮全量状态机：选中节点+一跳邻域（selected），其余淡出（inactive）；null = 全部复位。
  *  状态从 graph 实时数据推导（getNodeData/getEdgeData），不闭包 props——数据异步加载后点击才生效（E08）。 */
 function applySelection(graph: Graph, selectedId: string | null, animation: boolean): void {
+  if (graph.destroyed) return;
   const states: Record<string, string[]> = {};
   const nodes = graph.getNodeData();
   // G6 的边端点/id 是 string|number 联合，统一归一化为 string 参与集合运算
@@ -138,15 +145,42 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
   // 点击回调经 ref 最新化：G6 监听只在挂载时注册一次，不随 props 重建
   const onNodeClickRef = useRef(onNodeClick);
   onNodeClickRef.current = onNodeClick;
-  // 筛选集合经 ref 最新化：数据变更回调（render.then）里读当前筛选而非闭包首帧值
+  // 筛选集合经 ref 最新化：渲染链任务里读当前筛选而非闭包首帧值
   const visibleTypesRef = useRef(visibleTypes);
   visibleTypesRef.current = visibleTypes;
   // 点击持续高亮的节点 id（null = 无持续高亮）
   const selectedRef = useRef<string | null>(null);
   // 上一次筛选的隐藏集合（增量显隐的 diff 基准；null = 尚未初始化）
   const prevHiddenRef = useRef<Set<string> | null>(null);
-  // 布局收敛检测定时器（afterlayout 去抖后执行硬分离）
+  // 布局收敛检测定时器（防抖后执行硬分离）
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 渲染链：setData/render/后处理严格串行（E09——并行打断会打坏 G6 元素控制器）
+  const chainRef = useRef<Promise<void>>(Promise.resolve());
+  // matchMedia 清理函数经 ref 传递（挂载 effect 的 cleanup 双路径）
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  const scheduleSettle = (graph: Graph): void => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      settleTimerRef.current = null;
+      if (graphRef.current !== graph || graph.destroyed) return;
+      separateOverlaps(graph);
+    }, 600);
+  };
+
+  /** 渲染链入队：任务执行前校验实例仍存活且仍是当前实例（防销毁后操作，E09）。 */
+  const runExclusive = (task: (graph: Graph) => Promise<void>): void => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    chainRef.current = chainRef.current
+      .then(() => {
+        if (graphRef.current !== graph || graph.destroyed) return;
+        return task(graph);
+      })
+      .catch((cause) => {
+        if (import.meta.env.DEV) console.warn("[GraphCanvas] 渲染链任务异常", cause);
+      });
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -160,7 +194,7 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
       padding: 40,
       layout: {
         type: "force",
-        // 布局不动画：同步算完直接出最终位置——硬分离在 render 后 0.6s 执行，
+        // 布局不动画：同步算完直接出最终位置——硬分离在渲染完成后 0.6s 执行，
         // 若开动画，模拟 tick 会持续覆盖分离结果（曾致节点仍重叠）
         animation: false,
         linkDistance: 220,
@@ -237,22 +271,10 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
       ],
     });
     graphRef.current = graph;
-    void graph.render();
 
-    // 布局停止后执行一次硬分离：力导碰撞力是软约束仍可能残余重叠，
-    // 这里按最小间距把过近节点对沿连线推开（O(n²) 每轮毫秒级，200 节点无感）
-    const onAfterLayout = () => {
-      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = setTimeout(() => {
-        graph.off("afterlayout", onAfterLayout);
-        separateOverlaps(graph);
-      }, 600);
-    };
-    graph.on("afterlayout", onAfterLayout);
-    // 兜底：afterlayout 事件时序不确定，布局动画常规时长内再固定触发一次
-    setTimeout(() => {
-      graph.emit("afterlayout");
-    }, 9000);
+    // 布局收敛 → 硬分离（持久监听 + 防抖；每次数据变更/重布局后都重新调度——
+    // 力导碰撞是软约束仍可能残余重叠，重叠会触发标签避让隐藏节点名）
+    graph.on("afterlayout", () => scheduleSettle(graph));
 
     // dev 验收后门：e2e 经其读取节点画布坐标与元素状态（getViewportByCanvas 换算后 hover/click）；
     // 仅开发环境挂载，生产构建不暴露
@@ -262,7 +284,7 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
 
     graph.on("node:click", (evt) => {
       const id = (evt as unknown as { target?: { id?: string } }).target?.id;
-      if (!id) return;
+      if (!id || graph.destroyed) return;
       // toggle：同节点再点取消；状态推导用 graph 实时数据（E08：闭包首帧空数据曾致高亮全失效）
       selectedRef.current = selectedRef.current === id ? null : id;
       applySelection(graph, selectedRef.current, true);
@@ -276,58 +298,61 @@ export function GraphCanvas({ graph: graphData, visibleTypes, onNodeClick }: Gra
         void graphRef.current?.setTheme(e.matches ? "dark" : "light");
       };
       media.addEventListener("change", onSchemeChange);
-      return () => {
-        media.removeEventListener("change", onSchemeChange);
-        graph.destroy();
-        graphRef.current = null;
-      };
+      cleanupRef.current = () => media.removeEventListener("change", onSchemeChange);
     }
 
+    // 首次渲染走渲染链（与后续数据变更串行）
+    runExclusive(async (g) => {
+      await g.render();
+      scheduleSettle(g);
+    });
+
     return () => {
-      graph.off("afterlayout", onAfterLayout);
+      cleanupRef.current?.();
       if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      chainRef.current = Promise.resolve(); // 丢弃排队任务（任务内有存活守卫，双保险）
       graph.destroy();
       graphRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 单例：仅挂载/卸载执行；初始数据为闭包首帧值
   }, []);
 
-  // 数据变更 → 增量更新（G6 数据 API），不重建实例；重置点击高亮（图已换）
+  // 数据变更 → 渲染链排队：setData + render + 按当前筛选全量重挂 + 重新调度硬分离
   const lastDataRef = useRef(graphData);
   useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph || lastDataRef.current === graphData) return;
+    if (lastDataRef.current === graphData) return;
     lastDataRef.current = graphData;
-    selectedRef.current = null;
-    graph.setData(graphData);
-    // render 会按全量数据重建元素，显隐复位——完成后按当前筛选全量重挂
-    // （动画关闭：与进场动画叠加会闪烁）
-    void graph.render().then(() => {
-      if (!graphRef.current) return;
+    runExclusive(async (graph) => {
+      selectedRef.current = null;
+      graph.setData(graphData);
+      await graph.render();
+      // render 重建全部元素，显隐复位——按当前筛选全量重挂（动画关闭：与进场动画叠加会闪烁）
       const hidden = hiddenTargets(graph, visibleTypesRef.current);
       prevHiddenRef.current = hidden;
-      if (hidden.size > 0) void graph.hideElement([...hidden], false);
+      if (hidden.size > 0) await graph.hideElement([...hidden], false);
+      scheduleSettle(graph);
     });
   }, [graphData]);
 
-  // 类型筛选变更 → 增量显隐（hide/show 不触发重布局，画布其余元素位置稳定）
+  // 类型筛选变更 → 渲染链排队：增量显隐（hide/show 不触发重布局，画布其余元素位置稳定）
   useEffect(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
     if (prevHiddenRef.current === null) {
-      // 挂载首跑：无增量可言，仅记录基准（数据路径负责首挂后的全量应用）
-      prevHiddenRef.current = hiddenTargets(graph, visibleTypes);
+      // 挂载首跑：仅记录基准（数据渲染链完成后负责首次全量应用）
+      const graph = graphRef.current;
+      prevHiddenRef.current = graph ? hiddenTargets(graph, visibleTypes) : new Set();
       return;
     }
-    const target = hiddenTargets(graph, visibleTypes);
-    const prev = prevHiddenRef.current;
-    const toHide = [...target].filter((id) => !prev.has(id));
-    const toShow = [...prev].filter((id) => !target.has(id));
-    prevHiddenRef.current = target;
-    if (toShow.length > 0) void graph.showElement(toShow, true);
-    if (toHide.length > 0) void graph.hideElement(toHide, true);
-    // 重放持续选中态：重新显示的元素不应携带隐藏前的旧状态
-    if (selectedRef.current) applySelection(graph, selectedRef.current, false);
+    runExclusive(async (graph) => {
+      const target = hiddenTargets(graph, visibleTypes);
+      const prev = prevHiddenRef.current ?? new Set();
+      const toHide = [...target].filter((id) => !prev.has(id));
+      const toShow = [...prev].filter((id) => !target.has(id));
+      prevHiddenRef.current = target;
+      if (toShow.length > 0) await graph.showElement(toShow, true);
+      if (toHide.length > 0) await graph.hideElement(toHide, true);
+      // 重放持续选中态：重新显示的元素不应携带隐藏前的旧状态
+      if (selectedRef.current) applySelection(graph, selectedRef.current, false);
+    });
   }, [visibleTypes]);
 
   return <div ref={containerRef} data-testid="graph-canvas" className="h-full w-full" />;

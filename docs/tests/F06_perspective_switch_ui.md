@@ -25,6 +25,7 @@
 | L2 集成 | I5: 切回「作者」恢复全量；再切「角色」已选角色保留并直接加载（回切恢复） | 同上 | 必须 | pass |
 | L3 E2E | E1: 三视角切换全链路——author 6/3 → 观众 4/1 → 角色选周兰 2/1 → 回作者 6/3（跨组件：UI+API+DB，截图 P-01~03） | frontend/e2e/perspective.spec.ts | 必须 | pass |
 | L3 E2E | E2: 观众视角不泄露断言——audience_known=false 的「沈墨」不出现在页面任何文本中 | 同上 | 必须 | pass |
+| L3 E2E（反馈修复轮） | E3: 快速连续切换视角——零 G6 内部错误（渲染链串行 E09 防线）+ 边数据完整（截图 P-04） | e2e/perspective.spec.ts | 必须 | pass |
 
 ## 用例说明
 - U1: 初始 author/null（边界值—初始态）；setPerspective("character"→"audience"→"character") 角色 id 保留（回切恢复设计）；setCharacterId 置位/清空（等价类—置位/清除两态）
