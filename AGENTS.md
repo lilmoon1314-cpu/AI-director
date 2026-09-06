@@ -89,6 +89,7 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
 
 ### 特定场景必读
 - `INIT.md` — 执行项目初始化（F01）或调整初始化流程前必读
+- `DESIGN.md`（根）— 修改工作台导航/页面结构/资产页/Agent 界面/多项目交互前必读（交互设计基线，2026-09-06）
 - `docs/features.md` — 开始或完成任何功能点时必读（状态由验证脚本更新，禁止手改）
 - `docs/data_struct_define.md` — 修改实体/关系 schema、新增字段或新表时必读（9 张表数据蓝图）
 - `docs/testing.md` — 编写任何测试或判定功能完成前必读（层级定义/DoD/目录/模板）
