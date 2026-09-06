@@ -36,9 +36,11 @@
 
 表 `entities`：`id`(PK) / `type` / `name` / `aliases`(JSON) / `description` / `audience_known` / `properties`(JSON) / `created_at` / `updated_at`。
 
+规划（DESIGN.md §8.1，随多项目底座落地）：增加 `project_id`（FK projects + 索引），Alembic 迁移打包默认项目；全部读写按 project 维度过滤，检索/聚合接口增加项目参数。
+
 ## 依赖
 
-- 依赖：core
+- 依赖：core；projects（规划：实体归属校验，DESIGN.md §8.5）
 - 被依赖：relations（端点校验）、perspectives（图查询聚合）、assets（实体存在校验）、agent（建议草案落库）
 
 ## 约束

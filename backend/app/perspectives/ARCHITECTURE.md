@@ -5,6 +5,7 @@
 - 三种视角的图数据查询：author（全知）/ character（受限）/ audience（仅已展示）
 - 聚合 entities + relations 并按视角规则过滤，输出图可视化所需节点/边集合
 - 视角可见性判定（单一事实源原则的唯一执行点）
+- 项目维度过滤（规划，DESIGN.md §8.4）：图查询随 `/api/projects/{pid}/graph` 按项目过滤（与视角过滤正交叠加）
 
 ## 分层结构（F04 落地）
 
@@ -52,7 +53,7 @@ perspective 为必填参数（无默认值，避免缺参误入全知视图）�
 
 ## 依赖
 
-- 依赖：core、entities（search + get_many，service 层调用）、relations（get_all，service 层调用）
+- 依赖：core、entities（search + get_many，service 层调用）、relations（get_all，service 层调用）；projects（规划：图查询项目维度，DESIGN.md §8.5）
 - 被依赖：agent（上下文过滤，F10）、frontend（主数据源）
 
 ## 约束

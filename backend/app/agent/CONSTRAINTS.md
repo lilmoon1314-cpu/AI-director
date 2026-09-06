@@ -8,3 +8,4 @@
 - 必须：LLM 调用设超时与错误处理；失败抛 AgentError（可读错误），禁止未捕获异常冒泡。
 - 必须：会话历史上限与淘汰策略记录于本模块 ARCHITECTURE.md（上限值来自 config）。
 - 禁止：草案 JSON 解析失败无限重试；最多 1 次修复重试后返回 ValidationError。
+- 必须（规划，随 F10/多项目底座生效，DESIGN.md §8.3）：会话与记忆文档按项目隔离并持久化主库（conversations / messages / memory_docs）；记忆文档为项目工作上下文，禁止持久化世界观事实副本（单一事实源原则，事实以图谱为准）。

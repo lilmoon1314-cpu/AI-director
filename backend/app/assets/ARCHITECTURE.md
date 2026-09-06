@@ -73,9 +73,15 @@ asset_records                         asset_images
 
 ## 依赖
 
-- 依赖：core、entities（经 entities.service：实体存在校验 / 卡片与页面取实体数据）
+- 依赖：core、entities（经 entities.service：实体存在校验 / 卡片与页面取实体数据）；projects（规划：项目归属校验与按项目过滤，DESIGN.md §8.5）
 - 被依赖：frontend（资产管理页、详情面板缩略图）；第二阶段 agent（资产注入 LLM 上下文）
 - 被依赖方向恒为单向（assets 不被 entities 反向依赖；实体删除清理走读取时孤儿清扫）
+
+## 多项目语义（规划，DESIGN.md §8.2）
+
+- 通用资产（kind='general'）恒为跨项目全局：不加 project 字段，全部项目共享；前端「通用参考库」分区挂跨项目徽标，卡片缓存跨项目复用。
+- 实体资产（kind='entity' / scope='entity'）经 `owner_id → entity → project` 间接归属；`list_entity_cards` 将随 project 维度过滤。
+- 删除项目级联：现有「列表时孤儿清扫」无法感知成批实体消失，须新增显式清扫流程——主库事务删除该项目实体/关系后，按项目实体集合清扫 asset_records / asset_images / 物理文件；跨库事务边界与失败补偿为落地设计点。
 
 ## 约束
 

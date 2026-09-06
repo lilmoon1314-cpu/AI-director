@@ -37,9 +37,11 @@
 
 表 `relationships`：`id`(PK) / `source` / `target` / `type` / 动态属性列（trust 等） / `known_by`(JSON) / `audience_known` / `created_at` / `updated_at`。MVP 落地时将 data_struct_define.md 中的静态属性（dynamic_type/element_interaction）并入 `properties` JSON 列，动态数值列保持独立以便查询。
 
+规划（DESIGN.md §8.1，随多项目底座落地）：增加 `project_id`（FK projects + 索引），迁移打包默认项目；读写按 project 维度过滤（关系端点须与所属项目一致）。
+
 ## 依赖
 
-- 依赖：core、entities（经 entities.service 校验端点存在）
+- 依赖：core、entities（经 entities.service 校验端点存在）；projects（规划：关系归属校验，DESIGN.md §8.5）
 - 被依赖：perspectives（图查询聚合）、agent（建议草案落库）
 
 ## 约束

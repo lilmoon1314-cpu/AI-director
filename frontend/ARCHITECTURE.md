@@ -1,6 +1,7 @@
 # frontend/ARCHITECTURE.md — 前端架构
 
 > React 18 + TypeScript + Vite 单页应用。API 类型由后端 OpenAPI schema 自动生成。
+> 交互设计基线：根目录 DESIGN.md（多项目工作台，2026-09-06，规划中）——规划引入 react-router 路由化（`/projects` 首屏 + `/projects/:id/graph|assets|agent`，开放问题 OQ-1），当前实现为无路由的 useState 条件渲染。
 
 ## 1. 技术栈
 
@@ -16,17 +17,20 @@ frontend/src/
 │   ├── perspectiveStore# 当前视角（author/character/audience + character_id）
 │   ├── selectionStore  # 选中实体/关系、详情面板状态
 │   ├── assetStore      # 资产卡片列表（通用/项目）+ 内嵌查看器状态（F08）
-│   └── agentStore      # 对话消息、草案、确认流程
+│   ├── projectStore    # 项目列表/当前项目/切换重置换机（规划，DESIGN.md §7；与路由 :projectId 双向同步）
+│   └── agentStore      # 对话消息、草案、确认流程（规划：会话池模型 + 会话级 SSE 生命周期，DESIGN.md §5.5/§7）
 ├── views/
-│   ├── Workbench       # 工作台壳层：顶部主导航「图谱 | 资产管理」（F08 起）
+│   ├── Workbench       # 工作台壳层：顶部主导航「图谱 | 资产管理」（F08 起；规划增设「Agent」页签与顶栏项目切换器）
 │   ├── GraphView       # 图谱页（画布 + 操作栏 + 详情面板，原 Workbench 主视图）
-│   └── AssetLibrary    # 资产管理页（通用资产 / 项目资产二级分区，F08）
+│   ├── AssetLibrary    # 资产管理页（通用资产 / 项目资产二级分区，F08；规划升级两级钻取 + 搜索，DESIGN.md §5.3）
+│   ├── ProjectPicker   # 项目首屏（规划，DESIGN.md §5.1）
+│   └── AgentHome       # Agent 对话主页（规划，DESIGN.md §5.4）
 ├── components/
 │   ├── graph/          # GraphCanvas（G6 封装：布局/交互/缩放/拖拽）
 │   ├── entity-selector/# @ 触发的实体搜索选择器（含视角可见性提示）
 │   ├── entity-panel/   # 实体/关系详情（资产图片区、编辑表单）
 │   ├── assets/         # 资产卡片/编辑表单/通用与项目资产区/HTML 内嵌查看器（F08）
-│   ├── agent-panel/    # 对话面板（SSE 渲染 + 草案确认 UI）
+│   ├── agent-panel/    # 对话面板（SSE 渲染 + 草案确认 UI；规划含 AgentDock 右侧边栏，与 AgentHome 复用消息组件，DESIGN.md §5.4/§5.5）
 │   └── ui/             # 自研轻量通用组件（毛玻璃面板/按钮/输入框，shadcn/ui 风格）
 └── lib/                # 工具（格式化、防抖等）
 ```
@@ -41,7 +45,8 @@ frontend/src/
 | perspectiveStore | perspective/character_id | 视角切换控件（切换即触发 graphStore 重载） |
 | selectionStore | 选中 id、面板开合 | 图节点点击 |
 | assetStore | 通用/项目资产卡片、HTML 查看器开关 | 资产管理页挂载与写操作后刷新（F08） |
-| agentStore | 消息列表、流式缓冲、草案 | SSE 流、propose/confirm |
+| projectStore（规划） | projects/currentProjectId | 项目首屏与顶栏切换器；路由参数为项目上下文唯一事实源，切换触发各 store 重置（矩阵见 DESIGN.md §7；assetStore.generalCards 为全局缓存跨项目复用） |
+| agentStore | 消息列表、流式缓冲、草案 | SSE 流、propose/confirm（规划：按项目的会话池，SSE 挂会话级生命周期） |
 
 ## 4. 渲染性能策略
 
@@ -49,6 +54,7 @@ frontend/src/
 - 视角切换是唯一允许全量替换 nodes/edges 的场景。
 - 高频交互（拖拽/缩放/hover）状态隔离在 GraphCanvas 内部（局部 state/ref），不进全局 store。
 - 资产缩略图懒加载（viewport 内加载）。
+- 路由化（规划）后 G6 生命周期随图谱页路由组件挂载/卸载，语义与现状 GraphView 条件渲染一致，单例约束不变。
 
 对应硬约束见 [frontend/CONSTRAINTS.md](./CONSTRAINTS.md)「渲染性能」。
 

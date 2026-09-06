@@ -296,3 +296,38 @@
 | `mime` | string | 图片 MIME | 静态 |
 | `size` | number | 字节数 | 静态 |
 | `created_at` | datetime | UTC 时间戳 | 静态 |
+
+---
+
+### 11. 多项目与 Agent 数据（规划，未建表未迁移；来源 DESIGN.md §8，2026-09-06）
+
+> 多项目底座 + F10 的数据蓝图规划。落地时经 Alembic 迁移实施，并回填本节为已就位状态（文档双态标注，DECISIONS 2026-08-24）。
+
+#### 11.1 项目表（`projects`，主库）
+
+| 字段名 | 类型 | 说明 | 静态/动态 |
+|--------|------|------|-----------|
+| `id` | string | 唯一ID | 静态 |
+| `name` | string | 项目名（删除确认需输入原名） | 静态 |
+| `description` | string | 一句话描述 | 静态 |
+| `created_at` / `updated_at` | datetime | UTC 时间戳 | 静态/动态 |
+
+（封面字段第二阶段评估，DESIGN.md OQ-4。）
+
+#### 11.2 主库既有表的 project 维度
+
+- `entities` / `relationships` 增加 `project_id`（FK projects + 索引）；Alembic 迁移将既有数据打包进自动创建的「默认项目」（向后兼容）。
+- §8 `global_state` 为单例设计（隐含单世界假设）——**第 2 批建表时须改为按 project 维度**。
+
+#### 11.3 Agent 会话与记忆（建议入主库——单一事实源；assets.db 定位为派生展示层，不承载会话/记忆）
+
+| 表 | 关键字段 | 说明 |
+|----|---------|------|
+| `conversations` | `id, project_id, title, updated_at` | 会话（按项目隔离；前端 AgentHome 与 AgentDock 侧边栏为同一会话池） |
+| `messages` | `id, conversation_id, role, content, created_at` | 消息（SSE 流式完成后落库） |
+| `memory_docs` | `id, project_id, title, content(markdown), updated_at` | 记忆文档 = 项目工作上下文（定位/风格约定/创作阶段/决策待办），**非世界观事实副本**（单一事实源原则，事实以图谱为准） |
+
+#### 11.4 资产库（assets.db）的多项目语义
+
+- `asset_records.kind='general'` 恒为跨项目全局，不加 project 字段；实体资产经 `owner_id → entity → project` 间接归属（现有结构与孤儿清扫逻辑不变）。
+- 删除项目走显式级联清扫：主库事务删除该项目实体/关系后，按项目实体集合清扫 asset_records / asset_images / 物理文件；跨库失败补偿为落地设计点（DESIGN.md §8.2）。

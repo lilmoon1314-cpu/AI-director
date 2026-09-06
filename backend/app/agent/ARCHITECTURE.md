@@ -6,6 +6,7 @@
 - 根据用户描述生成实体/关系属性建议（结构化 JSON 草案，不直接写库）
 - 用户确认后将草案落库（经 entities/relations service）
 - 对话上下文组装（仅注入当前视角可见实体）
+- 会话与项目记忆文档管理（规划，DESIGN.md §5.4/§8.3）：conversations / messages / memory_docs 按项目隔离，前端载体 = AgentHome 主页 + AgentDock 侧边栏（同一会话池）
 
 ## 对外接口
 
@@ -29,7 +30,7 @@
 
 ## 依赖
 
-- 依赖：core、entities（确认落库、上下文检索）、relations（确认落库）、perspectives（上下文视角过滤）
+- 依赖：core、entities（确认落库、上下文检索）、relations（确认落库）、perspectives（上下文视角过滤）；projects（规划：会话/记忆按项目归属校验，DESIGN.md §8.5）
 - 被依赖：frontend（对话面板）
 
 ## 约束
@@ -37,3 +38,5 @@
 见本模块 [CONSTRAINTS.md](./CONSTRAINTS.md)（实现/修改 agent 前必读）。
 
 补充（内存管理）：会话历史存于进程内 dict + 上限淘汰（MVP 单进程成立，上限值来自 config）；SSE 使用 async generator，客户端断开自动终止并释放。
+
+**规划修订（F10/多项目，DESIGN.md §8.3）**：会话持久化入主库 `conversations` / `messages`（跨刷新、按项目隔离），进程内 dict 策略降级为流式缓冲；新增 `memory_docs`（项目工作上下文，markdown，用户可编辑、agent 可读，非世界观事实副本）；对话上下文 = 记忆文档 + 经视角过滤的图谱数据。

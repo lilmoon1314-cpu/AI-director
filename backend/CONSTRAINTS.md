@@ -6,6 +6,8 @@
 - 必须：跨模块调用只允许 `from app.<module>.service import ...`。
 - 禁止：跨模块 import 其他模块的 repository / models / schemas 内部类型（共享 DTO 由被调用方在 service 层签名导出）。
 - 必须：事务边界在 service 层（service 函数接收 AsyncSession，自行 commit/rollback）；router 不感知事务。
+- 必须（规划，随多项目底座功能项生效，DESIGN.md §8.5）：projects 模块仅依赖 core，禁止 import 任何领域模块（防循环依赖）；entities / relations / perspectives / assets / agent 对项目的引用一律经 `projects.service` 归属校验；落地时同步登记 import-linter 契约与 source 兄弟枚举（DECISIONS 2026-08-27）。
+- 必须（规划，随多项目底座生效，DESIGN.md §8.2）：删除项目必须显式级联清理——主库事务删除该项目实体/关系后，按项目实体集合清扫 assets.db 的资产记录 / 图片元数据 / 物理文件；跨库（app.db 与 assets.db 各自事务）失败须定义补偿边界，禁止仅删主库留存孤儿资产。
 
 ## 数据与存储
 - 必须：所有数据库访问经由 SQLAlchemy ORM；禁止裸 SQL 字符串拼接。
@@ -15,6 +17,7 @@
 - 禁止：直接物理删除被关系引用的实体；删除前必须校验引用并返回阻断提示。
 - 必须：id 由系统生成且创建后不可变更；name 变更不得影响 id。
 - 必须：含 known_by / audience_known 的数据在写入时校验视角标记的完整性（类型与成员有效性）。
+- 必须（规划，随多项目底座功能项生效，DESIGN.md §8.1）：主库新增 `projects` 表、`entities` / `relationships` 增加 `project_id`（FK projects + 索引）一律走 Alembic 迁移；迁移须将既有数据打包进自动创建的默认项目（向后兼容）；全部领域读写按 project 维度过滤，禁止无项目维度的跨项目查询。
 
 ## 异常与响应
 - 必须：所有 API 错误响应遵循统一结构（code / problem / cause / fix / detail），异常经全局异常处理器统一出口（层级见 backend/ARCHITECTURE.md §4）。

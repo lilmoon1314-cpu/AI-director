@@ -1,7 +1,7 @@
 # PROGRESS.md
 
 ## 当前状态
-- 最新commit：F08 资产管理完成（passing，见 git log）
+- 最新commit：DESIGN.md 交互设计基线 v1 + 全仓文档同步（见 git log）
 - 测试状态：后端 155 通过（含 assets L1 50 + L2 13 + e2e 1 + 新架构测试）+ mutmut（F08 assets kill rate 85.9%，scope 7 逻辑文件 453 变异体）；前端 vitest 111 + Playwright e2e 10（含 assets EF1/EF2）
 - Lint：make check 全绿（后端 ruff/format/lint-imports 5 契约/mypy/pytest + 前端 check-api-types/typecheck/lint/build）
 - 功能清单：F01–F08 passing；F09 已取消移除；F10 not_started
@@ -16,6 +16,7 @@
 - 2026-09-05: **F08 重新定界 + F09 取消（用户需求）**——工作台「图谱|资产管理」双页；资产 HTML 形态存储；独立资产库 assets.db；通用资产自定义属性 schema + agent 定制推迟第二阶段。详见 DECISIONS.md 2026-09-05 三条
 - 2026-09-05: **F08 资产管理（passing）**——后端 assets 模块重建：独立资产库（data/assets.db，启动 create_all 幂等引导，Alembic 例外入规）+ 图片上传（白名单/上限/uuid/流式 + /api 同源图片路由）+ 通用资产 CRUD（分类自由标签/attributes 自由属性/多图/封面）+ 项目资产（实体按类型分组卡片、HTML 资产页按 updated_at 惰性生成/过期再生、实体删除读取时孤儿清扫）；前端 Workbench 壳层双页签 + AssetLibrary（通用资产区 CRUD 表单/项目资产区卡片网格）+ 内嵌 HTML 查看器 + 实体详情面板图片区；HTML 渲染全量转义（XSS 防线）；测试：后端 L1 50 + L2 13 + e2e 1、前端 vitest 111、Playwright EF1/EF2（截图 AS-01~03）；mutmut 三轮迭代 85.9% 达标（rendering 模板按 §9 成本控制收窄排除）；过程事故 E11/T-20260905-01/02（mutmut 并发编辑覆盖 + 变异体误提交）登记并转化为 task.py mutate 脏树守卫 + app/ 禁 .bak 架构测试。详见 docs/tests/F08_asset_management.md、DECISIONS.md 2026-09-05 与 git log
 - 2026-09-06: **交互设计会话（DESIGN.md v1）**——F10 开工前与用户对齐多项目工作台交互设计，四项决策入 DECISIONS（独立项目首屏/Agent 同一会话池/通用库留驻资产页/本轮仅设计文档）；产出根目录 DESIGN.md：现状诊断 9 条（无路由/两级 tab 嵌套/命名失实/无搜索/表单替换丢上下文/agent 零载体/空状态缺失/多项目硬缺失/键盘可达性）、两层作用域模型（全局=通用库+harness+skills；项目=图谱+资产+记忆+会话）、路由方案（/projects/:id/graph|assets|agent，建议 react-router=OQ-1）、五页面设计（项目首屏/图谱页/资产页两级钻取/AgentHome/AgentDock 侧边栏）、端到端剧本 A–E、前端 store 重置矩阵（generalCards 全局缓存跨项目复用）、多项目后端蓝图（projects 表/project_id 迁移/默认项目打包/级联清扫/会话记忆入主库/路径参数式 API）、testid 迁移映射、开放问题 OQ1–OQ7；落地拆解仅作建议稿（多项目底座→工作台重构→F10 挪后），待用户审阅后立功能项。AGENTS.md 专题文档路由已收录 DESIGN.md
+- 2026-09-06（续）: **设计基线全仓文档同步**——按「双态标注」原则（规划内容标注并引用 DESIGN.md 章节）将新增/变更设计传播至 13 份文档：README（设计基线与架构演进节：多项目规划 + 模块化单体复评）；根 ARCHITECTURE（上下文图加 projects(规划)/依赖图加 projects 依赖方向（仅依赖 core、禁反向 import、经 service 归属校验）/模块清单/§5.5 多项目数据流/演进路线加第 1 批扩展行/文档导航）；根 CONSTRAINTS（§2 新增三条：DESIGN 基线遵循、projects 依赖方向、单体维持与拆分触发条件）；backend ARCHITECTURE/CONSTRAINTS（目录树 projects 行、API 总表 /api/projects 规划行、归属校验、删项目显式级联跨库补偿、project_id Alembic 迁移打包默认项目）；frontend ARCHITECTURE/CONSTRAINTS（路由规划注记、views/stores 蓝图（ProjectPicker/AgentHome/projectStore）、SSE 生命周期会话级修订注记、统一卡片规范、z-index 规范、资产页升级规划）；data_struct_define 新增 §11（projects 表/project_id/global_state 单例预警/conversations+messages+memory_docs 入主库/assets 多项目语义，全规划态）；agent/assets/entities/relations/perspectives 五模块 ARCHITECTURE+CONSTRAINTS 同步职责/依赖/规划条目
 
 ## 进行中
 - 无
