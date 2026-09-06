@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ApiError, type ProjectRead } from "../api/client";
+import { ApiError, DEFAULT_PROJECT_ID, type ProjectRead } from "../api/client";
 import { Button } from "../components/ui/Button";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { TextArea, TextInput } from "../components/ui/Field";
@@ -174,7 +174,7 @@ function ProjectCard({
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const isDefault = project.id === "project-default";
+  const isDefault = project.id === DEFAULT_PROJECT_ID;
 
   return (
     <div

@@ -11,6 +11,7 @@
 """
 
 import re
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -22,9 +23,134 @@ from task import _resolve_executable  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 FEATURES_FILE = ROOT / "docs" / "features.md"
 TASK_SCRIPT = ROOT / "scripts" / "task.py"
+BACKEND_DIR = ROOT / "backend"
+MUTATION_CACHE = BACKEND_DIR / ".mutmut-cache"
 
 # 状态机合法取值（docs/features.md 表头约定）
 VALID_STATES = ("not_started", "active", "passing", "blocked")
+
+# ---- 变异证据门禁（docs/testing.md §9；E12 流程风险的机器化防控）----
+# 变异测试工具随 F04 落地，门禁自 F04 起的功能生效
+MUTATION_ENFORCE_SINCE_F = 4
+# kill rate 门槛与 DoD 一致（docs/testing.md §2/§9）
+MUTATION_KILL_RATE_THRESHOLD = 0.85
+
+
+def _mutation_modules(verify_cmds: str) -> list[str]:
+    """从验证命令提取被测模块名（L1 文件名约定 test_<module>_service.py）。
+
+    作用: 变异证据门禁的模块定位——features.md 的 L1 单测路径即变异 scope
+        约定（如 F11 的 test_projects_service.py → projects）。
+    参数: verify_cmds — 功能行的验证命令原文。
+    返回值: list[str]（去重排序的模块名；纯前端功能返回空列表）。
+    异常: 无。依赖: re。
+    """
+    return sorted(set(re.findall(r"tests/unit/test_([a-z_]+)_service\.py", verify_cmds)))
+
+
+def _module_last_commit_epoch(module: str) -> int:
+    """被测模块目录最后一次提交的 epoch 秒（无提交历史返回 0）。
+
+    作用: 变异缓存新鲜度的比对基准——模块代码在变异运行后被改动（提交）
+        即视为证据过期（E12：判杀基线与代码不一致导致 kill rate 失真）。
+    参数: module — 模块名（app/ 下目录名）。
+    返回值: int（epoch 秒；无历史=0）。异常: 无。依赖: git。
+    """
+    result = subprocess.run(
+        ["git", "log", "-1", "--format=%ct", "--", f"backend/app/{module}/"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    out = result.stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def _mutation_gate(module: str) -> tuple[bool, str]:
+    """校验模块的变异测试证据（缓存存在 / 含该模块 / kill rate 达标 / 晚于模块最后提交）。
+
+    作用:
+        DoD 第 5 条的机器化防控（E12 流程风险）——verify 写 passing 前强制
+        确认「测试强化后重跑了变异、且结果反映最终代码」，防止跳过变异或
+        用陈旧结果宣称完成。
+    参数: module — 被测模块名。
+    返回值: (是否通过, (问题, 原因, 修复))；通过时消息为空元组。
+    异常: 无（缓存缺失/损坏均归并为未通过）。
+    依赖: sqlite3（只读连接 mutmut 缓存）、_module_last_commit_epoch。
+    """
+    if not MUTATION_CACHE.is_file():
+        return False, (
+            f"模块 {module} 缺少变异测试证据（{MUTATION_CACHE.name} 不存在）",
+            "变异测试从未对该模块运行，或运行后被清缓存，DoD 第 5 条无法确认",
+            f"先提交该模块全部改动，再运行: python scripts/task.py mutate {module} "
+            "tests/unit/test_<module>_service.py tests/integration/<该功能集成测试>",
+        )
+    try:
+        conn = sqlite3.connect(f"file:{MUTATION_CACHE.as_posix()}?mode=ro", uri=True)
+        try:
+            rows = conn.execute(
+                "SELECT m.status FROM Mutant m "
+                "JOIN Line l ON m.line = l.id "
+                "JOIN SourceFile s ON l.sourcefile = s.id "
+                "WHERE s.filename LIKE ?",
+                (f"app/{module}/%",),
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False, (
+            f"模块 {module} 的变异缓存不可读（{MUTATION_CACHE.name} 损坏）",
+            "缓存文件存在但无法按 mutmut 2.x 表结构查询",
+            "删除缓存后重跑: python scripts/task.py mutate <module> ...",
+        )
+    total = len(rows)
+    if total == 0:
+        return False, (
+            f"变异缓存不含模块 {module} 的变异体",
+            "缓存来自其他模块的运行（task.py mutate 每次清缓存，仅保留最近一次）",
+            f"对 {module} 重跑: python scripts/task.py mutate {module} ...",
+        )
+    killed = sum(1 for (status,) in rows if status == "ok_killed")
+    if killed / total < MUTATION_KILL_RATE_THRESHOLD:
+        return False, (
+            f"模块 {module} 变异测试未达标（kill rate {killed}/{total} = "
+            f"{killed / total:.1%} < {MUTATION_KILL_RATE_THRESHOLD:.0%}）",
+            "存在未被测试集杀灭的变异体，测试有效性不足（docs/testing.md §9）",
+            "按存活变异体逐一分析：补判杀用例或登记等价性后重跑 mutate",
+        )
+    last_commit = _module_last_commit_epoch(module)
+    if MUTATION_CACHE.stat().st_mtime < last_commit:
+        return False, (
+            f"模块 {module} 的变异证据过期（缓存早于该模块最后一次提交）",
+            "变异运行后模块代码又被改动，kill rate 不再反映最终代码（E12）",
+            f"提交全部改动后重跑: python scripts/task.py mutate {module} ...",
+        )
+    return True, ()
+
+
+def _mutation_gate_for_feature(feature_id: str, verify_cmds: str) -> list[str]:
+    """对功能执行变异证据门禁，返回未通过项的三要素消息列表。
+
+    作用: main 的接入口——仅对 F04 起、且 L1 命令约定的模块（目录含 .py）
+        生效；纯前端功能与空壳模块（如 agent 尚无代码）自动跳过。
+    参数: feature_id — 功能 ID；verify_cmds — 验证命令原文。
+    返回值: list[str]（失败消息；空列表=通过）。异常: 无。依赖: _mutation_* 系列。
+    """
+    match = re.fullmatch(r"F(\d+)", feature_id)
+    if not match or int(match.group(1)) < MUTATION_ENFORCE_SINCE_F:
+        return []
+    failures: list[str] = []
+    for module in _mutation_modules(verify_cmds):
+        if not any((BACKEND_DIR / "app" / module).glob("*.py")):
+            continue  # 模块尚无 Python 代码（如 agent 在 F10 前）——无变异对象
+        ok, message = _mutation_gate(module)
+        if not ok:
+            problem, cause, fix = message
+            failures.append(
+                f"{feature_id} 变异证据门禁未过（模块 {module}）: "
+                f"{problem}；{cause}；{fix}"
+            )
+    return failures
 
 
 def _fail(problem: str, cause: str, fix: str) -> None:
@@ -159,6 +285,13 @@ def main(argv: list[str]) -> None:
         result = subprocess.run([*resolved, *cmd[1:]], cwd=cwd)
         if result.returncode != 0:
             failed.append(segment.strip())
+
+    # 变异证据门禁（E12 防控）：命令全过也必须在写 passing 前确认变异测试
+    # 对最终代码达标（docs/testing.md §9/§2 DoD 第 5 条）
+    if not failed:
+        for gate_failure in _mutation_gate_for_feature(feature_id, verify_cmds):
+            print(f"\n[问题] {gate_failure}", file=sys.stderr)
+            failed.append("变异证据门禁未通过")
 
     new_state = "passing" if not failed else "blocked"
     _update_state(feature_id, new_state)

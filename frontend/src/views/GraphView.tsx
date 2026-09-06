@@ -7,7 +7,7 @@
  * - 深浅色跟随系统（CSS dark: 变体 + G6 主题在 GraphCanvas 内联动）。
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CreateEntityForm } from "../components/entity-panel/CreateEntityForm";
 import { CreateRelationForm } from "../components/entity-panel/CreateRelationForm";
@@ -67,12 +67,13 @@ export function GraphView() {
   const characters = usePerspectiveStore((s) => s.characters);
   const loadEntities = useEntityIndexStore((s) => s.load);
 
-  // 项目切换重置换机（DESIGN.md §7）：图数据陈旧（loadedProjectId ≠ 当前项目）时
-  // 先重置视角/选中/索引/项目资产，再按当前项目加载——页签往返（同项目）不触发重置
-  const lastSeenProject = useRef(projectId);
+  // 项目切换重置换机（DESIGN.md §7；验收审查 E14）：Workbench 以 key=projectId
+  // 整树重挂载本视图，组件内 ref 无法跨挂载记忆上一项目（原 useRef 判定不可达）——
+  // 改读全局 graphStore.loadedProjectId：成功加载过另一项目即为陈旧，触发置换；
+  // 页签往返（同项目重挂载）loadedProjectId 相同，不触发重置换
   useEffect(() => {
-    if (lastSeenProject.current !== projectId) {
-      lastSeenProject.current = projectId;
+    const loaded = useGraphStore.getState().loadedProjectId;
+    if (loaded !== null && loaded !== projectId) {
       usePerspectiveStore.getState().reset();
       useSelectionStore.getState().clear();
       useEntityIndexStore.getState().reset();

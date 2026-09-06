@@ -55,6 +55,7 @@ make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typec
     3. 全部任务完成并通过验证后，把「进行中」的小任务统一压缩为一条摘要移入「当前已完成」，清空「进行中」
 - 测试失败记录（docs/lessons.md §2）：每次测试不通过必须当场在 backend/logs/error.jsonl 追加一条 test_failure 记录（三要素齐全），修复后按提升流程（docs/lessons.md §1）归档（resolved-known / promoted-EXX / resolved-unique）；新类型错误同步登记 error_pattern 条目并完成自动化转化评估
 - 审查反馈提升（docs/lessons.md §1）：每次代码审查/测试失败中发现新类型的 agent 错误，当次会话内登记错误模式库并转化为自动检查（lint/架构测试/回归测试）；暂无法自动化的加入审查清单
+- 验收审查子代理（docs/testing.md §10）：测试全绿 + 变异达标之后、verify FXX 之前，必须派发只读子代理按协议独立审查本功能 diff（约束符合性/测试有效性/文档双态/已知模式复发），发现项 triage（修复或驳回）并把新类型问题按提升流程登记；审查者只报告不修改
 
 ## 每次会话开始时
 1. 读 PROGRESS.md 了解当前状态

@@ -1,12 +1,10 @@
 # PROGRESS.md
 
 ## 当前状态
-- 最新commit：F11 多项目底座完成（passing，见 git log）
-- 测试状态：后端 217 通过（projects L1 12 + L2 15 + e2e 2 + 架构/领域适配）+ mutmut projects 100%（125/125）；前端 vitest 122 + Playwright e2e 12（含 projects FE1/FE1b，既有场景路由适配）
+- 最新commit：质量门禁双强化（变异证据机器门禁 + 验收审查子代理，F11 试点 P0 修复，见 git log）
+- 测试状态：后端 226 通过（含门禁单测 9）+ mutmut projects 100%（125/125，verify 门禁校验）；前端 vitest 123（含 FU1 重置换机锁定）+ Playwright e2e 12
 - 功能清单：F01–F08、F11 passing；F09 已取消；F10、F12 not_started（执行序：F12 → F10）
-- 测试状态：后端 155 通过（含 assets L1 50 + L2 13 + e2e 1 + 新架构测试）+ mutmut（F08 assets kill rate 85.9%，scope 7 逻辑文件 453 变异体）；前端 vitest 111 + Playwright e2e 10（含 assets EF1/EF2）
-- Lint：make check 全绿（后端 ruff/format/lint-imports 5 契约/mypy/pytest + 前端 check-api-types/typecheck/lint/build）
-- 功能清单：F01–F08 passing；F09 已取消移除；F10 not_started
+- Lint：make check 全绿（后端 ruff/format/lint-imports 7 契约/mypy/pytest + 前端 check-api-types/typecheck/lint/build）
 
 ## 当前已完成
 - 2026-08-24: 设计阶段收口——技术栈/架构定稿、约束文档分块（10 份）、features 分解（F01–F10）、质量保障体系（testing/architecture_checks/lessons）、错误体系与信号采集设计。详见 DECISIONS.md
@@ -22,9 +20,10 @@
 
 - 2026-09-06（续二）: **F11 多项目底座（passing）**——后端：projects 模块五层（默认项目 lifespan 播种恒存在/计数器反规范化事务内维护/保护性删除/级联=router 组合层编排 relations→entities→projects.delete 原子提交→assets 显式清扫+孤儿清扫兜底）+ Alembic 迁移（projects 表+双表 project_id FK/索引+存量打包默认项目）+ entities/relations/perspectives/assets 四模块 project 维度（归属校验/跨项目引用 422/图查询与资产卡片缺省默认项目）+ import-linter 契约三条（projects 业务层零领域依赖等）+ core 共享层修复（Pydantic value_error ctx 嵌异常致 422→500，responses JSON 安全化）。前端：react-router 路由化（/projects 首屏 + /projects/:id/graph|assets）+ ProjectPicker（卡片/搜索/新建/改名/删除输入名确认/空态）+ ProjectSwitcher + projectStore（Outlet context 渲染期供给 projectId 避免父子 effect 竞态）+ store 陈旧检测重置换机（generalCards 全局缓存保留）+ 表单/@检索/角色下拉隐式项目作用域 + 既有 5 个 e2e spec 路由适配（openWorkbench helper）。测试：后端 217 通过（projects L1/L2/L3 + 领域 179 项适配 + 架构 DDL 契约）、前端 vitest 122（新增 FU1/FU2）+ Playwright 12（新增 FE1/FE1b）；mutmut projects 两轮 63.2%→100%（125/125 零存活零等价）。事故：E12（mutmut 缓存残留→mutate 自动清缓存）、E13（backdrop-filter 层叠拦截→顶栏 z-30+e2e 防线）、T-20260906-03（e2e 僵尸后端持旧库→清理规程）。详见 docs/tests/F11_multi_project_foundation.md、DECISIONS.md 与 git log
 
+- 2026-09-06（续三）: **质量门禁双强化（用户决策）**——①变异证据机器门禁：verify_feature.py 写 passing 前强制校验（缓存存在/含该模块变异体/kill rate≥85%/缓存晚于模块最后提交，F04 起生效、L1 文件名约定定位模块、纯前端与空壳模块跳过；9 项单测；实测 F11 通过、F08/F04 重验将被要求重跑各自模块变异——DoD 诚实反映），E12 流程风险闭环；②验收审查子代理协议落 docs/testing.md §10（只读/自包含 prompt/结构化发现/verify 前触发/发现按 lessons §1 提升）+ AGENTS.md 工作规则；**F11 首次试点即抓出 P0**：GraphView 重置换机 useRef 判定在 key=projectId 整树重挂载下不可达（视角/选中/查看器跨项目残留，E14 登记）→ 改读全局 graphStore.loadedProjectId 陈旧检测 + FU1 集成用例锁定（generalCards 保留断言）；P1×2 文档漂移（FU1 机制/I8 known_by 维度）与 P2×4（默认项目常量收敛 client.ts/测试目标口径/e2e 判杀重叠论证）全部处置，处置记录入 F11 测试文档「验收审查记录」
+
 ## 进行中
 - 无
-
 ## 已知问题
 - 无
 

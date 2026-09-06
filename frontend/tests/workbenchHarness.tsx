@@ -8,12 +8,14 @@
 import { render } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+import { DEFAULT_PROJECT_ID } from "../src/api/client";
 import { AssetLibrary } from "../src/views/AssetLibrary";
 import { GraphView } from "../src/views/GraphView";
-import { Workbench } from "../src/views/Workbench";
+import { Workbench } from "../src/views/Workbench"
 
-/** 工作台默认项目 id（与后端 lifespan 播种的默认项目一致）。 */
-export const DEFAULT_PROJECT_ID = "project-default";
+// 测试装配文件与 React Fast Refresh 无关，转发共享常量供各测试文件统一导入
+// eslint-disable-next-line react-refresh/only-export-components
+export { DEFAULT_PROJECT_ID };
 
 /** 在路由上下文中渲染工作台（默认落在图谱页）。 */
 export function renderWorkbench(initialRoute = `/projects/${DEFAULT_PROJECT_ID}/graph`) {

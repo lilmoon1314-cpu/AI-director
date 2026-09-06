@@ -31,6 +31,10 @@ export function joinUrl(base: string, path: string): string {
 export const API_BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api";
 
+/** 默认项目 id（后端 projects.service.DEFAULT_PROJECT_ID 的前端镜像——
+ * lifespan 恒播种、不可删除；切换器/首屏/测试共用，禁止散落字面量）。 */
+export const DEFAULT_PROJECT_ID = "project-default";
+
 /** 后端 AppError 统一结构的客户端镜像（三要素：什么出了问题/为什么/怎么修）。 */
 export class ApiError extends Error {
   readonly status: number;

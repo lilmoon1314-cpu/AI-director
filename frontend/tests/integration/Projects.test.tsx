@@ -50,6 +50,8 @@ let deletedIds: string[] = [];
 
 const server = setupServer(
   http.get("*/api/projects", () => HttpResponse.json(projects)),
+  // 图查询：任意项目返回空图（FU1 重置换机用例只需 loadedProjectId 成功落位）
+  http.get("*/api/graph", () => HttpResponse.json({ nodes: [], edges: [] })),
   http.post("*/api/projects", async ({ request }) => {
     createdCount += 1;
     const body = (await request.json()) as { name: string; description?: string };
@@ -216,6 +218,92 @@ describe("F11 FU2: 工作台路由", () => {
     await waitFor(() => expect(currentPath).toBe("/projects/project-a/assets"));
     await user.click(screen.getByTestId("tab-graph"));
     await waitFor(() => expect(currentPath).toBe("/projects/project-a/graph"));
+  });
+
+  it("FU1: 切换项目 → 视角/选中/查看器/项目资产重置换，generalCards 全局缓存保留（DESIGN §7 矩阵）", async () => {
+    // 设计依据: 验收审查 P0（E14）——重置换机须经全局 loadedProjectId 陈旧检测真实执行并受测锁定
+    const { MemoryRouter, Route, Routes } = await import("react-router-dom");
+    const { render } = await import("@testing-library/react");
+    const { Workbench } = await import("../../src/views/Workbench");
+    const { GraphView } = await import("../../src/views/GraphView");
+    const { useGraphStore } = await import("../../src/stores/graphStore");
+    const { usePerspectiveStore } = await import("../../src/stores/perspectiveStore");
+    const { useSelectionStore } = await import("../../src/stores/selectionStore");
+    const { useAssetStore } = await import("../../src/stores/assetStore");
+
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={[`/projects/${DEFAULT_PROJECT_ID}/graph`]}>
+        <Routes>
+          <Route path="/projects/:projectId" element={<Workbench />}>
+            <Route path="graph" element={<GraphView />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    // 图加载成功 → loadedProjectId 落位（陈旧检测基准）
+    await waitFor(() =>
+      expect(useGraphStore.getState().loadedProjectId).toBe(DEFAULT_PROJECT_ID),
+    );
+
+    // 预置上一项目的残留状态（视角/角色/选中面板/查看器/项目资产卡片 + 全局通用卡）
+    usePerspectiveStore.setState({
+      perspective: "character",
+      characterId: "char-old",
+      characters: [
+        {
+          id: "char-old",
+          type: "character",
+          name: "旧角色",
+          aliases: [],
+          audience_known: true,
+        },
+      ],
+      loadedProjectId: DEFAULT_PROJECT_ID,
+    });
+    useSelectionStore.setState({
+      selectedEntityId: "char-old",
+      selectedRelationId: null,
+      panelOpen: true,
+    });
+    useAssetStore.setState({
+      generalCards: [
+        {
+          id: "asset-g",
+          category: "表情参考",
+          title: "表情库",
+          description: "",
+          cover_url: null,
+          image_count: 1,
+          updated_at: "2026-09-06T00:00:00Z",
+        },
+      ],
+      entityCards: [
+        {
+          id: "char-old",
+          type: "character",
+          name: "旧角色",
+          description: "",
+          cover_url: null,
+          image_count: 0,
+        },
+      ],
+      entityCardsProjectId: DEFAULT_PROJECT_ID,
+      viewer: { url: "http://mock.local/api/assets/entity/char-old/page", title: "旧角色" },
+    });
+
+    await user.click(screen.getByTestId("project-switcher-button"));
+    await user.click(screen.getByTestId("switch-to-project-a"));
+    await waitFor(() => expect(useProjectStore.getState().currentProjectId).toBe("project-a"));
+    // 新项目图加载完成 → 重置换机已随挂载执行
+    await waitFor(() => expect(useGraphStore.getState().loadedProjectId).toBe("project-a"));
+    expect(usePerspectiveStore.getState().perspective).toBe("author");
+    expect(usePerspectiveStore.getState().characterId).toBeNull();
+    expect(useSelectionStore.getState().panelOpen).toBe(false);
+    expect(useAssetStore.getState().viewer).toBeNull();
+    expect(useAssetStore.getState().entityCards).toHaveLength(0);
+    // 全局缓存保留：通用参考库卡片跨项目复用（DESIGN §7 矩阵亮点）
+    expect(useAssetStore.getState().generalCards).toHaveLength(1);
   });
 
   it("无效项目 id → 错误页 + 返回首屏（等价类—无效路由）", async () => {

@@ -2,7 +2,7 @@
 
 ## 测试目标
 
-验证多项目数据底座：projects 表与 project_id 归属（迁移打包存量数据进默认项目）、项目 CRUD API（计数器维护/改名保护/级联删除+资产清扫兜底）、既有领域端点的 project 维度过滤（查询参数渐进迁移，缺省=默认项目），以及前端路由化工作台（项目首屏/顶栏切换器/store 重置换机）。
+验证多项目数据底座：projects 表与 project_id 归属（迁移打包存量数据进默认项目）、项目 CRUD API（计数器维护/改名保护/级联删除+资产清扫兜底）、既有领域端点的 project 维度过滤（查询参数渐进迁移：写入与图查询/资产卡片缺省=默认项目，实体/关系检索列表缺省=作者管理面全库，前端项目内恒显式携带 project_id），以及前端路由化工作台（项目首屏/顶栏切换器/store 重置换机）。
 
 设计基线: DESIGN.md §4（导航）/§5.1（项目首屏）/§7（store 矩阵）/§8（后端蓝图）；决策: DECISIONS.md 2026-09-06 F11/F12 拆解四项。
 
@@ -38,7 +38,7 @@
 - I5: DELETE /api/projects/{id} 级联 → 204；项目内实体/关系随后 404；assets.db 中该实体的图片记录与物理文件被清扫；项目列表不再含该项目；DELETE 默认项目 → 422（设计依据：等价类-有效级联 / 无效-受保护资源；跨库清扫为 DESIGN §8.2 显式级联路径）
 - I6 参数化: 实体归属 scoping——POST /api/entities 带 project_id=A → 仅 A 可见；不带 project_id → 默认项目可见、A 不可见；project_id="ghost" → 404（设计依据：等价类-有效-显式归属/有效-缺省兜底/无效-项目不存在）
 - I7: GET /api/graph?project_id=A → 节点仅含 A 的实体；缺省 → 默认项目图（设计依据：等价类-过滤维度正交叠加于视角过滤）
-- I8: POST /api/relations 端点跨项目（source∈A, target∈B）→ 422（设计依据：等价类-无效-跨项目关系）
+- I8 参数化: 跨项目引用（source / target / known_by 三个维度任一命中即 422，detail.rule=cross_project_reference）（设计依据：等价类-无效-跨项目关系，三维度同构断言参数化）
 - I9: GET /api/assets/entities?project_id=A → 卡片仅含 A 的实体（设计依据：等价类-项目资产随项目隔离）
 - I10: 通用资产无项目维度——POST /api/assets/general 后，任意项目视角下列表行为不变（不带 project 参数）（设计依据：等价类-全局资源恒共享，DESIGN §8.2）
 
@@ -49,7 +49,7 @@
 
 ### 前端 L1/L2
 
-- FU1: projectStore——loadProjects 成功/失败态、缓存 force 语义、createProject 后列表刷新、switchProject 触发依赖 store 重置换机（graph/perspective/selection/asset/entityIndex 的 reset 被调用，generalCards 保留）（设计依据：等价类-正常流/错误流 + DESIGN §7 矩阵契约）
+- FU1: projectStore——loadProjects 成功/失败态、缓存 force 语义、createProject 后列表刷新、syncRoute 有效/幽灵/加载失败三分支（等价类-正常流/错误流 + 边界值-force 两态）；**重置换机**（DESIGN §7 矩阵）：切换项目经全局 graphStore.loadedProjectId 陈旧检测触发 perspective/selection/entityIndex/asset 项目分区重置换（Workbench 以 key=projectId 整树重挂载，组件内 ref 无法跨挂载记忆上一项目——E14），generalCards 全局缓存保留（设计依据：等价类-切换置两态 + 全局缓存契约，集成用例锁定）
 - FU2: ProjectPicker——空状态引导、卡片渲染（名称/实体数）、搜索前端过滤、新建表单（空名不可提交）、删除确认（输入项目名才能确认）；路由——/ 重定向 /projects、卡片点击进入 /projects/:id/graph、页签切换 URL 变化、无效 projectId 错误页返回（设计依据：等价类-空/非空项目集 + 导航契约）
 
 ### 前端 L3（Playwright）
@@ -66,6 +66,16 @@
   1. 首轮（判杀器=L1+L2）kill rate 63.2%（79/125）：46 存活体逐一分析——路由 path/响应模型、Schema 约束值（描述长度 500/501、空白名消息、extra=forbid、单字/超长改名）、默认项目常量与保护错误三要素、DDL 声明等均可补用例杀灭；据此补齐契约边界用例（I1–I5 增强四例）与架构测试 `test_projects_schema_declared`。
   2. 次轮 99.2%（124/125），唯一存活体（ensure_default_project 的 `now=None`）手动 apply 验证实为可杀——mutmut 结果缓存跨轮残留旧状态（E12）；task.py mutate 已改为启动前清缓存，清缓存重跑后 125/125。
 - @checkpoint 删除类变异体在本轮判杀器下全部被杀（架构测试的 core 纯净性/散点日志检查覆盖装饰器存在性），无需等价登记。
+- L3 判杀器说明（§9 层级覆盖原则）：未追加 e2e 判杀路径——存活体分析中无「仅 e2e 可杀」变异体（路由挂载/迁移/启动链类装配变异由架构测试的迁移 DDL 断言与 L2 的 TestClient 全链路覆盖，与 L2 所杀完全重叠，符合 §9 重叠豁免）。
+
+## 验收审查记录（docs/testing.md §10 协议，2026-09-06 首次试点）
+
+独立只读审查子代理对本功能 diff 执行协议审查，发现 7 条（P0×1 / P1×2 / P2×4）：
+
+- **P0（已修复）**：GraphView 重置换机以组件内 useRef 判定"上一项目"，但 Workbench 以 key=projectId 整树重挂载使该分支不可达——视角角色/选中面板/查看器跨项目残留，且 FU1 声称的机制无测试锁定（E08 同型 + 文档漂移）。处置：改读全局 graphStore.loadedProjectId 做陈旧检测（页签往返不误触发），新增 FU1 集成用例锁定置换行为与 generalCards 保留；错误模式 E14 登记。
+- **P1×2（已回写）**：①FU1 文档描述与实现机制不符（switchProject action 不存在）→ 按落地机制重写；②I8 实际参数化了 known_by 维度但文档未载 → 用例说明补齐。
+- **P2×4（已处置）**：默认项目 id 三处魔法串 → 收敛为 api/client.ts 导出 DEFAULT_PROJECT_ID；测试目标"缺省=默认项目"口径笼统 → 精确化为写入/展示面 vs 检索列表两义；变异结果补 e2e 重叠论证（见上）。
+- 新增错误模式：E14（keyed 重挂载下组件内 ref 跨挂载状态检测不可达）。
 
 ## 验收判定
 
