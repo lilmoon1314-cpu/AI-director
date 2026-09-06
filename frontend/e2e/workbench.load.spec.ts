@@ -8,7 +8,7 @@
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-import { resetWorld, shoot } from "./helpers";
+import { resetWorld, shoot, openWorkbench } from "./helpers";
 
 const CHAR_NAMES = [
   "林长风", "苏晚晴", "叶青崖", "萧子衿", "陆云深", "沈若尘", "顾惊鸿", "白照影",
@@ -174,7 +174,7 @@ test("负载验收: 194 实体 + 208 关系的加载/交互/内存", async ({ pa
 
   // —— 加载耗时 ——
   const tGo = Date.now();
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(
     new RegExp(`${entityCount} 节点 · 208 边`),
   );

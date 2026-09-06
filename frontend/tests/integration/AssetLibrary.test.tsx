@@ -4,14 +4,16 @@
  * @antv/g6 为测试桩（vite.config test.alias），节点点击经桩实例 emit 触发。
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { setupServer } from "msw/node";
 
 import { Graph } from "../../src/test-stubs/g6-stub";
-import { Workbench } from "../../src/views/Workbench";
+import { renderWorkbench as renderWorkbenchRoute } from "../workbenchHarness";
+import { useProjectStore } from "../../src/stores/projectStore";
+import { DEFAULT_PROJECT_ID } from "../workbenchHarness";
 
 // ---- 测试世界 ----
 
@@ -64,6 +66,19 @@ function resetWorld() {
 }
 
 const server = setupServer(
+  http.get("http://mock.local/api/projects", () =>
+    HttpResponse.json([
+      {
+        id: DEFAULT_PROJECT_ID,
+        name: "默认项目",
+        description: "",
+        entity_count: 6,
+        relation_count: 3,
+        created_at: "2026-09-06T00:00:00Z",
+        updated_at: "2026-09-06T00:00:00Z",
+      },
+    ]),
+  ),
   http.get("http://mock.local/api/graph", () =>
     HttpResponse.json({ nodes: [], edges: [] }),
   ),
@@ -134,10 +149,19 @@ afterAll(() => server.close());
 
 beforeEach(() => {
   resetWorld();
+  useProjectStore.setState({
+    projects: [],
+    loading: false,
+    error: null,
+    errorFix: null,
+    currentProjectId: null,
+    routeProjectId: null,
+    routeInvalid: false,
+  });
 });
 
 async function goToAssets() {
-  render(<Workbench />);
+  renderWorkbenchRoute();
   await userEvent.click(await screen.findByTestId("tab-assets"));
   await waitFor(() => expect(screen.getByTestId("section-general")).toBeTruthy());
 }
@@ -146,7 +170,7 @@ async function goToAssets() {
 
 describe("F08 IF1: 工作台双页切换", () => {
   it("默认图谱页：操作栏与图状态栏在（边界值—初始页签）", async () => {
-    render(<Workbench />);
+    renderWorkbenchRoute();
     expect(await screen.findByTestId("sidebar")).toBeTruthy();
     expect(await screen.findByTestId("graph-stats")).toBeTruthy();
     expect(screen.queryByTestId("section-general")).toBeNull();
@@ -209,7 +233,7 @@ describe("F08 IF3: 项目资产查看器", () => {
 
 describe("F08 IF4: 实体详情面板图片区", () => {
   it("选中实体 → 图片明细渲染 + 「查看资产页」打开查看器", async () => {
-    render(<Workbench />);
+    renderWorkbenchRoute();
     await waitFor(() => expect(Graph.instances.length).toBeGreaterThan(0));
     Graph.instances[0]?.emit("node:click", { target: { id: "char-a" } });
 

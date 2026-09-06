@@ -4,14 +4,15 @@
  * @antv/g6 为测试桩（test.alias），断言经 stats 文本与 MSW 捕获的请求 URL。
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
-import { Workbench } from "../../src/views/Workbench";
 import { usePerspectiveStore } from "../../src/stores/perspectiveStore";
+import { useProjectStore } from "../../src/stores/projectStore";
+import { DEFAULT_PROJECT_ID, renderWorkbench } from "../workbenchHarness";
 
 // ---- 测试世界（三视角视图镜像，见测试文档矩阵） ----
 
@@ -61,6 +62,20 @@ const graphCalls: string[] = [];
 const entityListCalls: string[] = [];
 
 const server = setupServer(
+  // F11：工作台挂载同步项目上下文（路由 /projects/:projectId）
+  http.get("*/api/projects", () =>
+    HttpResponse.json([
+      {
+        id: DEFAULT_PROJECT_ID,
+        name: "默认项目",
+        description: "",
+        entity_count: 6,
+        relation_count: 3,
+        created_at: "2026-09-06T00:00:00Z",
+        updated_at: "2026-09-06T00:00:00Z",
+      },
+    ]),
+  ),
   http.get("*/api/graph", ({ request }) => {
     const url = new URL(request.url);
     const params = url.searchParams;
@@ -104,12 +119,22 @@ beforeEach(() => {
     perspective: "author",
     characterId: null,
     characters: [],
+    loadedProjectId: null,
+  });
+  useProjectStore.setState({
+    projects: [],
+    loading: false,
+    error: null,
+    errorFix: null,
+    currentProjectId: null,
+    routeProjectId: null,
+    routeInvalid: false,
   });
 });
 
-async function renderWorkbench() {
+async function renderWorkbenchAtProject() {
   const user = userEvent.setup();
-  render(<Workbench />);
+  renderWorkbench();
   await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("6 节点 · 3 边"));
   return user;
 }
@@ -117,7 +142,7 @@ async function renderWorkbench() {
 describe("视角切换集成（F06 I1–I5）", () => {
   it("I1: 默认渲染三段切换（作者选中）与 stats 作者视角标注", async () => {
     // 设计依据: 等价类—默认态
-    await renderWorkbench();
+    await renderWorkbenchAtProject();
     expect(screen.getByTestId("perspective-author")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("perspective-character")).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("perspective-audience")).toHaveAttribute("aria-pressed", "false");
@@ -127,16 +152,16 @@ describe("视角切换集成（F06 I1–I5）", () => {
 
   it("I2: 切「观众」→ 请求 perspective=audience → 图刷新 4 节点 1 边", async () => {
     // 设计依据: 主路径—视角切换重载
-    const user = await renderWorkbench();
+    const user = await renderWorkbenchAtProject();
     await user.click(screen.getByTestId("perspective-audience"));
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("4 节点 · 1 边"));
-    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=audience");
+    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=audience&project_id=project-default");
     expect(screen.getByTestId("perspective-audience")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("I3: 切「角色」→ 下拉数据源 type=character；未选角色零图请求；选周兰 → 2 节点 1 边", async () => {
     // 设计依据: 等价类—选角色有效；边界值—缺参零请求（后端此情形必 403，前端拦截）
-    const user = await renderWorkbench();
+    const user = await renderWorkbenchAtProject();
     await user.click(screen.getByTestId("perspective-character"));
     const select = await screen.findByTestId("character-select");
     await waitFor(() => expect(entityListCalls.some((q) => q.includes("type=character"))).toBe(true));
@@ -146,13 +171,13 @@ describe("视角切换集成（F06 I1–I5）", () => {
     await screen.findByRole("option", { name: "周兰" }); // 选项异步加载完成后才可选
     await user.selectOptions(select, "char-a");
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("2 节点 · 1 边"));
-    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=character&character_id=char-a");
+    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=character&character_id=char-a&project_id=project-default");
     expect(screen.getByTestId("graph-stats")).toHaveTextContent("（角色视角·周兰）");
   });
 
   it("I4: character 视角 403 → alert 展示三要素（problem+fix）不白屏", async () => {
     // 设计依据: 无效等价类—角色不存在等服务端拒绝的前端呈现
-    const user = await renderWorkbench();
+    const user = await renderWorkbenchAtProject();
     await user.click(screen.getByTestId("perspective-character"));
     await screen.findByRole("option", { name: "沈墨" }); // 选项加载完成
     await user.selectOptions(await screen.findByTestId("character-select"), "char-b");
@@ -163,7 +188,7 @@ describe("视角切换集成（F06 I1–I5）", () => {
 
   it("I5: 角色→作者恢复全量→再切角色已选保留并自动重载（回切恢复）", async () => {
     // 设计依据: 回切恢复设计；等价类—两态往返
-    const user = await renderWorkbench();
+    const user = await renderWorkbenchAtProject();
     // 进角色视角选周兰
     await user.click(screen.getByTestId("perspective-character"));
     await screen.findByRole("option", { name: "周兰" }); // 选项加载完成
@@ -173,14 +198,14 @@ describe("视角切换集成（F06 I1–I5）", () => {
     // 切回作者 → 全量
     await user.click(screen.getByTestId("perspective-author"));
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("6 节点 · 3 边"));
-    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=author");
+    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=author&project_id=project-default");
 
     // 再切角色：无需重选，自动按已选角色加载
     const callsBefore = graphCalls.length;
     await user.click(screen.getByTestId("perspective-character"));
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("2 节点 · 1 边"));
     expect(graphCalls.length).toBeGreaterThan(callsBefore);
-    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=character&character_id=char-a");
+    expect(graphCalls[graphCalls.length - 1]).toBe("perspective=character&character_id=char-a&project_id=project-default");
     expect(screen.getByTestId("character-select")).toHaveValue("char-a");
   });
 });

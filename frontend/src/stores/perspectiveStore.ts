@@ -22,22 +22,33 @@ export const PERSPECTIVE_LABELS: Record<Perspective, string> = {
 interface PerspectiveState {
   perspective: Perspective;
   characterId: string | null;
-  /** 角色下拉数据源（懒加载：首次切到 character 视角时拉取） */
+  /** 角色下拉数据源（懒加载：首次切到 character 视角时拉取，随项目隔离） */
   characters: EntityBrief[];
+  /** 角色列表已加载的项目（陈旧检测：项目切换后 reset 清空并重新拉取，F11）。 */
+  loadedProjectId: string | null;
   setPerspective: (perspective: Perspective) => void;
   setCharacterId: (id: string | null) => void;
-  loadCharacters: () => Promise<void>;
+  loadCharacters: (projectId?: string) => Promise<void>;
+  /** 项目切换重置换机（DESIGN.md §7）：回 author 默认、清角色选择与下拉缓存。 */
+  reset: () => void;
 }
 
 export const usePerspectiveStore = create<PerspectiveState>((set, get) => ({
   perspective: "author",
   characterId: null,
   characters: [],
+  loadedProjectId: null,
   setPerspective: (perspective) => set({ perspective }),
   setCharacterId: (characterId) => set({ characterId }),
-  loadCharacters: async () => {
-    if (get().characters.length > 0) return; // 已加载即复用（同一会话角色列表稳定）
-    const characters = await api.listEntities({ type: "character" });
-    set({ characters });
+  loadCharacters: async (projectId?: string) => {
+    const pid = projectId ?? null;
+    if (get().characters.length > 0 && get().loadedProjectId === pid) return; // 同项目已加载即复用
+    const characters = await api.listEntities({
+      type: "character",
+      ...(pid ? { project_id: pid } : {}),
+    });
+    set({ characters, loadedProjectId: pid });
   },
+  reset: () =>
+    set({ perspective: "author", characterId: null, characters: [], loadedProjectId: null }),
 }));

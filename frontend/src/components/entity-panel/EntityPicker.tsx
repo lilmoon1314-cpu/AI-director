@@ -14,6 +14,7 @@ import { api, type EntityBrief } from "../../api/client";
 import { TYPE_LABELS } from "../../lib/palette";
 import { useEntityIndexStore } from "../../stores/entityIndexStore";
 import { useGraphStore } from "../../stores/graphStore";
+import { useProjectId } from "../../stores/projectStore";
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -31,6 +32,7 @@ interface EntityPickerProps {
 export function EntityPicker({ id, label, refTypes, mode, value, error, onChange }: EntityPickerProps) {
   const briefs = useEntityIndexStore((s) => s.briefs);
   const graphNodes = useGraphStore((s) => s.graph.nodes);
+  const projectId = useProjectId();
   // 当前视角可见集合（图数据节点 id）；graph 引用变化即重建
   const visibleIds = useMemo(() => new Set(graphNodes.map((n) => n.id)), [graphNodes]);
   const nameById = useMemo(() => new Map(briefs.map((b) => [b.id, b.name])), [briefs]);
@@ -59,7 +61,12 @@ export function EntityPicker({ id, label, refTypes, mode, value, error, onChange
     const timer = setTimeout(() => {
       const type = refTypes.length === 1 ? refTypes[0] : undefined;
       api
-        .listEntities({ q: keyword, type })
+        .listEntities({
+          q: keyword,
+          type,
+          // 检索随项目隔离（跨项目引用被后端拒绝，F11 I8）
+          ...(projectId ? { project_id: projectId } : {}),
+        })
         .then((list) => {
           const filtered = refTypes.length > 1 ? list.filter((b) => refTypes.includes(b.type)) : list;
           setOptions(filtered);
@@ -68,7 +75,7 @@ export function EntityPicker({ id, label, refTypes, mode, value, error, onChange
         .catch(() => setSearching(false));
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, refTypes]);
+  }, [query, refTypes, projectId]);
 
   // 点击面板外部收起下拉
   useEffect(() => {

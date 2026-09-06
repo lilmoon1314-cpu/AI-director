@@ -14,7 +14,7 @@
 - 必须：高亮 = 原样式提亮（fill/label opacity→1）+ 外围透明淡黄光环（stroke #ffe58f / lineWidth 8 / strokeOpacity 0.4，模拟光圈，用户 2026-08-28 指定），微放大经 state size；淡出 = 适度调低透明度（inactive: 0.5/0.42/0.4）让出视觉重心而非隐藏；禁止内置光晕（halo:false）。active/selected 必须显式钉死 stroke/lineWidth/labelFontWeight——内置主题会注入黑色描边与标签加粗（E10）。
 - 必须：悬停淡出经 hover-activate `inactiveState` 配置（只配激活侧则淡出不生效）；点击持续选中经全量状态机写 `selected/inactive`（实时读 graph 数据，禁止闭包 props 首帧值），选中期间经 `enable` 门控禁用悬停。
 - 必须：实体类型筛选经 `hideElement/showElement` 增量显隐（不触发重布局），边随双端可见性联动隐藏；工作台内容区块默认全部折叠。
-- 必须（基线，随多项目/资产页重构落地，DESIGN.md §9）：统一卡片规范——rounded-2xl 毛玻璃容器（`ring-1 ring-black/5 bg-white/80`，dark: `ring-white/10 bg-slate-800/80`）+ hover 上浮（`-translate-y-1` + `shadow-md`）+ 封面 `group-hover:scale-105`（150–200ms ease-out）；封面 16:10 裁切懒加载；标题 1 行 / 概要 2 行截断；卡片 ⋯ 管理菜单 hover / focus 可见（键盘可达）。
+- 必须（F11 起生效，DESIGN.md §9）：统一卡片规范——rounded-2xl 毛玻璃容器（`ring-1 ring-black/5 bg-white/80`，dark: `ring-white/10 bg-slate-800/80`）+ hover 上浮（`-translate-y-1` + `shadow-md`）+ 封面 `group-hover:scale-105`（150–200ms ease-out）；封面 16:10 裁切懒加载；标题 1 行 / 概要 2 行截断；卡片 ⋯ 管理菜单 hover / focus 可见（键盘可达）。（项目首屏卡已按此落地；资产卡统一随 F12。）
 - 必须：浮层层级规范——详情面板 10 / 下拉与浮钮 20 / AgentDock 30（规划，DESIGN.md §5.5）/ 全屏 HTML 查看器 50。
 
 ## 资产管理（F08）
@@ -30,6 +30,6 @@
 - 必须：布局收敛后的硬分离（separateOverlaps）随每次数据变更重跑（持久 afterlayout 监听 + 防抖）——力导碰撞是软约束，残余重叠会触发标签避让隐藏节点名。
 
 ## 生命周期
-- 必须：SSE 连接随组件卸载中断（AbortController），防泄漏。**规划修订（随 AgentDock 落地时更新本条，DESIGN.md §5.5）**：SSE 生命周期挂会话级（agentStore），随会话结束/项目切换中断；侧边栏收起不中断（防泄漏本意由会话级 AbortController 承担）。
+- 必须：SSE 连接随组件卸载中断（AbortController），防泄漏。**规划修订（随 F10/AgentDock 落地时更新本条，DESIGN.md §5.5）**：SSE 生命周期挂会话级（agentStore），随会话结束/项目切换中断；侧边栏收起不中断（防泄漏本意由会话级 AbortController 承担）。
 - 必须：检索输入防抖后再调用 API。
-- 必须（规划，随多项目底座生效，DESIGN.md §4.4/§7）：切换项目即中止进行中的 SSE 流（防跨项目上下文污染），并按 store 重置矩阵置换数据；路由参数 `:projectId` 为项目上下文唯一事实源。
+- 必须（F11 已落地，DESIGN.md §4.4/§7）：切换项目按 store 重置换机执行（perspective/selection/entityIndex/asset 项目分区重置，generalCards 全局缓存保留；SSE 中止项随 F10 AgentDock 落地）；路由参数 `:projectId` 为项目上下文唯一事实源（Outlet context 渲染期同步）。

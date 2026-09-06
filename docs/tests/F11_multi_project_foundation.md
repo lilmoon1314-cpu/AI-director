@@ -10,11 +10,11 @@
 
 | 层级 | 用例 | 测试文件 | 必须 | 状态 |
 |------|------|----------|------|------|
-| L1 单元 | U1–U8: projects service 业务逻辑 | backend/tests/unit/test_projects_service.py | 必须 | pending |
-| L2 集成 | I1–I10: 项目 CRUD + 级联 + 跨端点 scoping | backend/tests/integration/test_projects_api.py | 必须 | pending |
-| L3 E2E 后端 | E1–E2: 双项目全链路隔离/默认项目兼容 | backend/tests/e2e/test_projects_flow.py | 必须（跨 projects+entities+relations+perspectives+assets） | pending |
-| L1/L2 前端 | FU1–FU2: projectStore / ProjectPicker+路由 | frontend/tests/unit/projectStore.test.ts、frontend/tests/integration/ProjectPicker.test.tsx、Workbench 路由测试 | 必须 | pending |
-| L3 前端 | FE1–FE2: Playwright 项目工作流 + 既有场景路由适配 | frontend/e2e/projects.spec.ts、workbench.spec.ts 等 | 必须（跨前后端联调） | pending |
+| L1 单元 | U1–U8: projects service 业务逻辑 | backend/tests/unit/test_projects_service.py | 必须 | pass |
+| L2 集成 | I1–I10: 项目 CRUD + 级联 + 跨端点 scoping | backend/tests/integration/test_projects_api.py | 必须 | pass |
+| L3 E2E 后端 | E1–E2: 双项目全链路隔离/默认项目兼容 | backend/tests/e2e/test_projects_flow.py | 必须（跨 projects+entities+relations+perspectives+assets） | pass |
+| L1/L2 前端 | FU1–FU2: projectStore / ProjectPicker+路由 | frontend/tests/unit/stores/projectStore.test.ts、frontend/tests/integration/Projects.test.tsx | 必须 | pass |
+| L3 前端 | FE1–FE2: Playwright 项目工作流 + 既有场景路由适配 | frontend/e2e/projects.spec.ts、workbench.spec.ts 等 | 必须（跨前后端联调） | pass |
 
 ## 用例说明
 
@@ -57,12 +57,17 @@
 - FE1: 项目工作流——首屏新建项目 → 进入图谱 → 新建实体 → 顶栏切换第二项目 → 图谱隔离 → 返回首屏删除项目（输入名确认）→ 列表移除（设计依据：DESIGN §6 剧本 A/B/E 全链路）
 - FE2: 既有 e2e 场景（workbench/perspective/entity-picker/assets/graph）路由适配后全绿（回归：URL 即状态迁移不破坏既有能力）
 
-## 变异测试结果（用例实现完成后填写）
+## 变异测试结果（2026-09-06，task.py mutate projects）
 
-- scope: backend/app/projects/（判杀器: L1 unit + L2 integration，模块含 router 故 L2 必须在判杀器内；entities/relations/perspectives/assets 的 project 维度增量行为由 I6–I10 新集成用例覆盖，不纳入本轮变异 scope）
-- kill rate: 待填
-- 存活变异体分析: 待填
+- scope: `backend/app/projects/`（125 个变异体）
+- 判杀器: L1 `tests/unit/test_projects_service.py` + L2 `tests/integration/test_projects_api.py` + 架构测试 `tests/architecture/test_architecture.py`（models 层 DDL 契约变异仅 ORM 元数据断言可杀）
+- **kill rate: 100%（125/125），零存活、零等价登记**
+- 过程记录（两轮）:
+  1. 首轮（判杀器=L1+L2）kill rate 63.2%（79/125）：46 存活体逐一分析——路由 path/响应模型、Schema 约束值（描述长度 500/501、空白名消息、extra=forbid、单字/超长改名）、默认项目常量与保护错误三要素、DDL 声明等均可补用例杀灭；据此补齐契约边界用例（I1–I5 增强四例）与架构测试 `test_projects_schema_declared`。
+  2. 次轮 99.2%（124/125），唯一存活体（ensure_default_project 的 `now=None`）手动 apply 验证实为可杀——mutmut 结果缓存跨轮残留旧状态（E12）；task.py mutate 已改为启动前清缓存，清缓存重跑后 125/125。
+- @checkpoint 删除类变异体在本轮判杀器下全部被杀（架构测试的 core 纯净性/散点日志检查覆盖装饰器存在性），无需等价登记。
 
 ## 验收判定
 
-所有「必须」层级通过 + 状态列全 pass + 变异测试达标（kill rate ≥ 85%，存活体逐一分析）+ make check 通过 → 功能完成。
+所有「必须」层级通过 + 状态列全 pass + 变异测试达标（100% ≥ 85%，零存活）+ make check 通过 → 功能完成。
+验证命令已由 `python scripts/task.py verify F11` 全部执行通过（2026-09-06，features.md 状态 active → passing）。

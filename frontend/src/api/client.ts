@@ -19,6 +19,9 @@ export type AssetImageRead = components["schemas"]["AssetImageRead"];
 export type EntityAssetCard = components["schemas"]["EntityAssetCard"];
 export type GeneralAssetCreate = components["schemas"]["GeneralAssetCreate"];
 export type GeneralAssetUpdate = components["schemas"]["GeneralAssetUpdate"];
+export type ProjectRead = components["schemas"]["ProjectRead"];
+export type ProjectCreate = components["schemas"]["ProjectCreate"];
+export type ProjectUpdate = components["schemas"]["ProjectUpdate"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -82,18 +85,33 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** 后端 REST 端点的类型化封装（路径总表见 backend/ARCHITECTURE.md §7）。 */
 export const api = {
-  /** 三视角图查询（perspective 枚举与后端契约一致；character 视角必须携带角色 id）。 */
-  getGraph: (perspective: "author" | "character" | "audience", characterId?: string) => {
+  // ---- 项目（F11 多项目底座；DESIGN.md §8.4 查询参数渐进迁移）----
+  /** 项目列表（按最近活跃倒序；项目首屏与顶栏切换器数据源）。 */
+  listProjects: () => apiFetch<ProjectRead[]>("/projects"),
+  createProject: (body: ProjectCreate) =>
+    apiFetch<ProjectRead>("/projects", { method: "POST", body: JSON.stringify(body) }),
+  updateProject: (id: string, body: ProjectUpdate) =>
+    apiFetch<ProjectRead>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteProject: (id: string) => apiFetch<void>(`/projects/${id}`, { method: "DELETE" }),
+  /** 三视角图查询（perspective 枚举与后端契约一致；character 视角必须携带角色 id；
+   *  project_id 缺省=默认项目——工作台内恒传当前项目）。 */
+  getGraph: (
+    perspective: "author" | "character" | "audience",
+    characterId?: string,
+    projectId?: string,
+  ) => {
     const params = new URLSearchParams({ perspective });
     if (characterId) params.set("character_id", characterId);
+    if (projectId) params.set("project_id", projectId);
     return apiFetch<GraphData>(`/graph?${params.toString()}`);
   },
   getEntity: (id: string) => apiFetch<EntityRead>(`/entities/${id}`),
-  /** 实体摘要检索（@ 选择器/角色下拉数据源；后端 GET /api/entities?q=&type=）。 */
-  listEntities: (params?: { q?: string; type?: string }) => {
+  /** 实体摘要检索（@ 选择器/角色下拉数据源；project_id 过滤项目归属，缺省=全库）。 */
+  listEntities: (params?: { q?: string; type?: string; project_id?: string }) => {
     const search = new URLSearchParams();
     if (params?.q) search.set("q", params.q);
     if (params?.type) search.set("type", params.type);
+    if (params?.project_id) search.set("project_id", params.project_id);
     const qs = search.toString();
     return apiFetch<EntityBrief[]>(`/entities${qs ? `?${qs}` : ""}`);
   },
@@ -143,8 +161,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ image_id: imageId }),
     }),
-  /** 项目资产卡片（主库实体按类型分组，封面对照资产库）。 */
-  listEntityCards: () => apiFetch<EntityAssetCard[]>("/assets/entities"),
+  /** 项目资产卡片（主库实体按类型分组，封面对照资产库；随项目隔离）。 */
+  listEntityCards: (projectId?: string) => {
+    const search = new URLSearchParams();
+    if (projectId) search.set("project_id", projectId);
+    const qs = search.toString();
+    return apiFetch<EntityAssetCard[]>(`/assets/entities${qs ? `?${qs}` : ""}`);
+  },
   /** 资产 HTML 页地址（iframe src 用，不 fetch——后端返回 text/html）。 */
   assetPageUrl: (kind: "general" | "entity", id: string) =>
     kind === "general" ? joinUrl(API_BASE, `/assets/general/${id}/page`) : joinUrl(API_BASE, `/assets/entity/${id}/page`),

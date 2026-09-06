@@ -33,10 +33,12 @@ export interface paths {
         };
         /**
          * Search Entities
-         * @description 检索实体（GET /api/entities?q=&type=，@ 实体选择器数据源）。
+         * @description 检索实体（GET /api/entities?q=&type=&project_id=，@ 实体选择器数据源）。
          *
-         *     作用: 参数解析 + 调用 service；q 匹配名称/别名，type 过滤类型。
-         *     参数: q — 关键字（空返回全量）；type — 实体类型（可选）；session — 请求级会话。
+         *     作用: 参数解析 + 调用 service；q 匹配名称/别名，type 过滤类型，
+         *         project_id 过滤项目归属（F11 多项目；缺省=全库）。
+         *     参数: q — 关键字（空返回全量）；type — 实体类型（可选）；
+         *         project_id — 项目 id（可选）；session — 请求级会话。
          *     返回值: list[EntityBrief]。异常: 由全局异常处理器统一出口。
          *     依赖: app.entities.service。
          */
@@ -110,11 +112,11 @@ export interface paths {
         };
         /**
          * Search Relations
-         * @description 条件查询关系（GET /api/relations?source=&target=&type=，无参返回全量）。
+         * @description 条件查询关系（GET /api/relations?source=&target=&type=&project_id=，无参返回全量）。
          *
-         *     作用: 参数解析 + 调用 service；按端点/类型过滤关系。
+         *     作用: 参数解析 + 调用 service；按端点/类型/项目过滤关系。
          *     参数: source/target — 端点实体 id（可选）；type — 关系类型（可选）；
-         *         session — 请求级会话。
+         *         project_id — 项目 id（可选，F11 多项目）；session — 请求级会话。
          *     返回值: list[RelationRead]。异常: 由全局异常处理器统一出口。
          *     依赖: app.relations.service。
          */
@@ -188,12 +190,12 @@ export interface paths {
         };
         /**
          * Get Graph
-         * @description 三视角过滤图查询（GET /api/graph?perspective=author|character|audience）。
+         * @description 三视角 × 项目维度过滤图查询（GET /api/graph?perspective=...&project_id=...）。
          *
          *     作用: 参数解析 + 调用 service；过滤规则与可见性判定全部在 service 层。
          *     参数: perspective — 视角枚举（必填）；character_id — character 视角角色 id；
-         *         session — 请求级数据库会话（依赖注入）。
-         *     返回值: GraphData（nodes+edges）。异常: 403/422 由全局异常处理器统一出口。
+         *         project_id — 项目 id（缺省=默认项目）；session — 请求级数据库会话。
+         *     返回值: GraphData（nodes+edges）。异常: 403/404/422 由全局异常处理器统一出口。
          *     依赖: app.perspectives.service。
          */
         get: operations["get_graph_api_graph_get"];
@@ -431,9 +433,9 @@ export interface paths {
          * List Entity Cards
          * @description 项目资产卡片列表（主库实体按类型分组；含孤儿清扫）。
          *
-         *     作用: 项目资产区数据源路由。
-         *     参数: session — 资产库会话；main_session — 主库会话。
-         *     返回值: list[EntityAssetCard]（类型序 + 名称序）。异常: 无。
+         *     作用: 项目资产区数据源路由；project_id 过滤项目归属（F11 多项目）。
+         *     参数: project_id — 项目 id（可选）；session — 资产库会话；main_session — 主库会话。
+         *     返回值: list[EntityAssetCard]（类型序 + 名称序）。异常: 404 项目不存在。
          *     依赖: app.assets.service.list_entity_cards。
          */
         get: operations["list_entity_cards_api_assets_entities_get"];
@@ -468,6 +470,91 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description 列出全部项目（GET /api/projects，按最近活跃倒序）。
+         *
+         *     作用: 项目首屏与顶栏切换器数据源。
+         *     参数: session — 请求级数据库会话。
+         *     返回值: list[ProjectRead]。异常: 无。
+         *     依赖: app.projects.service。
+         */
+        get: operations["list_projects_api_projects_get"];
+        put?: never;
+        /**
+         * Create Project
+         * @description 创建项目（POST /api/projects）。
+         *
+         *     作用: 参数解析 + 调用 service；id 由系统生成并随响应返回。
+         *     参数: payload — 创建载荷；session — 请求级数据库会话（依赖注入）。
+         *     返回值: ProjectRead（201）。异常: 422 由全局异常处理器统一出口。
+         *     依赖: app.projects.service。
+         */
+        post: operations["create_project_api_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project
+         * @description 查询项目详情（GET /api/projects/{id}）。
+         *
+         *     作用: 参数解析 + 调用 service。
+         *     参数: project_id — 路径参数项目 id；session — 请求级数据库会话。
+         *     返回值: ProjectRead。异常: 404 由全局异常处理器统一出口。
+         *     依赖: app.projects.service。
+         */
+        get: operations["get_project_api_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project
+         * @description 删除项目并级联清理（DELETE /api/projects/{id}）。
+         *
+         *     作用:
+         *         跨模块级联编排（组合层，见模块 docstring）：校验 → 删该项目全部关系
+         *         → 删该项目全部实体（收集实体 id）→ 删项目行并原子提交主库 →
+         *         按实体 id 集合显式清扫资产库（记录 + 图片 + 物理文件）。
+         *     参数:
+         *         project_id — 路径参数项目 id；session — 主库会话；
+         *         asset_session — 资产库会话（独立事务）。
+         *     返回值: 无（204）。
+         *     异常: 404（项目不存在）/ 422（默认项目受保护）由全局异常处理器统一出口；
+         *         主库删除原子提交，资产清扫失败由读取时孤儿清扫兜底。
+         *     依赖: app.projects.service、app.relations.service、app.entities.service、
+         *         app.assets.service。
+         */
+        delete: operations["delete_project_api_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Project
+         * @description 局部更新项目（PATCH /api/projects/{id}；id 与计数器不可变）。
+         *
+         *     作用: 参数解析 + 调用 service；改名 / 描述更新。
+         *     参数: project_id — 路径参数项目 id；payload — 更新载荷；session — 请求级会话。
+         *     返回值: ProjectRead（更新后）。异常: 404/422 由全局异常处理器统一出口。
+         *     依赖: app.projects.service。
+         */
+        patch: operations["update_project_api_projects__project_id__patch"];
         trace?: never;
     };
 }
@@ -632,8 +719,10 @@ export interface components {
          * @description 创建实体请求体。
          *
          *     作用: POST /api/entities 的载荷模型；extra=forbid 拒绝未知字段（含 id——
-         *     id 由系统生成，禁止客户端指定）。
-         *     参数: 无（字段见 EntityBase）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+         *     id 由系统生成，禁止客户端指定）。project_id 可选——缺省归属默认项目
+         *     （F11 渐进迁移：不带 project_id 的旧客户端行为不变）。
+         *     参数: 无（字段见 EntityBase + project_id）。返回值: 无（模型类）。
+         *     异常: 无。依赖: pydantic。
          */
         EntityCreate: {
             /**
@@ -659,6 +748,8 @@ export interface components {
             properties?: {
                 [key: string]: unknown;
             };
+            /** Project Id */
+            project_id?: string | null;
         };
         /**
          * EntityRead
@@ -690,6 +781,8 @@ export interface components {
             };
             /** Id */
             id: string;
+            /** Project Id */
+            project_id: string;
             /**
              * Created At
              * Format: date-time
@@ -819,6 +912,65 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * ProjectCreate
+         * @description 创建项目请求体（POST /api/projects）。
+         *
+         *     作用: 创建载荷模型；extra=forbid 拒绝未知字段（含 id——id 由系统生成）。
+         *     参数: 无（字段见下）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+         */
+        ProjectCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /**
+         * ProjectRead
+         * @description 项目完整响应（列表/详情/创建/更新返回）。
+         *
+         *     作用: 对外只读 DTO；计数器供项目首屏卡片（N 实体）与删除确认后果清单。
+         *     参数: 无（字段见下）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+         */
+        ProjectRead: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Entity Count */
+            entity_count: number;
+            /** Relation Count */
+            relation_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProjectUpdate
+         * @description 局部更新项目请求体（PATCH /api/projects/{id}）。
+         *
+         *     作用: 字段可选、仅更新显式提供项；extra=forbid 保证 id / 计数器不可
+         *         由客户端指定（计数器只经领域写路径事务内维护）。
+         *     参数: 无（字段见下）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+         */
+        ProjectUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+        };
+        /**
          * RelationCreate
          * @description 创建关系请求体（POST /api/relations）。
          *
@@ -829,6 +981,8 @@ export interface components {
          *     返回值: 无（模型类）。异常: 无。依赖: pydantic。
          */
         RelationCreate: {
+            /** Project Id */
+            project_id?: string | null;
             /** Source */
             source: string;
             /** Target */
@@ -881,6 +1035,8 @@ export interface components {
         RelationRead: {
             /** Id */
             id: string;
+            /** Project Id */
+            project_id: string;
             /** Source */
             source: string;
             /** Target */
@@ -1022,6 +1178,7 @@ export interface operations {
             query?: {
                 q?: string;
                 type?: string | null;
+                project_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -1183,6 +1340,7 @@ export interface operations {
                 source?: string | null;
                 target?: string | null;
                 type?: string | null;
+                project_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -1345,6 +1503,8 @@ export interface operations {
                 perspective: "author" | "character" | "audience";
                 /** @description character 视角必填：视角角色的实体 id */
                 character_id?: string | null;
+                /** @description 项目 id（F11 多项目；缺省=默认项目） */
+                project_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -1724,7 +1884,9 @@ export interface operations {
     };
     list_entity_cards_api_assets_entities_get: {
         parameters: {
-            query?: never;
+            query?: {
+                project_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1738,6 +1900,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityAssetCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1760,6 +1931,154 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_api_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"][];
+                };
+            };
+        };
+    };
+    create_project_api_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_api_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_api_projects__project_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_api_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectRead"];
                 };
             };
             /** @description Validation Error */

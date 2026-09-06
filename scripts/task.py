@@ -335,6 +335,11 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
             "判杀器追加该功能集成测试路径，如: python scripts/task.py mutate <module> "
             "tests/unit/test_<module>_service.py tests/integration/test_<feature>.py",
         )
+    # 结果缓存清空（error.jsonl E12）：缓存会跨轮复用旧状态，判杀器增强后
+    # 不清理会让可杀变异体残留 bad_survived，kill rate 与真实判杀能力不符
+    cache = BACKEND / ".mutmut-cache"
+    if cache.exists():
+        cache.unlink()
     runner = f"python -m pytest -x -q {' '.join(tests)}"
     _backend(
         "mutmut",

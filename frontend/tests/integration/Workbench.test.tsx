@@ -4,14 +4,15 @@
  * @antv/g6 为测试桩（test.alias），节点点击经桩实例 emit 触发真实回调链。
  */
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 import { Graph } from "../../src/test-stubs/g6-stub";
-import { Workbench } from "../../src/views/Workbench";
+import { useProjectStore } from "../../src/stores/projectStore";
+import { DEFAULT_PROJECT_ID, renderWorkbench as renderWorkbenchRoute } from "../workbenchHarness";
 
 // ---- 测试世界（可变状态：CRUD 用例修改后影响后续 graph 响应） ----
 
@@ -65,6 +66,20 @@ const graphBody = () => ({
 });
 
 const server = setupServer(
+  // F11：工作台挂载同步项目上下文（路由 /projects/:projectId）
+  http.get("*/api/projects", () =>
+    HttpResponse.json([
+      {
+        id: DEFAULT_PROJECT_ID,
+        name: "默认项目",
+        description: "",
+        entity_count: 6,
+        relation_count: 3,
+        created_at: "2026-09-06T00:00:00Z",
+        updated_at: "2026-09-06T00:00:00Z",
+      },
+    ]),
+  ),
   http.get("*/api/graph", ({ request }) => {
     const url = new URL(request.url);
     if (url.searchParams.get("perspective") !== "author") {
@@ -154,11 +169,20 @@ beforeEach(() => {
   resetWorld();
   Graph.instances.length = 0;
   vi.clearAllMocks();
+  useProjectStore.setState({
+    projects: [],
+    loading: false,
+    error: null,
+    errorFix: null,
+    currentProjectId: null,
+    routeProjectId: null,
+    routeInvalid: false,
+  });
 });
 
 async function renderWorkbench() {
   const user = userEvent.setup();
-  render(<Workbench />);
+  renderWorkbenchRoute();
   await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("6 节点 · 3 边"));
   return user;
 }
@@ -261,7 +285,7 @@ describe("Workbench 集成（I1–I8）", () => {
     server.use(
       http.get("*/api/graph", () => HttpResponse.error()),
     );
-    render(<Workbench />);
+    renderWorkbenchRoute();
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("无法连接服务器");
   });

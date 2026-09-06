@@ -6,7 +6,7 @@
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-import { shoot } from "./helpers";
+import { shoot, openWorkbench } from "./helpers";
 
 const SEED_ENTITIES = [
   { type: "character", name: "周兰", aliases: [], audience_known: true },
@@ -54,7 +54,7 @@ test("E3: 快速连续切换视角——渲染链串行防线（无 G6 内部错
 
   await resetWorld(page.request);
   await seedWorld(page.request);
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
 
   // 不等布局收敛就连点（复现用户操作节奏）
@@ -80,7 +80,7 @@ test("E1+E2: 三视角切换全链路（作者→观众→角色→作者）与�
   await resetWorld(page.request);
   await seedWorld(page.request);
 
-  await page.goto("/");
+  await openWorkbench(page);
   // 作者视角：全量 6 节点 3 边
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await expect(page.getByTestId("graph-stats")).toHaveText(/（作者视角）/);

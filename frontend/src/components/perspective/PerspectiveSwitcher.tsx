@@ -15,6 +15,7 @@ import {
   usePerspectiveStore,
   type Perspective,
 } from "../../stores/perspectiveStore";
+import { useProjectId } from "../../stores/projectStore";
 
 const PERSPECTIVES: readonly Perspective[] = ["author", "character", "audience"];
 
@@ -29,15 +30,16 @@ export function PerspectiveSwitcher() {
   const setCharacterId = usePerspectiveStore((s) => s.setCharacterId);
   const loadCharacters = usePerspectiveStore((s) => s.loadCharacters);
   const loadGraph = useGraphStore((s) => s.loadGraph);
+  const projectId = useProjectId();
   const [selectError, setSelectError] = useState<string | null>(null);
 
-  // 角色下拉数据源兜底：挂载即拉取（store 内幂等，已加载则跳过）
+  // 角色下拉数据源兜底：挂载即拉取（store 内按项目幂等，同项目已加载则跳过）
   useEffect(() => {
-    void loadCharacters().catch(() => {
+    void loadCharacters(projectId).catch(() => {
       // 拉取失败不阻塞主流程——下拉为空时给出可修复提示
       setSelectError("角色列表加载失败，请确认后端服务后重试");
     });
-  }, [loadCharacters]);
+  }, [loadCharacters, projectId]);
 
   const switchTo = (next: Perspective) => {
     setPerspective(next);

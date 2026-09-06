@@ -19,7 +19,7 @@
 - 必须：视角过滤只在读取层实现（单一事实源原则）；禁止为任何视角生成或持久化数据副本。
 - 禁止：MVP（第 1 批）引入图像生成功能；资产模块仅支持上传、存储、展示。
 - 必须：工作台导航 / 页面结构 / 资产页 / Agent 界面 / 多项目交互的实现以 DESIGN.md 交互基线为准；偏离基线须先更新 DESIGN.md 并登记 DECISIONS。
-- 必须（规划，随多项目底座功能项生效，DESIGN.md §8.5）：projects 模块仅依赖 core；entities / relations / perspectives / assets / agent 对项目的引用一律经 projects.service 归属校验；禁止 projects 反向 import 任何领域模块（防循环依赖）；落地时同步登记 import-linter 契约（DECISIONS 2026-08-27）。
+- 必须（F11 已落地，DESIGN.md §8.5）：projects 业务层（service/repository/models/schemas）零领域模块依赖，跨模块级联删除仅在 projects.router 组合层编排；entities / relations / perspectives / assets / agent 对项目的引用一律经 projects.service 归属校验；import-linter 契约已登记。
 - 必须（规划，随多项目底座生效）：技术架构维持模块化单体（DECISIONS 2026-08-24，2026-09-06 复评）；引入新独立服务进程须先立 DECISIONS 论证触发条件（多用户并发 / Agent 负载独立伸缩等），禁止为"微服务化"而拆分。
 
 ## 3. 功能清单

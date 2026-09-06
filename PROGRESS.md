@@ -1,7 +1,9 @@
 # PROGRESS.md
 
 ## 当前状态
-- 最新commit：DESIGN.md 交互设计基线 v1 + 全仓文档同步（见 git log）
+- 最新commit：F11 多项目底座完成（passing，见 git log）
+- 测试状态：后端 217 通过（projects L1 12 + L2 15 + e2e 2 + 架构/领域适配）+ mutmut projects 100%（125/125）；前端 vitest 122 + Playwright e2e 12（含 projects FE1/FE1b，既有场景路由适配）
+- 功能清单：F01–F08、F11 passing；F09 已取消；F10、F12 not_started（执行序：F12 → F10）
 - 测试状态：后端 155 通过（含 assets L1 50 + L2 13 + e2e 1 + 新架构测试）+ mutmut（F08 assets kill rate 85.9%，scope 7 逻辑文件 453 变异体）；前端 vitest 111 + Playwright e2e 10（含 assets EF1/EF2）
 - Lint：make check 全绿（后端 ruff/format/lint-imports 5 契约/mypy/pytest + 前端 check-api-types/typecheck/lint/build）
 - 功能清单：F01–F08 passing；F09 已取消移除；F10 not_started
@@ -18,24 +20,16 @@
 - 2026-09-06: **交互设计会话（DESIGN.md v1）**——F10 开工前与用户对齐多项目工作台交互设计，四项决策入 DECISIONS（独立项目首屏/Agent 同一会话池/通用库留驻资产页/本轮仅设计文档）；产出根目录 DESIGN.md：现状诊断 9 条（无路由/两级 tab 嵌套/命名失实/无搜索/表单替换丢上下文/agent 零载体/空状态缺失/多项目硬缺失/键盘可达性）、两层作用域模型（全局=通用库+harness+skills；项目=图谱+资产+记忆+会话）、路由方案（/projects/:id/graph|assets|agent，建议 react-router=OQ-1）、五页面设计（项目首屏/图谱页/资产页两级钻取/AgentHome/AgentDock 侧边栏）、端到端剧本 A–E、前端 store 重置矩阵（generalCards 全局缓存跨项目复用）、多项目后端蓝图（projects 表/project_id 迁移/默认项目打包/级联清扫/会话记忆入主库/路径参数式 API）、testid 迁移映射、开放问题 OQ1–OQ7；落地拆解仅作建议稿（多项目底座→工作台重构→F10 挪后），待用户审阅后立功能项。AGENTS.md 专题文档路由已收录 DESIGN.md
 - 2026-09-06（续）: **设计基线全仓文档同步**——按「双态标注」原则（规划内容标注并引用 DESIGN.md 章节）将新增/变更设计传播至 13 份文档：README（设计基线与架构演进节：多项目规划 + 模块化单体复评）；根 ARCHITECTURE（上下文图加 projects(规划)/依赖图加 projects 依赖方向（仅依赖 core、禁反向 import、经 service 归属校验）/模块清单/§5.5 多项目数据流/演进路线加第 1 批扩展行/文档导航）；根 CONSTRAINTS（§2 新增三条：DESIGN 基线遵循、projects 依赖方向、单体维持与拆分触发条件）；backend ARCHITECTURE/CONSTRAINTS（目录树 projects 行、API 总表 /api/projects 规划行、归属校验、删项目显式级联跨库补偿、project_id Alembic 迁移打包默认项目）；frontend ARCHITECTURE/CONSTRAINTS（路由规划注记、views/stores 蓝图（ProjectPicker/AgentHome/projectStore）、SSE 生命周期会话级修订注记、统一卡片规范、z-index 规范、资产页升级规划）；data_struct_define 新增 §11（projects 表/project_id/global_state 单例预警/conversations+messages+memory_docs 入主库/assets 多项目语义，全规划态）；agent/assets/entities/relations/perspectives 五模块 ARCHITECTURE+CONSTRAINTS 同步职责/依赖/规划条目
 
+- 2026-09-06（续二）: **F11 多项目底座（passing）**——后端：projects 模块五层（默认项目 lifespan 播种恒存在/计数器反规范化事务内维护/保护性删除/级联=router 组合层编排 relations→entities→projects.delete 原子提交→assets 显式清扫+孤儿清扫兜底）+ Alembic 迁移（projects 表+双表 project_id FK/索引+存量打包默认项目）+ entities/relations/perspectives/assets 四模块 project 维度（归属校验/跨项目引用 422/图查询与资产卡片缺省默认项目）+ import-linter 契约三条（projects 业务层零领域依赖等）+ core 共享层修复（Pydantic value_error ctx 嵌异常致 422→500，responses JSON 安全化）。前端：react-router 路由化（/projects 首屏 + /projects/:id/graph|assets）+ ProjectPicker（卡片/搜索/新建/改名/删除输入名确认/空态）+ ProjectSwitcher + projectStore（Outlet context 渲染期供给 projectId 避免父子 effect 竞态）+ store 陈旧检测重置换机（generalCards 全局缓存保留）+ 表单/@检索/角色下拉隐式项目作用域 + 既有 5 个 e2e spec 路由适配（openWorkbench helper）。测试：后端 217 通过（projects L1/L2/L3 + 领域 179 项适配 + 架构 DDL 契约）、前端 vitest 122（新增 FU1/FU2）+ Playwright 12（新增 FE1/FE1b）；mutmut projects 两轮 63.2%→100%（125/125 零存活零等价）。事故：E12（mutmut 缓存残留→mutate 自动清缓存）、E13（backdrop-filter 层叠拦截→顶栏 z-30+e2e 防线）、T-20260906-03（e2e 僵尸后端持旧库→清理规程）。详见 docs/tests/F11_multi_project_foundation.md、DECISIONS.md 与 git log
+
 ## 进行中
-**F11 多项目底座（active，测试文档 docs/tests/F11_multi_project_foundation.md 已先行）**
-1. [x] 治理：features.md 增 F11/F12 行（F10 挪后说明）+ DECISIONS 四项实现决策 + 测试文档先行
-2. [ ] 后端 projects 模块（models/schemas/repository/service/router + ARCHITECTURE/CONSTRAINTS + import-linter 契约 + pyproject source 兄弟枚举）
-3. [ ] Alembic 迁移（projects 表 + entities/relationships.project_id FK+索引 + 默认项目打包存量）+ conftest 注册 projects 元数据
-4. [ ] entities/relations project 维度改造（model/repository 过滤/service 归属校验与计数器维护/schemas/router 参数 + delete_by_project 供级联）
-5. [ ] perspectives（/api/graph?project_id=）与 assets（/api/assets/entities?project_id=）过滤透传
-6. [ ] 后端测试 L1（U1–U8）/ L2（I1–I10）/ L3（E1–E2）
-7. [ ] 后端 mutmut（scope app/projects，判杀器 L1+L2，kill rate ≥85%）
-8. [ ] 前端路由化（react-router 引入 + 路由表 + Workbench 壳层改造 + ProjectPicker + projectStore + store 重置矩阵 + api client project_id 透传 + 类型重生成）
-9. [ ] 前端测试（unit/integration FU1–FU2 + Playwright projects.spec FE1 + 既有 e2e 路由适配 FE2）
-10. [ ] verify F11 + make check + 文档双态翻转（规划→已就位：根/backend/frontend ARCH+CONSTRAINTS、data_struct_define §11.1/11.2、DESIGN.md 状态注记）+ 收尾提交
+- 无
 
 ## 已知问题
 - 无
 
 ## 下一步
-1. 用户审阅 DESIGN.md（根目录，交互设计基线 v1）后确定多项目改造的功能项拆解——建议稿见 DESIGN.md §12：多项目底座 → 工作台导航与资产页重构 → F10 挪后执行（编号不变）；立功能项时先补 docs/features.md 行 + 撰写 docs/tests/FXX 测试文档（先行）
+1. F12 工作台导航与资产页重构（not_started）：资产页两级钻取（7 类型库墙→类型卡片墙→HTML）+ 分区独立搜索 + 空状态引导 + 通用资产表单 modal 化 + 卡片规范统一与 testid 迁移（DESIGN.md §5.3/§9/§10；开工时 `python scripts/task.py verify F12 --activate`；首任务撰写 docs/tests/F12 测试文档）
 2. F10（Agent 对话与确认写入）：POST /api/agent/chat SSE 流式回复（上下文经视角过滤）；propose 结构化草案；confirm 确认落库；AgentHome + AgentDock 载体按 DESIGN.md §5.4/§5.5（开工时 `python scripts/task.py verify F10 --activate`；首任务撰写测试文档 docs/tests/F10）
 3. 第二阶段候选项（届时先立功能项）：通用资产自定义属性 schema 注册表 + agent 辅助定制（分类→属性定义→动态表单/HTML 模板）、通用资产页 HTML 源码级编辑、资产注入 LLM 多模态上下文（依赖 F10）
 4. mutmut 运行规程提醒：mutmut 必须在代码定稿并提交后单独运行，运行期间禁止编辑被测模块（E11，已由脏树守卫拦截）

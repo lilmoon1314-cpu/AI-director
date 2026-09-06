@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { shoot } from "./helpers";
+import { shoot, openWorkbench } from "./helpers";
 
 const SEED_ENTITIES = [
   { type: "character", name: "周兰", aliases: [], audience_known: true },
@@ -39,7 +39,7 @@ test("E1+E2: @ 选择器建实体存 ID、详情显示名称、不可见徽标",
   await resetWorld(request);
   Object.assign(ids, await seedWorld(request));
 
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/5 节点 · 0 边/);
 
   // 展开新建 → 实体，类型=物件

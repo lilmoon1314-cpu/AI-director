@@ -22,12 +22,14 @@ import {
   type PropertyFormState,
 } from "../../lib/entityProperties";
 import { useGraphStore } from "../../stores/graphStore";
+import { useProjectId } from "../../stores/projectStore";
 import { Button } from "../ui/Button";
 import { CheckboxInput, SelectInput, TextArea, TextInput } from "../ui/Field";
 import { PropertiesFields } from "./PropertiesFields";
 
 export function CreateEntityForm() {
   const reloadGraph = useGraphStore((s) => s.loadGraph);
+  const projectId = useProjectId();
   const [form, setForm] = useState<EntityFormValues>(EMPTY_ENTITY_FORM);
   const [propValues, setPropValues] = useState<PropertyFormState>(() =>
     toPropertyFormState(EMPTY_ENTITY_FORM.type, {}),
@@ -49,10 +51,15 @@ export function CreateEntityForm() {
     setBusy(true);
     setError(null);
     try {
-      await api.createEntity({ ...toEntityCreate(form), properties });
+      // 隐式作用域（DESIGN.md §5.2）：表单不出现项目选择，归属当前项目（F11）
+      await api.createEntity({
+        ...toEntityCreate(form),
+        properties,
+        ...(projectId ? { project_id: projectId } : {}),
+      });
       setForm(EMPTY_ENTITY_FORM);
       setPropValues(toPropertyFormState(EMPTY_ENTITY_FORM.type, {}));
-      await reloadGraph();
+      await reloadGraph(projectId);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.problem : "创建实体失败，请稍后重试");
     } finally {

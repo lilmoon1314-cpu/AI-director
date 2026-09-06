@@ -9,7 +9,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { resetWorld, shoot } from "./helpers";
+import { resetWorld, shoot, openWorkbench } from "./helpers";
 
 interface ViewportPoint {
   x: number;
@@ -98,7 +98,7 @@ test("悬停高亮放大 + 点击持续高亮与结构化详情", async ({ page,
     data: { source: charId, target: eventId, type: "PARTICIPATES", audience_known: true },
   })).status()).toBe(201);
 
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/4 节点 · 2 边/);
   await page.waitForTimeout(10500); // 力导收敛 + 硬分离(兜底 9s+0.6s 去抖)完成
 

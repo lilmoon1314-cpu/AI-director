@@ -29,7 +29,7 @@ backend/
     ├── relations/          # 关系模块
     ├── perspectives/       # 视角过滤模块
     ├── assets/             # 资产模块（独立资产库 data/assets.db）
-    ├── projects/           # 项目模块（规划，DESIGN.md §8；多项目底座功能项落地时创建）
+    ├── projects/           # 项目模块（F11：项目 CRUD/归属校验/计数器/级联编排）
     └── agent/              # LLM 对话模块
 ```
 
@@ -104,7 +104,7 @@ shutdown: dispose AsyncEngine、释放 LLM 客户端连接
 | /api/graph | perspectives | 三视角过滤图查询 |
 | /api/assets | assets | 资产库：图片上传、通用资产 CRUD、实体资产卡片与 HTML 页 |
 | /api/agent | agent | SSE 对话、建议草案、确认写入 |
-| /api/projects（规划） | projects | 项目 CRUD；领域端点规划迁移为 `/api/projects/{pid}/...` 路径前缀（DESIGN.md §8.4，未实施；旧端点迁移期绑定默认项目并标 deprecated 或直接切换，落地时决策） |
+| /api/projects | projects | 项目 CRUD（F11）；领域端点经查询参数渐进迁移（project_id，缺省=默认项目/列表管理面全库），路径前缀 `/api/projects/{pid}/...` 推迟（DECISIONS 2026-09-06） |
 
 OpenAPI 文档自动生成于 `/docs`（FastAPI 内建），前端类型由该 schema 派生。
 

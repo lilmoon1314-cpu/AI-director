@@ -8,17 +8,26 @@
 import { create } from "zustand";
 
 import { api, type EntityBrief } from "../api/client";
+import { useProjectStore } from "./projectStore";
 
 interface EntityIndexState {
   briefs: EntityBrief[];
-  load: (force?: boolean) => Promise<void>;
+  /** 索引已加载的项目（陈旧检测：项目切换后 reset 清空重拉，F11）。 */
+  loadedProjectId: string | null;
+  load: (force?: boolean, projectId?: string) => Promise<void>;
+  /** 项目切换重置换机（DESIGN.md §7）：清空摘要索引（随项目隔离）。 */
+  reset: () => void;
 }
 
 export const useEntityIndexStore = create<EntityIndexState>((set, get) => ({
   briefs: [],
-  load: async (force = false) => {
-    if (!force && get().briefs.length > 0) return;
-    const briefs = await api.listEntities();
-    set({ briefs });
+  loadedProjectId: null,
+  load: async (force = false, projectId?: string) => {
+    const pid = projectId ?? useProjectStore.getState().currentProjectId ?? null;
+    if (!force && get().briefs.length > 0 && get().loadedProjectId === pid) return;
+    // @ 选择器与名称解析随项目隔离（跨项目引用被后端拒绝，F11 I8）
+    const briefs = await api.listEntities(pid ? { project_id: pid } : undefined);
+    set({ briefs, loadedProjectId: pid });
   },
+  reset: () => set({ briefs: [], loadedProjectId: null }),
 }));

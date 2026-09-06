@@ -7,7 +7,7 @@
  * - 深浅色跟随系统（CSS dark: 变体 + G6 主题在 GraphCanvas 内联动）。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CreateEntityForm } from "../components/entity-panel/CreateEntityForm";
 import { CreateRelationForm } from "../components/entity-panel/CreateRelationForm";
@@ -18,9 +18,11 @@ import { Button } from "../components/ui/Button";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { ENTITY_TYPES } from "../lib/entityForm";
 import { TYPE_COLORS, TYPE_LABELS } from "../lib/palette";
+import { useAssetStore } from "../stores/assetStore";
 import { useEntityIndexStore } from "../stores/entityIndexStore";
 import { useGraphStore } from "../stores/graphStore";
 import { PERSPECTIVE_LABELS, usePerspectiveStore } from "../stores/perspectiveStore";
+import { useProjectId } from "../stores/projectStore";
 import { useSelectionStore } from "../stores/selectionStore";
 
 function AccordionSection({
@@ -53,6 +55,7 @@ function AccordionSection({
 }
 
 export function GraphView() {
+  const projectId = useProjectId();
   const graph = useGraphStore((s) => s.graph);
   const loading = useGraphStore((s) => s.loading);
   const error = useGraphStore((s) => s.error);
@@ -64,10 +67,24 @@ export function GraphView() {
   const characters = usePerspectiveStore((s) => s.characters);
   const loadEntities = useEntityIndexStore((s) => s.load);
 
+  // 项目切换重置换机（DESIGN.md §7）：图数据陈旧（loadedProjectId ≠ 当前项目）时
+  // 先重置视角/选中/索引/项目资产，再按当前项目加载——页签往返（同项目）不触发重置
+  const lastSeenProject = useRef(projectId);
+  useEffect(() => {
+    if (lastSeenProject.current !== projectId) {
+      lastSeenProject.current = projectId;
+      usePerspectiveStore.getState().reset();
+      useSelectionStore.getState().clear();
+      useEntityIndexStore.getState().reset();
+      useAssetStore.getState().resetProjectScoped();
+    }
+    void loadGraph(projectId);
+  }, [projectId, loadGraph]);
+
   // 实体摘要索引随图数据刷新（实体增删改后 reloadGraph → 索引同步，F07 名称解析保持新鲜）
   useEffect(() => {
-    loadEntities(true).catch(() => {});
-  }, [graph, loadEntities]);
+    loadEntities(true, projectId).catch(() => {});
+  }, [graph, loadEntities, projectId]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // 全部区块默认折叠（用户要求）：新建组、组内实体/关系表单、筛选面板
@@ -77,10 +94,6 @@ export function GraphView() {
   const [openFilter, setOpenFilter] = useState(false);
   // 类型筛选：勾选 = 画布显示该类型（默认全选）
   const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(ENTITY_TYPES));
-
-  useEffect(() => {
-    void loadGraph();
-  }, [loadGraph]);
 
   const toggleType = (type: string) => {
     setVisibleTypes((prev) => {

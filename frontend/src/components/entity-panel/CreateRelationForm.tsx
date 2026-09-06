@@ -7,12 +7,14 @@ import { useState } from "react";
 
 import { api, ApiError } from "../../api/client";
 import { useGraphStore } from "../../stores/graphStore";
+import { useProjectId } from "../../stores/projectStore";
 import { Button } from "../ui/Button";
 import { CheckboxInput, TextInput } from "../ui/Field";
 
 export function CreateRelationForm() {
   const nodes = useGraphStore((s) => s.graph.nodes);
   const reloadGraph = useGraphStore((s) => s.loadGraph);
+  const projectId = useProjectId();
   const [source, setSource] = useState("");
   const [target, setTarget] = useState("");
   const [type, setType] = useState("ALLY");
@@ -40,13 +42,15 @@ export function CreateRelationForm() {
     setBusy(true);
     setError(null);
     try {
+      // 隐式作用域：关系归属当前项目；端点下拉源即当前项目图节点（同项目校验由后端兜底）
       await api.createRelation({
         source,
         target,
         type: type.trim().toUpperCase(),
         audience_known: audienceKnown,
+        ...(projectId ? { project_id: projectId } : {}),
       });
-      await reloadGraph();
+      await reloadGraph(projectId);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.problem : "创建关系失败，请稍后重试");
     } finally {

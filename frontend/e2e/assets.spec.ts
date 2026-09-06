@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { shoot } from "./helpers";
+import { shoot, openWorkbench } from "./helpers";
 
 const PNG_BYTES = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -45,7 +45,7 @@ test("EF1: 项目资产卡片与内嵌查看器", async ({ page, request }) => {
   });
   expect(upload.status()).toBe(201);
 
-  await page.goto("/");
+  await openWorkbench(page);
   await page.getByTestId("tab-assets").click();
   await page.getByTestId("section-project").click();
 
@@ -68,7 +68,7 @@ test("EF1: 项目资产卡片与内嵌查看器", async ({ page, request }) => {
 test("EF2: 通用资产新建-查看-删除全链路", async ({ page, request }) => {
   await resetWorld(request);
 
-  await page.goto("/");
+  await openWorkbench(page);
   await page.getByTestId("tab-assets").click();
 
   // 新建：分类 + 标题 + 自定义属性

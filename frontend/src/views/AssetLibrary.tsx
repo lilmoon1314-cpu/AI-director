@@ -9,18 +9,20 @@ import { useEffect, useState } from "react";
 import { GeneralAssetSection } from "../components/assets/GeneralAssetSection";
 import { ProjectAssetSection } from "../components/assets/ProjectAssetSection";
 import { useAssetStore } from "../stores/assetStore";
+import { useProjectId } from "../stores/projectStore";
 
 type Section = "general" | "project";
 
 export function AssetLibrary() {
+  const projectId = useProjectId();
   const loadGeneral = useAssetStore((s) => s.loadGeneral);
   const loadEntityCards = useAssetStore((s) => s.loadEntityCards);
   const [section, setSection] = useState<Section>("general");
 
   useEffect(() => {
     loadGeneral().catch(() => {});
-    loadEntityCards().catch(() => {});
-  }, [loadGeneral, loadEntityCards]);
+    loadEntityCards(projectId).catch(() => {});
+  }, [loadGeneral, loadEntityCards, projectId]);
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col gap-4 overflow-y-auto rounded-2xl p-5">

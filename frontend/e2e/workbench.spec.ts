@@ -6,7 +6,7 @@
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
-import { shoot } from "./helpers";
+import { shoot, openWorkbench } from "./helpers";
 
 // 测试世界种子（与 docs/tests/F05_graph 种子一致）：e2e 库为全新空库，
 // 经真实后端 API 播种（走 vite 代理），保证「周兰」等下拉端点存在。
@@ -50,7 +50,7 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
   await resetWorld(page.request);
   await seedWorld(page.request);
 
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await shoot(page, "E1-01-首屏加载完成-6节点3边");
 
@@ -76,7 +76,7 @@ test("E1: UI 建实体 → 建关系 → 图计数经真实后端刷新", async 
 });
 
 test("E2: 刷新页面后 E1 的数据仍在（持久化单一事实源）", async ({ page }) => {
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/7 节点 · 4 边/);
   await shoot(page, "E2-01-刷新前-数据在");
   await page.reload();
@@ -88,7 +88,7 @@ test("E3: 深色模式跟随系统（emulate prefers-color-scheme: dark）", asy
   await page.emulateMedia({ colorScheme: "dark" });
   await resetWorld(page.request);
   await seedWorld(page.request);
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await shoot(page, "E3-01-深色模式首屏");
 });
@@ -98,7 +98,7 @@ test("E4: 类型筛选——取消勾选人物 → 仅非人物可见（3 节点
   await resetWorld(page.request);
   await seedWorld(page.request);
 
-  await page.goto("/");
+  await openWorkbench(page);
   await expect(page.getByTestId("graph-stats")).toHaveText(/6 节点 · 3 边/);
   await page.getByRole("button", { name: "筛选", exact: true }).click();
   await page.getByLabel("人物 (3)").uncheck();
