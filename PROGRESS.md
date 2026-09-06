@@ -23,6 +23,10 @@
 - 2026-09-06（续三）: **质量门禁双强化（用户决策）**——①变异证据机器门禁：verify_feature.py 写 passing 前强制校验（缓存存在/含该模块变异体/kill rate≥85%/缓存晚于模块最后提交，F04 起生效、L1 文件名约定定位模块、纯前端与空壳模块跳过；9 项单测；实测 F11 通过、F08/F04 重验将被要求重跑各自模块变异——DoD 诚实反映），E12 流程风险闭环；②验收审查子代理协议落 docs/testing.md §10（只读/自包含 prompt/结构化发现/verify 前触发/发现按 lessons §1 提升）+ AGENTS.md 工作规则；**F11 首次试点即抓出 P0**：GraphView 重置换机 useRef 判定在 key=projectId 整树重挂载下不可达（视角/选中/查看器跨项目残留，E14 登记）→ 改读全局 graphStore.loadedProjectId 陈旧检测 + FU1 集成用例锁定（generalCards 保留断言）；P1×2 文档漂移（FU1 机制/I8 known_by 维度）与 P2×4（默认项目常量收敛 client.ts/测试目标口径/e2e 判杀重叠论证）全部处置，处置记录入 F11 测试文档「验收审查记录」
 
 - 2026-09-06（续四）: **F12 工作台导航与资产页重构（passing）**——资产页分区升级入 URL（react-router 子路由：`assets/general` 默认落点 OQ-6｜`assets/project` 类型库墙｜`assets/project/:entityType` 类型库详情，无效类型重定向回墙）；项目资产两级钻取（ProjectTypeWall 7 类型库卡聚合「N 实体·M 张图」/EntityTypeAssets 面包屑+asset-type-back+asset-search；空类型虚线卡与详情引导「去图谱页创建」经 `?create=entity&type=` 查询参数联动、GraphView 消费即清理）；通用参考库重命名与「跨项目共享」徽标 + 独立搜索（lib/assetFilters 纯函数：标题/描述/分类与 chips AND）+ 空库引导卡/搜索无命中独立提示 + 表单 modal 化（OQ-3，ui/Modal，卡片墙不再被整区替换）；AssetCardTile 按 DESIGN §9 统一（16:10 封面 scale-105/-translate-y-1/text-sm 概要/编辑按钮 hover+focus 可见）；三要素错误态落地（assetStore generalError/entityError + ui/ErrorStrip 错误条+重试，不再吞错成空态）。**验收审查（§10 协议第 2 轮）12 条发现（P0×0/P1×3/P2×9）全处置**：P1 抓出 DESIGN 虚登 verify 状态（E01 同型，改指 features.md 唯一事实源）、FI11 参数清理零断言（补 LocationProbe）、error 态偏离基线（按基线实现而非登记偏离）；集成测试抓出真缺陷 **E15**（react-router 嵌套 Outlet 不自动继承 context，深链冷启动拼 /projects/undefined——已入 CONSTRAINTS 硬约束 + FI4 判杀）与 assetStore 跨用例缓存泄漏（T-20260906-05）。测试：L1 assetFilters 10 参数化实例、L2 集成 51（FI1–FI13+保留回归）、L3 e2e 13/13、后端资产回归 16；ProjectAssetSection 退役。详见 docs/tests/F12_workbench_navigation_assets.md（含 testid 迁移契约与验收审查记录）、DECISIONS.md 与 git log
+
+## 进行中
+- 无
+
 ## 已知问题
 - 无
 
