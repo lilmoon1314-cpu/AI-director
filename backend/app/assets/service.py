@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assets import db as assets_db
 from app.assets import rendering, repository, storage
+from app.assets.db import (
+    get_assets_session as get_assets_session,  # noqa: F401 — 显式再导出（跨模块唯一合法入口）
+)
 from app.assets.models import AssetImage, AssetRecord
 from app.assets.schemas import (
     ENTITY_TYPE_ORDER,
@@ -30,6 +33,7 @@ from app.config import get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.observability import checkpoint
 from app.entities import service as entities_service
+from app.projects import service as projects_service
 
 
 def _not_found_asset(asset_id: str) -> NotFoundError:
@@ -425,7 +429,7 @@ async def get_general_page(session: AsyncSession, asset_id: str) -> str:
 
 @checkpoint
 async def list_entity_cards(
-    session: AsyncSession, main_session: AsyncSession
+    session: AsyncSession, main_session: AsyncSession, project_id: str | None = None
 ) -> list[EntityAssetCard]:
     """项目资产卡片列表（主库实体按类型分组；调用时先孤儿清扫）。
 
@@ -433,12 +437,16 @@ async def list_entity_cards(
         资产管理页项目资产区数据源：实体来自 entities.service（跨库聚合），
         封面/计数来自资产库；实体已删除的残留记录与图片文件在此清扫
         （读取时孤儿清扫——实体写路径零回调，DECISIONS 2026-09-05）。
-    参数: session — 资产库会话；main_session — 主库会话。
+        project_id 过滤项目归属（F11：实体资产随实体间接归属项目）。
+    参数: session — 资产库会话；main_session — 主库会话；
+        project_id — 项目过滤（可选；显式提供时校验项目存在，None=全库）。
     返回值: list[EntityAssetCard]（按类型序 + 名称序）。
-    异常: 无。
-    依赖: entities.service、repository、storage、app.config。
+    异常: NotFoundError — project_id 不存在。
+    依赖: entities.service、projects.service、repository、storage、app.config。
     """
-    entities = await entities_service.list_all(main_session)
+    if project_id is not None:
+        await projects_service.ensure_exists(main_session, project_id)
+    entities = await entities_service.list_all(main_session, project_id=project_id)
     live_ids = [e.id for e in entities]
 
     records = await repository.list_records(session, kind="entity")
@@ -480,6 +488,41 @@ async def list_entity_cards(
         )
     cards.sort(key=lambda c: (order.get(c.type, len(ENTITY_TYPE_ORDER)), c.name))
     return cards
+
+
+@checkpoint
+async def sweep_entity_assets(session: AsyncSession, entity_ids: list[str]) -> None:
+    """按实体 id 集合显式清扫资产记录 / 图片 / 物理文件（删项目级联，F11）。
+
+    作用:
+        删除项目后主库实体成批消失，读取时孤儿清扫无法感知这种成批删除
+        （DESIGN.md §8.2），故级联路径按已知 id 集合显式清扫：删除
+        kind=entity 的资产记录、scope=entity 的图片记录及物理文件。
+        与主库删除分属两库事务——本函数失败时，残留孤儿由
+        list_entity_cards 的读取时孤儿清扫兜底（跨库补偿，DECISIONS 2026-09-06）。
+    参数: session — 资产库会话（独立事务，本函数自行 commit）；
+        entity_ids — 已从主库删除的实体 id 集合。
+    返回值: 无。
+    异常: 无（无匹配记录时静默返回；物理文件缺失由 delete_stored_file 容错）。
+    依赖: repository、storage、app.config。
+    """
+    if not entity_ids:
+        return
+    id_set = set(entity_ids)
+
+    records = await repository.list_records(session, kind="entity")
+    doomed_records = [r for r in records if r.entity_id in id_set]
+    images = await repository.list_images_by_scope(session, "entity")
+    doomed_images = [i for i in images if i.owner_id in id_set]
+
+    asset_dir = get_settings().asset_dir
+    for image in doomed_images:
+        storage.delete_stored_file(image.stored_name, asset_dir)
+        await repository.delete_image(session, image)
+    for record in doomed_records:
+        await repository.delete_record(session, record)
+    if doomed_records or doomed_images:
+        await session.commit()
 
 
 @checkpoint

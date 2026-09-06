@@ -12,6 +12,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 
 import app.entities.models  # noqa: F401 — 注册表元数据
+import app.projects.models  # noqa: F401 — 注册表元数据（F11）
 import app.relations.models  # noqa: F401 — 注册表元数据
 from app.config import get_settings
 from app.core.db import Base, ensure_sqlite_dir

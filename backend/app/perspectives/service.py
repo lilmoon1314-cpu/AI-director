@@ -18,6 +18,7 @@ from app.core.exceptions import PerspectiveError
 from app.core.observability import checkpoint
 from app.entities import service as entities_service
 from app.perspectives.schemas import GraphData, GraphEdge, GraphNode, Perspective
+from app.projects import service as projects_service
 from app.relations import service as relations_service
 
 
@@ -149,25 +150,34 @@ async def get_graph(
     *,
     perspective: Perspective,
     character_id: str | None = None,
+    project_id: str | None = None,
 ) -> GraphData:
-    """三视角过滤图查询（模块唯一对外查询入口；只读，不开事务）。
+    """三视角 × 项目维度过滤图查询（模块唯一对外查询入口；只读，不开事务）。
 
     作用:
-        聚合 entities/relations 全量数据后按视角规则过滤，输出轻量节点/边投影；
-        视角可见性判定只发生在本函数（单一事实源的唯一执行点）。
+        聚合指定项目的 entities/relations 后按视角规则过滤，输出轻量节点/边
+        投影；视角可见性判定只发生在本函数（单一事实源的唯一执行点）；
+        project_id 过滤与视角过滤正交叠加（F11 多项目，缺省=默认项目）。
     参数:
         session — 数据库会话（只读使用）；perspective — 视角枚举；
-        character_id — character 视角的视角角色 id（其余视角忽略）。
+        character_id — character 视角的视角角色 id（其余视角忽略）；
+        project_id — 项目 id（缺省归属默认项目）。
     返回值: GraphData（nodes+edges）。
     异常:
         PerspectiveError — character 视角缺 character_id / 角色不存在 / 非 character 类型。
-    依赖: app.entities.service、app.relations.service。
+        NotFoundError — project_id 不存在。
+    依赖: app.entities.service、app.relations.service、app.projects.service。
     """
-    briefs = await entities_service.search(session)
+    resolved_project = project_id or projects_service.DEFAULT_PROJECT_ID
+    await projects_service.ensure_exists(session, resolved_project)
+
+    briefs = await entities_service.search(session, project_id=resolved_project)
     entities: list[_EntityLike] = list(
         await entities_service.get_many(session, [b.id for b in briefs])
     )
-    relations: list[_RelationLike] = list(await relations_service.get_all(session))
+    relations: list[_RelationLike] = list(
+        await relations_service.get_all(session, project_id=resolved_project)
+    )
 
     if perspective == "character":
         if not character_id:

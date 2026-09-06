@@ -19,7 +19,17 @@
 - 2026-09-06（续）: **设计基线全仓文档同步**——按「双态标注」原则（规划内容标注并引用 DESIGN.md 章节）将新增/变更设计传播至 13 份文档：README（设计基线与架构演进节：多项目规划 + 模块化单体复评）；根 ARCHITECTURE（上下文图加 projects(规划)/依赖图加 projects 依赖方向（仅依赖 core、禁反向 import、经 service 归属校验）/模块清单/§5.5 多项目数据流/演进路线加第 1 批扩展行/文档导航）；根 CONSTRAINTS（§2 新增三条：DESIGN 基线遵循、projects 依赖方向、单体维持与拆分触发条件）；backend ARCHITECTURE/CONSTRAINTS（目录树 projects 行、API 总表 /api/projects 规划行、归属校验、删项目显式级联跨库补偿、project_id Alembic 迁移打包默认项目）；frontend ARCHITECTURE/CONSTRAINTS（路由规划注记、views/stores 蓝图（ProjectPicker/AgentHome/projectStore）、SSE 生命周期会话级修订注记、统一卡片规范、z-index 规范、资产页升级规划）；data_struct_define 新增 §11（projects 表/project_id/global_state 单例预警/conversations+messages+memory_docs 入主库/assets 多项目语义，全规划态）；agent/assets/entities/relations/perspectives 五模块 ARCHITECTURE+CONSTRAINTS 同步职责/依赖/规划条目
 
 ## 进行中
-- 无
+**F11 多项目底座（active，测试文档 docs/tests/F11_multi_project_foundation.md 已先行）**
+1. [x] 治理：features.md 增 F11/F12 行（F10 挪后说明）+ DECISIONS 四项实现决策 + 测试文档先行
+2. [ ] 后端 projects 模块（models/schemas/repository/service/router + ARCHITECTURE/CONSTRAINTS + import-linter 契约 + pyproject source 兄弟枚举）
+3. [ ] Alembic 迁移（projects 表 + entities/relationships.project_id FK+索引 + 默认项目打包存量）+ conftest 注册 projects 元数据
+4. [ ] entities/relations project 维度改造（model/repository 过滤/service 归属校验与计数器维护/schemas/router 参数 + delete_by_project 供级联）
+5. [ ] perspectives（/api/graph?project_id=）与 assets（/api/assets/entities?project_id=）过滤透传
+6. [ ] 后端测试 L1（U1–U8）/ L2（I1–I10）/ L3（E1–E2）
+7. [ ] 后端 mutmut（scope app/projects，判杀器 L1+L2，kill rate ≥85%）
+8. [ ] 前端路由化（react-router 引入 + 路由表 + Workbench 壳层改造 + ProjectPicker + projectStore + store 重置矩阵 + api client project_id 透传 + 类型重生成）
+9. [ ] 前端测试（unit/integration FU1–FU2 + Playwright projects.spec FE1 + 既有 e2e 路由适配 FE2）
+10. [ ] verify F11 + make check + 文档双态翻转（规划→已就位：根/backend/frontend ARCH+CONSTRAINTS、data_struct_define §11.1/11.2、DESIGN.md 状态注记）+ 收尾提交
 
 ## 已知问题
 - 无

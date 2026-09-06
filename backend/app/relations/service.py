@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.observability import checkpoint
 from app.entities import service as entities_service
+from app.projects import service as projects_service
 from app.relations import repository
 from app.relations.models import Relationship, _utcnow
 from app.relations.schemas import (
@@ -84,6 +85,27 @@ def _endpoint_missing(field: str, entity_id: str) -> NotFoundError:
     )
 
 
+def _cross_project(kind: str, entity_id: str, project_id: str) -> ValidationError:
+    """构造跨项目引用的三要素异常（F11 多项目隔离）。
+
+    作用: 关系端点 / known_by 成员与关系分属不同项目时的统一错误出口——
+        跨项目引用会破坏项目隔离（图谱 / 资产 / 上下文互相泄露）。
+    参数: kind — 违规角色描述（如 "source 端点" / "known_by 成员"）；
+        entity_id — 违规实体 id；project_id — 关系所属项目 id。
+    返回值: ValidationError。异常: 无。依赖: 无。
+    """
+    return ValidationError(
+        problem="跨项目引用被拒绝",
+        cause=f"{kind} 实体 '{entity_id}' 与关系所属项目 '{project_id}' 不属于同一项目",
+        fix="关系端点与 known_by 成员必须与关系归属同一项目（检查各实体的 project_id）",
+        detail={
+            "entity_id": entity_id,
+            "relation_project": project_id,
+            "rule": "cross_project_reference",
+        },
+    )
+
+
 def _known_by_invalid(member: str, reason: str, entity_type: str | None = None) -> ValidationError:
     """构造 known_by 成员校验失败的三要素异常。
 
@@ -120,17 +142,19 @@ def _duplicate(source: str, target: str, rel_type: str, existing_id: str) -> Con
     )
 
 
-def _new_relation(schema: RelationCreate) -> Relationship:
+def _new_relation(schema: RelationCreate, project_id: str) -> Relationship:
     """由请求模型构造 ORM 实例（id 系统生成，时间戳装配即填充）。
 
     作用: 创建路径的关系装配；时间戳在此填充而非依赖 flush 默认值，
         保证未落库状态（单元测试 mock）下响应模型可完整序列化。
-    参数: schema — 已通过请求校验的创建载荷。
+        project_id 为已解析并经同项目校验的最终归属（缺省=默认项目）。
+    参数: schema — 已通过请求校验的创建载荷；project_id — 项目归属。
     返回值: Relationship（未入库）。异常: 无。依赖: app.relations.schemas。
     """
     now = _utcnow()
     return Relationship(
         id=generate_relation_id(),
+        project_id=project_id,
         source=schema.source,
         target=schema.target,
         type=schema.type,
@@ -154,34 +178,43 @@ def _new_relation(schema: RelationCreate) -> Relationship:
     )
 
 
-async def _load_entity_types(session: AsyncSession, entity_ids: list[str]) -> dict[str, str]:
-    """批量读取实体 id → type 映射（经 entities.service，缺失 id 不在结果中）。
+async def _load_entities(
+    session: AsyncSession, entity_ids: list[str]
+) -> dict[str, entities_service.EntityRead]:
+    """批量读取实体 id → 完整数据映射（经 entities.service，缺失 id 不在结果中）。
 
-    作用: 端点/known_by 校验的统一取数入口——单次批量查询替代逐个 get，
-        且遵守「禁止直查 entities 表」约束。
+    作用: 端点存在性 / 类型 / 项目归属 / known_by 校验的统一取数入口——
+        单次批量查询替代逐个 get，且遵守「禁止直查 entities 表」约束；
+        返回完整 EntityRead 以支持 F11 同项目校验（project_id 字段）。
     参数: session — 数据库会话；entity_ids — 去重后的实体 id 列表。
-    返回值: dict[str, str]（存在的实体 id → type）。异常: 无。
-    依赖: app.entities.service.get_many。
+    返回值: dict[str, entities_service.EntityRead]（存在的实体 id → 完整数据）。
+    异常: 无。依赖: app.entities.service.get_many。
     """
     entities = await entities_service.get_many(session, entity_ids)
-    return {e.id: e.type for e in entities}
+    return {e.id: e for e in entities}
 
 
-def _require_members_valid(known_by: list[str], entity_types: dict[str, str]) -> None:
-    """校验 known_by 成员均存在且为 character（基于已取回的 id→type 映射）。
+def _require_members_valid(
+    known_by: list[str], entities_by_id: dict[str, entities_service.EntityRead], project_id: str
+) -> None:
+    """校验 known_by 成员均存在、为 character 且与关系同项目。
 
-    作用: 视角标记完整性校验（写入时防脏数据破坏视角过滤，backend/CONSTRAINTS.md）。
+    作用: 视角标记完整性与项目隔离校验（写入时防脏数据破坏视角过滤与
+        项目隔离，backend/CONSTRAINTS.md / F11）。
     参数: known_by — 待校验成员列表（允许重复，按首次出现顺序校验）；
-        entity_types — _load_entity_types 取回的映射。
+        entities_by_id — _load_entities 取回的映射；project_id — 关系所属项目。
     返回值: 无（通过则静默返回）。
-    异常: app.core.exceptions.ValidationError — 成员缺失或非 character。
+    异常: app.core.exceptions.ValidationError — 成员缺失 / 非 character / 跨项目。
     依赖: 无。
     """
     for member in dict.fromkeys(known_by):
-        if member not in entity_types:
+        entity = entities_by_id.get(member)
+        if entity is None:
             raise _known_by_invalid(member, "missing")
-        if entity_types[member] != "character":
-            raise _known_by_invalid(member, "not_character", entity_types[member])
+        if entity.type != "character":
+            raise _known_by_invalid(member, "not_character", entity.type)
+        if entity.project_id != project_id:
+            raise _cross_project("known_by 成员", member, project_id)
 
 
 @checkpoint
@@ -201,33 +234,41 @@ async def count_by_entity(session: AsyncSession, entity_id: str) -> int:
 
 @checkpoint
 async def create(session: AsyncSession, schema: RelationCreate) -> RelationRead:
-    """创建关系（自环/端点/known_by/重复四重校验后入库）。
+    """创建关系（自环/端点/known_by/重复/跨项目五重校验后入库）。
 
-    作用: 关系创建的业务入口；id 由系统生成。
+    作用: 关系创建的业务入口；id 由系统生成；project_id 缺省归属默认项目；
+        关系计数器在同事务内 +1（projects.service.touch）。
     参数: session — 数据库会话；schema — 创建载荷。
     返回值: RelationRead（含生成的 id 与时间戳）。
     异常:
-        ValidationError — 自环关系；known_by 成员缺失或非 character。
-        NotFoundError — source/target 端点实体不存在。
+        ValidationError — 自环关系；known_by 成员缺失 / 非 character / 跨项目。
+        NotFoundError — source/target 端点实体不存在；项目不存在。
         ConflictError — 同 source+target+type 关系已存在。
-    依赖: app.relations.repository、app.entities.service、app.relations.schemas。
+    依赖: app.relations.repository、app.entities.service、app.projects.service。
     """
     if schema.source == schema.target:
         raise _self_loop(schema.source)
 
-    entity_types = await _load_entity_types(
+    project_id = schema.project_id or projects_service.DEFAULT_PROJECT_ID
+    await projects_service.ensure_exists(session, project_id)
+
+    entities_by_id = await _load_entities(
         session, list(dict.fromkeys([schema.source, schema.target, *schema.known_by]))
     )
     for field, endpoint in (("source", schema.source), ("target", schema.target)):
-        if endpoint not in entity_types:
+        entity = entities_by_id.get(endpoint)
+        if entity is None:
             raise _endpoint_missing(field, endpoint)
-    _require_members_valid(schema.known_by, entity_types)
+        if entity.project_id != project_id:
+            raise _cross_project(f"{field} 端点", endpoint, project_id)
+    _require_members_valid(schema.known_by, entities_by_id, project_id)
 
     existing = await repository.find_same(session, schema.source, schema.target, schema.type)
     if existing is not None:
         raise _duplicate(schema.source, schema.target, schema.type, existing.id)
 
-    relation = await repository.add(session, _new_relation(schema))
+    relation = await repository.add(session, _new_relation(schema, project_id))
+    await projects_service.touch(session, project_id, relation_delta=1)
     await session.commit()
     return RelationRead.model_validate(relation)
 
@@ -269,13 +310,15 @@ async def update(session: AsyncSession, relation_id: str, schema: RelationUpdate
         if value is not None:
             setattr(relation, field, value)
     if schema.known_by is not None:
-        entity_types = await _load_entity_types(session, list(dict.fromkeys(schema.known_by)))
-        _require_members_valid(schema.known_by, entity_types)
+        entities_by_id = await _load_entities(session, list(dict.fromkeys(schema.known_by)))
+        _require_members_valid(schema.known_by, entities_by_id, relation.project_id)
         relation.known_by = list(schema.known_by)
     if schema.properties is not None:
         relation.properties = {**relation.properties, **schema.properties}
 
     relation = await repository.save(session, relation)
+    # 项目「最近活跃」随关系编辑刷新（计数不变，touch 不自行 commit，随本事务提交）
+    await projects_service.touch(session, relation.project_id)
     await session.commit()
     return RelationRead.model_validate(relation)
 
@@ -295,6 +338,8 @@ async def delete(session: AsyncSession, relation_id: str) -> None:
     if relation is None:
         raise _not_found(relation_id)
     await repository.delete(session, relation)
+    # 计数器在同事务内 -1（touch 不自行 commit，随本事务提交）
+    await projects_service.touch(session, relation.project_id, relation_delta=-1)
     await session.commit()
 
 
@@ -305,13 +350,31 @@ async def get_all(
     source: str | None = None,
     target: str | None = None,
     rel_type: str | None = None,
+    project_id: str | None = None,
 ) -> list[RelationRead]:
-    """按端点/类型条件查询关系（无过滤条件返回全量，供 perspectives 聚合）。
+    """按端点/类型/项目条件查询关系（无过滤条件返回全量，供 perspectives 聚合）。
 
-    作用: 条件查询业务入口；GET /api/relations 的数据源。
+    作用: 条件查询业务入口；GET /api/relations 的数据源；project_id 过滤
+        项目归属（F11，perspectives 图查询按项目聚合）。
     参数: session — 数据库会话；source/target — 端点实体 id 过滤（可选）；
-        rel_type — 关系类型过滤（可选）。
+        rel_type — 关系类型过滤（可选）；project_id — 项目过滤（可选）。
     返回值: list[RelationRead]。异常: 无。依赖: app.relations.repository。
     """
-    relations = await repository.query(session, source=source, target=target, rel_type=rel_type)
+    relations = await repository.query(
+        session, source=source, target=target, rel_type=rel_type, project_id=project_id
+    )
     return [RelationRead.model_validate(r) for r in relations]
+
+
+@checkpoint
+async def delete_by_project(session: AsyncSession, project_id: str) -> int:
+    """删除项目内全部关系并返回条数（删项目级联，不自行 commit）。
+
+    作用:
+        级联删除的关系清除入口——FK RESTRICT 要求关系先于实体删除；
+        事务由编排收口（projects.service.delete 的 commit）原子提交。
+    参数: session — 数据库会话（编排事务内）；project_id — 项目 id。
+    返回值: int（被删除的关系条数）。
+    异常: 无。依赖: app.relations.repository。
+    """
+    return await repository.delete_by_project(session, project_id)

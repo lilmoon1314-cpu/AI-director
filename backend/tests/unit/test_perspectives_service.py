@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.core.exceptions import PerspectiveError
 from app.entities import service as entities_service
 from app.perspectives import schemas, service
+from app.projects import service as projects_service
 from app.relations import service as relations_service
 
 pytestmark = pytest.mark.unit
@@ -75,7 +76,10 @@ def _install(
     """
 
     async def fake_search(
-        _session: Any, q: str = "", entity_type: str | None = None
+        _session: Any,
+        q: str = "",
+        entity_type: str | None = None,
+        project_id: str | None = None,
     ) -> list[SimpleNamespace]:
         rows = [e for e in entities if entity_type is None or e.type == entity_type]
         return [SimpleNamespace(id=e.id) for e in sorted(rows, key=lambda x: x.name)]
@@ -87,9 +91,14 @@ def _install(
     async def fake_get_all(_session: Any, **_: Any) -> list[SimpleNamespace]:
         return list(relations)
 
+    async def fake_ensure_exists(_session: Any, _project_id: str) -> None:
+        return None
+
     monkeypatch.setattr(entities_service, "search", fake_search)
     monkeypatch.setattr(entities_service, "get_many", fake_get_many)
     monkeypatch.setattr(relations_service, "get_all", fake_get_all)
+    # F11 起图查询按项目归属校验（缺省=默认项目）——单元层一并桩化
+    monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
 
 
 @pytest.fixture

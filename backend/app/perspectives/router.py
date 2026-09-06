@@ -22,14 +22,19 @@ async def get_graph(
     character_id: str | None = Query(
         default=None, description="character 视角必填：视角角色的实体 id"
     ),
+    project_id: str | None = Query(
+        default=None, description="项目 id（F11 多项目；缺省=默认项目）"
+    ),
     session: AsyncSession = Depends(get_session),
 ) -> schemas.GraphData:
-    """三视角过滤图查询（GET /api/graph?perspective=author|character|audience）。
+    """三视角 × 项目维度过滤图查询（GET /api/graph?perspective=...&project_id=...）。
 
     作用: 参数解析 + 调用 service；过滤规则与可见性判定全部在 service 层。
     参数: perspective — 视角枚举（必填）；character_id — character 视角角色 id；
-        session — 请求级数据库会话（依赖注入）。
-    返回值: GraphData（nodes+edges）。异常: 403/422 由全局异常处理器统一出口。
+        project_id — 项目 id（缺省=默认项目）；session — 请求级数据库会话。
+    返回值: GraphData（nodes+edges）。异常: 403/404/422 由全局异常处理器统一出口。
     依赖: app.perspectives.service。
     """
-    return await service.get_graph(session, perspective=perspective, character_id=character_id)
+    return await service.get_graph(
+        session, perspective=perspective, character_id=character_id, project_id=project_id
+    )

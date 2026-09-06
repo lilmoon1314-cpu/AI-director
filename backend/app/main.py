@@ -18,6 +18,8 @@ from app.config import get_settings
 from app.core import db, observability
 from app.entities.router import router as entities_router
 from app.perspectives.router import router as perspectives_router
+from app.projects import service as projects_service
+from app.projects.router import router as projects_router
 from app.relations.router import router as relations_router
 
 
@@ -27,7 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     作用:
         按序完成：发射 startup 事件 → 创建资产目录 → 预热数据库引擎（含 WAL/外键）→
-        挂载静态资产目录 → 发射 ready 事件；停机时发射 shutdown 并释放引擎。
+        初始化资产库 → 幂等确保默认项目存在（F11）→ 挂载静态资产目录 →
+        发射 ready 事件；停机时发射 shutdown 并释放双库引擎。
     参数:
         app — FastAPI 实例（用于挂载静态目录）。
     返回值:
@@ -35,13 +38,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     异常:
         无（初始化失败由全局异常体系兜底记录）。
     依赖:
-        app.config、app.core.db、app.core.observability。
+        app.config、app.core.db、app.core.observability、app.projects.service。
     """
     settings = get_settings()
     observability.emit_lifecycle("startup")
     Path(settings.asset_dir).mkdir(parents=True, exist_ok=True)
     db.get_engine()
     await assets_service.init_database()
+    async with db.get_session_factory()() as session:
+        await projects_service.ensure_default_project(session)
     app.mount("/static/assets", StaticFiles(directory=settings.asset_dir), name="assets")
     observability.emit_lifecycle("ready", data={"asset_dir": settings.asset_dir})
     try:
@@ -84,11 +89,12 @@ def create_app() -> FastAPI:
         """健康检查端点（存活探针，供测试与运维验证服务可用）。"""
         return {"status": "ok"}
 
-    # 领域模块路由挂载（F02 entities / F03 relations / F04 perspectives / F08 assets）
+    # 领域模块路由挂载（entities/relations/perspectives/assets/projects，F02~F11）
     app.include_router(entities_router)
     app.include_router(relations_router)
     app.include_router(perspectives_router)
     app.include_router(assets_router)
+    app.include_router(projects_router)
 
     return app
 

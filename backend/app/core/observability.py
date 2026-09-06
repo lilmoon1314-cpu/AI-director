@@ -36,7 +36,11 @@ from starlette.responses import Response
 
 from app.config import Settings
 from app.core.exceptions import AppError
-from app.core.responses import error_response, request_validation_error_response
+from app.core.responses import (
+    error_response,
+    request_validation_error_response,
+    validation_errors_brief,
+)
 
 # 当前请求 ID：中间件写入、@checkpoint 读取，实现跨事件串联
 current_request_id: ContextVar[str] = ContextVar("current_request_id", default="")
@@ -283,7 +287,8 @@ async def request_validation_error_handler(_request: Request, exc: Exception) ->
         data={
             "code": "VALIDATION_ERROR",
             "problem": "请求参数校验失败",
-            "errors": exc.errors()[:10],
+            # JSON 安全化：validator 异常对象转 repr（F11 实测：ctx 嵌异常会令日志序列化崩溃）
+            "errors": validation_errors_brief(exc),
         },
         stream="error",
     )

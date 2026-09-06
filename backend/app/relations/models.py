@@ -41,6 +41,8 @@ class Relationship(Base):
     __tablename__ = "relationships"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    # 项目归属（F11）：与两端实体同项目（service 层校验跨项目引用拒绝）
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     source: Mapped[str] = mapped_column(
         ForeignKey("entities.id", ondelete="RESTRICT"), nullable=False, index=True
     )

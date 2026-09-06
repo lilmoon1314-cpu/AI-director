@@ -207,17 +207,18 @@ async def set_cover(
 
 @router.get("/entities", response_model=list[EntityAssetCard])
 async def list_entity_cards(
+    project_id: str | None = None,
     session: AsyncSession = Depends(get_assets_session),
     main_session: AsyncSession = Depends(get_session),
 ) -> list[EntityAssetCard]:
     """项目资产卡片列表（主库实体按类型分组；含孤儿清扫）。
 
-    作用: 项目资产区数据源路由。
-    参数: session — 资产库会话；main_session — 主库会话。
-    返回值: list[EntityAssetCard]（类型序 + 名称序）。异常: 无。
+    作用: 项目资产区数据源路由；project_id 过滤项目归属（F11 多项目）。
+    参数: project_id — 项目 id（可选）；session — 资产库会话；main_session — 主库会话。
+    返回值: list[EntityAssetCard]（类型序 + 名称序）。异常: 404 项目不存在。
     依赖: app.assets.service.list_entity_cards。
     """
-    return await service.list_entity_cards(session, main_session)
+    return await service.list_entity_cards(session, main_session, project_id=project_id)
 
 
 @router.get("/entity/{entity_id}/page", response_class=HTMLResponse)

@@ -3,6 +3,7 @@
 事务约定: 本层不 commit/rollback（事务边界在 service 层，backend/CONSTRAINTS.md）。
 """
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,14 +50,18 @@ async def get_many(session: AsyncSession, entity_ids: list[str]) -> list[Entity]
 
 
 async def search(
-    session: AsyncSession, q: str = "", entity_type: str | None = None
+    session: AsyncSession,
+    q: str = "",
+    entity_type: str | None = None,
+    project_id: str | None = None,
 ) -> list[Entity]:
-    """按名称/别名模糊检索实体（q 为空返回全量），可叠加类型过滤。
+    """按名称/别名模糊检索实体（q 为空返回全量），可叠加类型与项目过滤。
 
     作用: @ 实体选择器的取数入口；别名为 JSON 列，用 json_each 相关子查询匹配。
         （join 表值函数无法隐式推导连接方向，EXISTS + 相关 json_each 是
         SQLite JSON1 下标准且有确定语义的模式。）
-    参数: session — 数据库会话；q — 关键字（大小写不敏感子串）；entity_type — 类型过滤。
+    参数: session — 数据库会话；q — 关键字（大小写不敏感子串）；
+        entity_type — 类型过滤；project_id — 项目归属过滤（F11，None=不过滤）。
     返回值: list[Entity]（按 name 排序，保证结果稳定）。异常: 无。依赖: SQLAlchemy JSON1。
     """
     stmt = select(Entity)
@@ -74,6 +79,8 @@ async def search(
         stmt = stmt.where(or_(Entity.name.ilike(pattern), alias_matches))
     if entity_type is not None:
         stmt = stmt.where(Entity.type == entity_type)
+    if project_id is not None:
+        stmt = stmt.where(Entity.project_id == project_id)
     return list(await session.scalars(stmt.order_by(Entity.name)))
 
 
@@ -109,3 +116,26 @@ async def exists_by_name(session: AsyncSession, name: str, entity_type: str) -> 
     """
     stmt = select(exists().where(Entity.name == name, Entity.type == entity_type))
     return bool(await session.scalar(stmt))
+
+
+async def list_ids_by_project(session: AsyncSession, project_id: str) -> list[str]:
+    """列出项目内全部实体 id（删项目级联的取数入口）。
+
+    作用: 级联删除前收集实体 id 集合（供资产库显式清扫）；按 id 排序保证稳定。
+    参数: session — 数据库会话；project_id — 项目 id。
+    返回值: list[str]。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    stmt = select(Entity.id).where(Entity.project_id == project_id).order_by(Entity.id)
+    return list(await session.scalars(stmt))
+
+
+async def delete_by_ids(session: AsyncSession, entity_ids: list[str]) -> None:
+    """按 id 集合批量删除实体（不提交事务；级联编排收口提交）。
+
+    作用: 删项目级联的执行入口——该项目的全部关系已先行删除（FK RESTRICT），
+        批量删除经核心 delete 语句在同一事务内执行。
+    参数: session — 数据库会话；entity_ids — 待删除实体 id 集合（非空）。
+    返回值: 无。异常: sqlalchemy.exc.IntegrityError — 仍有关系引用时 DB 层兜底。
+    依赖: SQLAlchemy ORM。
+    """
+    await session.execute(sa_delete(Entity).where(Entity.id.in_(entity_ids)))

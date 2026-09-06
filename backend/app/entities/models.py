@@ -5,7 +5,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, String
+from sqlalchemy import JSON, Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UTCDateTime
@@ -37,6 +37,8 @@ class Entity(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # 项目归属（F11 多项目底座）：外键指向 projects.id；缺省归属默认项目（service 层解析）
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     aliases: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     description: Mapped[str] = mapped_column(String, nullable=False, default="")

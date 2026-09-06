@@ -28,11 +28,12 @@ pytestmark = pytest.mark.integration
 _DB_URL = os.environ["DATABASE_URL"]
 
 # 旁路插入关系行的语句（列定义见 app/relations/models.py；F03 前无关系 API，只能直连构造）
+# F11 起 relationships 增加 project_id（NOT NULL，FK projects；默认项目经 lifespan 恒存在）
 _REL_INSERT_SQL = text(
     "INSERT INTO relationships"
-    " (id, source, target, type, known_by, audience_known, properties,"
+    " (id, project_id, source, target, type, known_by, audience_known, properties,"
     "  created_at, updated_at)"
-    " VALUES ('rel-test-0001', :source, :target, 'mentor', '[]', 0, '{}',"
+    " VALUES ('rel-test-0001', 'project-default', :source, :target, 'mentor', '[]', 0, '{}',"
     "         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
 )
 

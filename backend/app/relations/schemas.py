@@ -38,6 +38,9 @@ class RelationCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # 项目归属（F11）：可选——缺省归属默认项目；须与 source/target/known_by 实体同项目
+    project_id: str | None = Field(default=None, min_length=1)
+
     source: str = Field(min_length=1)
     target: str = Field(min_length=1)
     type: str = Field(min_length=1, max_length=100)
@@ -96,6 +99,7 @@ class RelationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    project_id: str
     source: str
     target: str
     type: str

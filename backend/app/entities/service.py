@@ -20,6 +20,7 @@ from app.entities.schemas import (
     generate_entity_id,
     validate_properties,
 )
+from app.projects import service as projects_service
 from app.relations import service as relations_service
 
 
@@ -52,18 +53,20 @@ def _referential(entity_id: str, ref_count: int) -> ReferentialError:
     )
 
 
-def _new_entity(schema: EntityCreate) -> Entity:
+def _new_entity(schema: EntityCreate, project_id: str) -> Entity:
     """由请求模型构造 ORM 实例（id 系统生成，时间戳装配即填充）。
 
     作用: 创建路径的实体装配；时间戳在此填充而非依赖 flush 默认值，
         保证未落库状态（单元测试 mock）下响应模型可完整序列化。
-    参数: schema — 已通过 Pydantic 请求校验的创建载荷。
+        project_id 为已解析并经归属校验的最终归属（缺省=默认项目）。
+    参数: schema — 已通过 Pydantic 请求校验的创建载荷；project_id — 项目归属。
     返回值: Entity（未入库）。异常: 无。依赖: app.entities.schemas。
     """
     now = _utcnow()
     return Entity(
         id=generate_entity_id(schema.type),
         type=schema.type,
+        project_id=project_id,
         name=schema.name,
         aliases=schema.aliases,
         description=schema.description,
@@ -74,18 +77,32 @@ def _new_entity(schema: EntityCreate) -> Entity:
     )
 
 
+def _resolve_project_id(schema: EntityCreate) -> str:
+    """解析实体归属项目（缺省=默认项目，F11 渐进迁移兼容）。
+
+    作用: 「不带 project_id 的写入落默认项目」的统一解析点。
+    参数: schema — 创建载荷。返回值: str（最终归属项目 id）。
+    异常: 无。依赖: app.projects.service.DEFAULT_PROJECT_ID。
+    """
+    return schema.project_id or projects_service.DEFAULT_PROJECT_ID
+
+
 @checkpoint
 async def create(session: AsyncSession, schema: EntityCreate) -> EntityRead:
-    """创建实体（校验 properties 类型后入库）。
+    """创建实体（校验 properties 类型与项目归属后入库）。
 
-    作用: 实体创建的业务入口；id 由系统生成。
+    作用: 实体创建的业务入口；id 由系统生成，project_id 缺省归属默认项目；
+        计数器在同事务内 +1（projects.service.touch）。
     参数: session — 数据库会话；schema — 创建载荷。
     返回值: EntityRead（含生成的 id 与时间戳）。
-    异常: ValidationError — properties 类型校验失败。
-    依赖: app.entities.repository、app.entities.schemas。
+    异常: ValidationError — properties 类型校验失败；NotFoundError — 项目不存在。
+    依赖: app.entities.repository、app.entities.schemas、app.projects.service。
     """
     validate_properties(schema.type, schema.properties)
-    entity = await repository.add(session, _new_entity(schema))
+    project_id = _resolve_project_id(schema)
+    await projects_service.ensure_exists(session, project_id)
+    entity = await repository.add(session, _new_entity(schema, project_id))
+    await projects_service.touch(session, project_id, entity_delta=1)
     await session.commit()
     return EntityRead.model_validate(entity)
 
@@ -136,6 +153,8 @@ async def update(session: AsyncSession, entity_id: str, schema: EntityUpdate) ->
         entity.properties = merged  # 整体替换，保证 JSON 列变更可被检测
 
     entity = await repository.save(session, entity)
+    # 项目「最近活跃」随实体编辑刷新（计数不变，touch 不自行 commit，随本事务提交）
+    await projects_service.touch(session, entity.project_id)
     await session.commit()
     return EntityRead.model_validate(entity)
 
@@ -161,20 +180,26 @@ async def delete(session: AsyncSession, entity_id: str) -> None:
         raise _referential(entity_id, ref_count)
 
     await repository.delete(session, entity)
+    # 计数器在同事务内 -1（touch 不自行 commit，随本事务提交）
+    await projects_service.touch(session, entity.project_id, entity_delta=-1)
     await session.commit()
 
 
 @checkpoint
 async def search(
-    session: AsyncSession, q: str = "", entity_type: str | None = None
+    session: AsyncSession,
+    q: str = "",
+    entity_type: str | None = None,
+    project_id: str | None = None,
 ) -> list[EntityBrief]:
-    """按名称/别名检索实体（@ 实体选择器数据源）。
+    """按名称/别名检索实体（@ 实体选择器数据源），可按项目过滤。
 
-    作用: 检索业务入口；q 为空返回全量摘要。
-    参数: session — 数据库会话；q — 关键字；entity_type — 类型过滤（可选）。
+    作用: 检索业务入口；q 为空返回全量摘要；project_id 过滤项目归属（F11）。
+    参数: session — 数据库会话；q — 关键字；entity_type — 类型过滤（可选）；
+        project_id — 项目过滤（可选，None=不过滤）。
     返回值: list[EntityBrief]。异常: 无。依赖: app.entities.repository。
     """
-    entities = await repository.search(session, q=q, entity_type=entity_type)
+    entities = await repository.search(session, q=q, entity_type=entity_type, project_id=project_id)
     return [EntityBrief.model_validate(e) for e in entities]
 
 
@@ -191,14 +216,33 @@ async def get_many(session: AsyncSession, entity_ids: list[str]) -> list[EntityR
 
 
 @checkpoint
-async def list_all(session: AsyncSession) -> list[EntityRead]:
-    """读取全量实体（供 assets 项目资产卡片聚合）。
+async def list_all(session: AsyncSession, project_id: str | None = None) -> list[EntityRead]:
+    """读取全量实体（供 assets 项目资产卡片聚合），可按项目过滤。
 
-    作用: 跨模块全量读取入口（F08 资产管理）；无投影收窄——资产管理是
-        作者侧管理面（DECISIONS 2026-08-28 视角作用面决策，不经过视角过滤）。
-    参数: session — 数据库会话。
+    作用: 跨模块全量读取入口（F08 资产管理 / F11 项目资产卡片）；无投影收窄——
+        资产管理是作者侧管理面（DECISIONS 2026-08-28 视角作用面决策，不经过视角过滤）。
+    参数: session — 数据库会话；project_id — 项目过滤（可选，None=全库）。
     返回值: list[EntityRead]（按名称排序）。
     异常: 无。依赖: app.entities.repository。
     """
-    entities = await repository.search(session)
+    entities = await repository.search(session, project_id=project_id)
     return [EntityRead.model_validate(e) for e in entities]
+
+
+@checkpoint
+async def delete_by_project(session: AsyncSession, project_id: str) -> list[str]:
+    """删除项目内全部实体并返回其实体 id 集合（删项目级联，不自行 commit）。
+
+    作用:
+        级联删除的项目内数据清除入口——调用方（projects router 编排）保证
+        该项目的关系已先行删除（FK RESTRICT）；返回 id 集合供资产库显式清扫。
+        事务由编排收口（projects.service.delete 的 commit）原子提交。
+    参数: session — 数据库会话（编排事务内）；project_id — 项目 id。
+    返回值: list[str]（被删除的实体 id，按 id 排序）。
+    异常: 无（项目内无实体时返回空列表）。
+    依赖: app.entities.repository。
+    """
+    entity_ids = await repository.list_ids_by_project(session, project_id)
+    if entity_ids:
+        await repository.delete_by_ids(session, entity_ids)
+    return entity_ids

@@ -17,6 +17,7 @@ from app.core.exceptions import (
 from app.entities import repository, service
 from app.entities.models import Entity
 from app.entities.schemas import EntityCreate, EntityUpdate
+from app.projects import service as projects_service
 from app.relations import service as relations_service
 
 pytestmark = pytest.mark.unit
@@ -64,11 +65,16 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Entity]:
         entities.pop(entity.id, None)
 
     async def fake_search(
-        _session: Any, q: str = "", entity_type: str | None = None
+        _session: Any,
+        q: str = "",
+        entity_type: str | None = None,
+        project_id: str | None = None,
     ) -> list[Entity]:
         rows = list(entities.values())
         if entity_type is not None:
             rows = [e for e in rows if e.type == entity_type]
+        if project_id is not None:
+            rows = [e for e in rows if e.project_id == project_id]
         if q:
             needle = q.lower()
             rows = [
@@ -81,12 +87,27 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Entity]:
     async def fake_count(_session: Any, _entity_id: str) -> int:
         return _ref_count_stub["value"]
 
+    async def fake_ensure_exists(_session: Any, _project_id: str) -> None:
+        return None
+
+    async def fake_touch(
+        _session: Any,
+        _project_id: str,
+        *,
+        entity_delta: int = 0,
+        relation_delta: int = 0,
+    ) -> None:
+        return None
+
     monkeypatch.setattr(repository, "add", fake_add)
     monkeypatch.setattr(repository, "get_by_id", fake_get_by_id)
     monkeypatch.setattr(repository, "save", fake_save)
     monkeypatch.setattr(repository, "delete", fake_delete)
     monkeypatch.setattr(repository, "search", fake_search)
     monkeypatch.setattr(relations_service, "count_by_entity", fake_count)
+    # F11 起实体写路径经 projects.service 校验归属/维护计数器——单元层一并桩化
+    monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
+    monkeypatch.setattr(projects_service, "touch", fake_touch)
     _ref_count_stub["value"] = 0
     return entities
 

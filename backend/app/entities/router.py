@@ -33,16 +33,19 @@ async def search_entities(
     # 参数名 type 与 API 契约（features.md F02 / @ 选择器）保持一致
     q: str = "",
     type: str | None = None,
+    project_id: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[EntityBrief]:
-    """检索实体（GET /api/entities?q=&type=，@ 实体选择器数据源）。
+    """检索实体（GET /api/entities?q=&type=&project_id=，@ 实体选择器数据源）。
 
-    作用: 参数解析 + 调用 service；q 匹配名称/别名，type 过滤类型。
-    参数: q — 关键字（空返回全量）；type — 实体类型（可选）；session — 请求级会话。
+    作用: 参数解析 + 调用 service；q 匹配名称/别名，type 过滤类型，
+        project_id 过滤项目归属（F11 多项目；缺省=全库）。
+    参数: q — 关键字（空返回全量）；type — 实体类型（可选）；
+        project_id — 项目 id（可选）；session — 请求级会话。
     返回值: list[EntityBrief]。异常: 由全局异常处理器统一出口。
     依赖: app.entities.service。
     """
-    return await service.search(session, q=q, entity_type=type)
+    return await service.search(session, q=q, entity_type=type, project_id=project_id)
 
 
 @router.get("/{entity_id}", response_model=EntityRead)

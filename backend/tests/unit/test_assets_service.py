@@ -207,7 +207,8 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             )
         return entity
 
-    async def fake_entity_list_all(_s: Any) -> list[SimpleNamespace]:
+    async def fake_entity_list_all(_s: Any, project_id: str | None = None) -> list[SimpleNamespace]:
+        # F11 起 assets 调用带 project_id 关键字（None=全库；桩不过滤，单元语义等价）
         return list(state["entities"])
 
     monkeypatch.setattr(repository, "get_record", fake_get_record)

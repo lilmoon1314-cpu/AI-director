@@ -4,7 +4,11 @@ F02 范围: 仅 count_by_entity（删除引用计数）；F03 扩展 CRUD 与条
 事务约定: 本层不 commit/rollback（事务边界在 service 层，backend/CONSTRAINTS.md）。
 """
 
+from typing import Any, cast
+
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.relations.models import Relationship
@@ -94,12 +98,14 @@ async def query(
     source: str | None = None,
     target: str | None = None,
     rel_type: str | None = None,
+    project_id: str | None = None,
 ) -> list[Relationship]:
-    """按端点/类型条件查询关系（无过滤条件返回全量）。
+    """按端点/类型/项目条件查询关系（无过滤条件返回全量）。
 
-    作用: GET /api/relations 条件查询与 perspectives 聚合的取数入口。
+    作用: GET /api/relations 条件查询与 perspectives 聚合的取数入口；
+        project_id 过滤项目归属（F11，None=不过滤）。
     参数: session — 数据库会话；source/target — 端点实体 id 过滤（可选）；
-        rel_type — 关系类型过滤（可选）。
+        rel_type — 关系类型过滤（可选）；project_id — 项目过滤（可选）。
     返回值: list[Relationship]（按 id 排序，保证结果稳定）。异常: 无。
     依赖: SQLAlchemy ORM。
     """
@@ -110,4 +116,21 @@ async def query(
         stmt = stmt.where(Relationship.target == target)
     if rel_type is not None:
         stmt = stmt.where(Relationship.type == rel_type)
+    if project_id is not None:
+        stmt = stmt.where(Relationship.project_id == project_id)
     return list(await session.scalars(stmt.order_by(Relationship.id)))
+
+
+async def delete_by_project(session: AsyncSession, project_id: str) -> int:
+    """按项目批量删除关系并返回删除条数（不提交事务；级联编排收口提交）。
+
+    作用: 删项目级联的执行入口——FK RESTRICT 要求关系先于实体删除；
+        批量删除经核心 delete 语句在编排事务内执行。
+    参数: session — 数据库会话（编排事务内）；project_id — 项目 id。
+    返回值: int（被删除的关系条数）。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    result = await session.execute(
+        sa_delete(Relationship).where(Relationship.project_id == project_id)
+    )
+    # AsyncSession.execute 的静态类型为 Result（无 rowcount 声明），运行时为 CursorResult
+    return int(cast("CursorResult[Any]", result).rowcount or 0)

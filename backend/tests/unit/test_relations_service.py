@@ -11,6 +11,7 @@ import pytest
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.entities import service as entities_service
+from app.projects import service as projects_service
 from app.relations import repository, service
 from app.relations.models import Relationship
 from app.relations.schemas import RelationCreate, RelationUpdate
@@ -73,6 +74,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Relationship]:
         source: str | None = None,
         target: str | None = None,
         rel_type: str | None = None,
+        project_id: str | None = None,
     ) -> list[Relationship]:
         rows = list(relations.values())
         if source is not None:
@@ -81,12 +83,31 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Relationship]:
             rows = [r for r in rows if r.target == target]
         if rel_type is not None:
             rows = [r for r in rows if r.type == rel_type]
+        if project_id is not None:
+            rows = [r for r in rows if r.project_id == project_id]
         return sorted(rows, key=lambda r: r.id)
 
     async def fake_get_many(_session: Any, entity_ids: list[str]) -> list[Any]:
+        # F11 起校验需要 project_id（同项目校验）：桩实体统一挂默认项目
         return [
-            SimpleNamespace(id=eid, type=_ENTITIES[eid]) for eid in entity_ids if eid in _ENTITIES
+            SimpleNamespace(
+                id=eid, type=_ENTITIES[eid], project_id=projects_service.DEFAULT_PROJECT_ID
+            )
+            for eid in entity_ids
+            if eid in _ENTITIES
         ]
+
+    async def fake_ensure_exists(_session: Any, _project_id: str) -> None:
+        return None
+
+    async def fake_touch(
+        _session: Any,
+        _project_id: str,
+        *,
+        entity_delta: int = 0,
+        relation_delta: int = 0,
+    ) -> None:
+        return None
 
     monkeypatch.setattr(repository, "add", fake_add)
     monkeypatch.setattr(repository, "get_by_id", fake_get_by_id)
@@ -95,6 +116,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Relationship]:
     monkeypatch.setattr(repository, "find_same", fake_find_same)
     monkeypatch.setattr(repository, "query", fake_query)
     monkeypatch.setattr(entities_service, "get_many", fake_get_many)
+    # F11 起关系写路径经 projects.service 校验归属/维护计数器——单元层一并桩化
+    monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
+    monkeypatch.setattr(projects_service, "touch", fake_touch)
     return relations
 
 

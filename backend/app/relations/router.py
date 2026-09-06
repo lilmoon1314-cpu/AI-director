@@ -34,17 +34,20 @@ async def search_relations(
     target: str | None = None,
     # 参数名 type 与 API 契约（features.md F03 / 图可视化边过滤）保持一致
     type: str | None = None,
+    project_id: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[RelationRead]:
-    """条件查询关系（GET /api/relations?source=&target=&type=，无参返回全量）。
+    """条件查询关系（GET /api/relations?source=&target=&type=&project_id=，无参返回全量）。
 
-    作用: 参数解析 + 调用 service；按端点/类型过滤关系。
+    作用: 参数解析 + 调用 service；按端点/类型/项目过滤关系。
     参数: source/target — 端点实体 id（可选）；type — 关系类型（可选）；
-        session — 请求级会话。
+        project_id — 项目 id（可选，F11 多项目）；session — 请求级会话。
     返回值: list[RelationRead]。异常: 由全局异常处理器统一出口。
     依赖: app.relations.service。
     """
-    return await service.get_all(session, source=source, target=target, rel_type=type)
+    return await service.get_all(
+        session, source=source, target=target, rel_type=type, project_id=project_id
+    )
 
 
 @router.get("/{relation_id}", response_model=RelationRead)

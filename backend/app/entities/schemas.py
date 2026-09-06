@@ -220,11 +220,15 @@ class EntityCreate(EntityBase):
     """创建实体请求体。
 
     作用: POST /api/entities 的载荷模型；extra=forbid 拒绝未知字段（含 id——
-    id 由系统生成，禁止客户端指定）。
-    参数: 无（字段见 EntityBase）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+    id 由系统生成，禁止客户端指定）。project_id 可选——缺省归属默认项目
+    （F11 渐进迁移：不带 project_id 的旧客户端行为不变）。
+    参数: 无（字段见 EntityBase + project_id）。返回值: 无（模型类）。
+    异常: 无。依赖: pydantic。
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    project_id: str | None = Field(default=None, min_length=1)
 
 
 class EntityUpdate(BaseModel):
@@ -251,6 +255,7 @@ class EntityRead(EntityBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    project_id: str
     created_at: datetime
     updated_at: datetime
 
