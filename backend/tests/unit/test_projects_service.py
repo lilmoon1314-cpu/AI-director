@@ -314,3 +314,8 @@ async def test_ensure_default_project_idempotent(store: dict[str, Project]) -> N
     assert got.name == service.DEFAULT_PROJECT_NAME
     assert got.description == service.DEFAULT_PROJECT_DESCRIPTION
     assert got.entity_count == 0 and got.relation_count == 0
+    assert got.created_at is not None and got.updated_at is not None, (
+        "【问题】默认项目装配缺少时间戳\n"
+        "【原因】ensure_default_project 未以统一时间源填充 created_at/updated_at\n"
+        "【修复】检查 _utcnow 装配路径"
+    )

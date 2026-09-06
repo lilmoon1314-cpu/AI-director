@@ -6,6 +6,7 @@
     - router 不碰数据层（router.py 禁止 import repository/models）[F02]
     - 配置禁止硬编码（扫描源码端口/URL/密钥样式字面量）           [F02]
     - relationships 外键 DDL 声明 ON DELETE RESTRICT             [F02]
+    - projects 表与 project_id 归属列的 DDL 契约                  [F11]
 """
 
 import ast
@@ -25,6 +26,7 @@ FORBIDDEN_IN_CORE = (
     "app.perspectives",
     "app.assets",
     "app.agent",
+    "app.projects",
 )
 
 pytestmark = pytest.mark.architecture
@@ -208,6 +210,55 @@ def test_relationships_fk_declared_on_delete_restrict() -> None:
         "【问题】迁移文件未包含 RESTRICT 外键策略\n"
         "【原因】ORM 声明与迁移 DDL 脱节（库表实际缺少约束）\n"
         "【修复】重新生成 Alembic 迁移使 DDL 与 ORM 模型一致"
+    )
+
+
+def test_projects_schema_declared() -> None:
+    """projects 表与 entities/relationships.project_id 的 ORM DDL 契约（F11）。
+
+    失败含义:
+        【问题】projects 表或归属列的 ORM 声明不符（可空/缺省/外键/索引缺失）
+        【原因】DDL 契约漂移会使多项目隔离在数据库层失去兜底（可空归属、无索引慢查）
+        【修复】对照 app/projects/models.py 与 F11 迁移修正列声明并同步迁移
+    """
+    from app.entities.models import Entity
+    from app.projects.models import Project
+    from app.relations.models import Relationship
+
+    cols = Project.__table__.c
+    for name in (
+        "id",
+        "name",
+        "description",
+        "entity_count",
+        "relation_count",
+        "created_at",
+        "updated_at",
+    ):
+        assert cols[name].nullable is False, f"projects.{name} 必须非空"
+    assert cols["description"].default is not None and cols["description"].default.arg == ""
+    assert cols["entity_count"].default is not None and cols["entity_count"].default.arg == 0
+    assert cols["relation_count"].default is not None and cols["relation_count"].default.arg == 0
+    assert cols["created_at"].default is not None and cols["updated_at"].default is not None
+
+    projects_table = Project.__table__
+    for model, label in ((Entity, "entities"), (Relationship, "relationships")):
+        col = model.__table__.c["project_id"]
+        assert col.nullable is False, f"{label}.project_id 必须非空"
+        assert any(
+            fk.parent is col and fk.column.table is projects_table for fk in col.foreign_keys
+        ), f"{label}.project_id 必须声明指向 projects.id 的外键"
+        assert any(
+            "project_id" in {c.name for c in idx.columns} for idx in model.__table__.indexes
+        ), f"{label}.project_id 必须建索引（项目维度过滤高频路径）"
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert "project-default" in migration_sql, (
+        "【问题】迁移未包含默认项目打包\n"
+        "【原因】存量数据缺少归属目标（无 project_id 写入将 404）\n"
+        "【修复】保留 F11 迁移中的默认项目 INSERT 与 project_id 回填"
     )
 
 

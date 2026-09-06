@@ -10,6 +10,7 @@
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -383,3 +384,92 @@ def test_general_assets_are_global_across_projects(client: TestClient) -> None:
         c["id"].startswith(("char-", "fct-", "loc-", "item-", "skill-", "event-", "cpt-"))
         for c in cards.json()
     ), "项目资产卡片只含实体，通用资产不得混入"
+
+
+# ---------------- I4 补充: 详情端点与更新边界（变异判杀强化） ----------------
+
+
+def test_project_detail_endpoint(client: TestClient) -> None:
+    """I4 补充 GET /api/projects/{id} 详情链路：存在 200、幽灵 404。
+
+    设计依据: 等价类-有效/无效-不存在（路由注册契约仅 HTTP 层可杀）。
+    """
+    proj = _create_project(client, "详情项目")
+    got = client.get(f"/api/projects/{proj['id']}")
+    assert got.status_code == 200 and got.json()["id"] == proj["id"], (
+        f"【问题】项目详情端点异常: {got.status_code} {got.text}\n"
+        "【原因】GET /api/projects/{id} 路由未注册或响应不符\n"
+        "【修复】检查 projects.router 的详情路由"
+    )
+    missing = client.get("/api/projects/project-ghost")
+    assert missing.status_code == 404
+
+
+def test_create_project_contract_edges(client: TestClient) -> None:
+    """I1/I2 补充 创建契约边界：默认描述、id 格式、未知字段、空白名消息、描述长度。
+
+    设计依据: 边界值-描述长度 500/501 + 等价类-无效-未知字段/空白名（响应文案为运行时契约）。
+    """
+    resp = client.post("/api/projects", json={"name": "无描述项目"})
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["description"] == "", "缺省描述应为空串"
+    assert re.fullmatch(r"project-[0-9a-f]{12}", body["id"]), (
+        f"【问题】id 格式不符: {body['id']}\n"
+        "【原因】generate_project_id 的前缀/长度规则漂移\n"
+        "【修复】检查 schemas.generate_project_id"
+    )
+
+    extra = client.post("/api/projects", json={"name": "x", "id": "project-hack"})
+    assert extra.status_code == 422, "extra=forbid 应拒绝未知字段（含 id）"
+
+    blank = client.post("/api/projects", json={"name": " "})
+    assert blank.status_code == 422
+    assert "项目名不能为空白" in blank.json()["cause"], "校验器消息应进入 422 cause"
+
+    ok500 = client.post("/api/projects", json={"name": "描述上限", "description": "甲" * 500})
+    assert ok500.status_code == 201, "描述 500 字（上限）应通过"
+    bad501 = client.post("/api/projects", json={"name": "描述超限", "description": "甲" * 501})
+    assert bad501.status_code == 422, "描述 501 字（上限+1）应拒绝"
+
+
+def test_update_project_contract_edges(client: TestClient) -> None:
+    """I4 补充 更新契约边界：单字名/65 字名、描述更新与长度、计数器不可直写。
+
+    设计依据: 边界值-名称 1/65 + 等价类-无效-未知字段（计数器只经 touch 维护）。
+    """
+    proj = _create_project(client, "更新边界项目")
+
+    one = client.patch(f"/api/projects/{proj['id']}", json={"name": "甲"})
+    assert one.status_code == 200 and one.json()["name"] == "甲", "单字名（min_length=1）应通过"
+
+    over = client.patch(f"/api/projects/{proj['id']}", json={"name": "甲" * 65})
+    assert over.status_code == 422, "65 字名（上限+1）应拒绝"
+
+    desc = client.patch(f"/api/projects/{proj['id']}", json={"description": "新描述"})
+    assert desc.status_code == 200 and desc.json()["description"] == "新描述"
+    bad501 = client.patch(f"/api/projects/{proj['id']}", json={"description": "甲" * 501})
+    assert bad501.status_code == 422, "更新面描述超限应拒绝"
+
+    counters = client.patch(f"/api/projects/{proj['id']}", json={"entity_count": 99})
+    assert counters.status_code == 422, "计数器字段不可客户端直写"
+
+
+def test_default_project_identity_and_protection_message(client: TestClient) -> None:
+    """I3/I5 补充 默认项目身份常量与保护错误三要素完整文案（E05 范式钉死）。
+
+    设计依据: 等价类-受保护资源的对外契约（错误文案在响应体中属行为契约）。
+    """
+    projects = {p["id"]: p for p in _list_projects(client)}
+    default = projects[_DEFAULT_ID]
+    assert default["name"] == "默认项目", "默认项目名称应为常量「默认项目」"
+    assert default["description"] == "未指定项目的数据兜底归档（可改名用作正式项目）"
+
+    protected = client.delete(f"/api/projects/{_DEFAULT_ID}")
+    assert protected.status_code == 422
+    body = protected.json()
+    assert body["problem"] == "默认项目不可删除"
+    assert body["cause"] == (
+        "默认项目（id='project-default'）是不带 project_id 请求的兜底归属目标，删除后该类写入将失效"
+    )
+    assert body["fix"] == "可将其改名后作为正式项目使用；或先把其数据迁移到其他项目"
