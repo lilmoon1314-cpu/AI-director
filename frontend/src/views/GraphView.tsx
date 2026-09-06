@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { CreateEntityForm } from "../components/entity-panel/CreateEntityForm";
 import { CreateRelationForm } from "../components/entity-panel/CreateRelationForm";
@@ -88,11 +89,29 @@ export function GraphView() {
   }, [graph, loadEntities, projectId]);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // 空类型库引导联动（F12，DESIGN.md §5.3.3）：?create=entity&type=<valid> → 挂载即展开
+  // 新建组与实体表单并预选类型；消费后清理查询参数（防同项目重挂载重复弹出）
+  const [searchParams, setSearchParams] = useSearchParams();
+  const createParam = searchParams.get("create");
+  const prefillTypeParam = searchParams.get("type");
+  const prefillType =
+    createParam === "entity" &&
+    prefillTypeParam &&
+    (ENTITY_TYPES as readonly string[]).includes(prefillTypeParam)
+      ? prefillTypeParam
+      : undefined;
+  const openByParam = createParam === "entity";
   // 全部区块默认折叠（用户要求）：新建组、组内实体/关系表单、筛选面板
-  const [openCreate, setOpenCreate] = useState(false);
-  const [openEntityForm, setOpenEntityForm] = useState(false);
+  const [openCreate, setOpenCreate] = useState(openByParam);
+  const [openEntityForm, setOpenEntityForm] = useState(openByParam);
   const [openRelationForm, setOpenRelationForm] = useState(false);
   const [openFilter, setOpenFilter] = useState(false);
+
+  useEffect(() => {
+    if (openByParam) setSearchParams({}, { replace: true });
+    // 仅挂载时消费一次引导参数
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // 类型筛选：勾选 = 画布显示该类型（默认全选）
   const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(ENTITY_TYPES));
 
@@ -157,7 +176,7 @@ export function GraphView() {
                   open={openEntityForm}
                   onToggle={() => setOpenEntityForm((v) => !v)}
                 >
-                  <CreateEntityForm />
+                  <CreateEntityForm defaultType={prefillType} />
                 </AccordionSection>
                 <AccordionSection
                   title="关系"

@@ -14,14 +14,16 @@
 - 必须：高亮 = 原样式提亮（fill/label opacity→1）+ 外围透明淡黄光环（stroke #ffe58f / lineWidth 8 / strokeOpacity 0.4，模拟光圈，用户 2026-08-28 指定），微放大经 state size；淡出 = 适度调低透明度（inactive: 0.5/0.42/0.4）让出视觉重心而非隐藏；禁止内置光晕（halo:false）。active/selected 必须显式钉死 stroke/lineWidth/labelFontWeight——内置主题会注入黑色描边与标签加粗（E10）。
 - 必须：悬停淡出经 hover-activate `inactiveState` 配置（只配激活侧则淡出不生效）；点击持续选中经全量状态机写 `selected/inactive`（实时读 graph 数据，禁止闭包 props 首帧值），选中期间经 `enable` 门控禁用悬停。
 - 必须：实体类型筛选经 `hideElement/showElement` 增量显隐（不触发重布局），边随双端可见性联动隐藏；工作台内容区块默认全部折叠。
-- 必须（F11 起生效，DESIGN.md §9）：统一卡片规范——rounded-2xl 毛玻璃容器（`ring-1 ring-black/5 bg-white/80`，dark: `ring-white/10 bg-slate-800/80`）+ hover 上浮（`-translate-y-1` + `shadow-md`）+ 封面 `group-hover:scale-105`（150–200ms ease-out）；封面 16:10 裁切懒加载；标题 1 行 / 概要 2 行截断；卡片 ⋯ 管理菜单 hover / focus 可见（键盘可达）。（项目首屏卡已按此落地；资产卡统一随 F12。）
-- 必须：浮层层级规范——详情面板 10 / 下拉与浮钮 20 / AgentDock 30（规划，DESIGN.md §5.5）/ 全屏 HTML 查看器 50。
+- 必须（F11 起生效，DESIGN.md §9）：统一卡片规范——rounded-2xl 毛玻璃容器（`ring-1 ring-black/5 bg-white/80`，dark: `ring-white/10 bg-slate-800/80`）+ hover 上浮（`-translate-y-1` + `shadow-md`）+ 封面 `group-hover:scale-105`（150–200ms ease-out）；封面 16:10 裁切懒加载；标题 1 行 / 概要 2 行截断；卡片 ⋯ 管理菜单 hover / focus 可见（键盘可达）。（项目首屏卡 F11、资产卡 F12 均已落地。）
+- 必须：浮层层级规范——详情面板 10 / 下拉与浮钮 20 / AgentDock 30（规划，DESIGN.md §5.5）/ modal 与全屏 HTML 查看器 50（modal：ui/Modal，F12）。
 
-## 资产管理（F08）
+## 资产管理（F08/F12）
 - 必须：工作台为「图谱 | 资产管理」双页签壳层（Workbench），既有图谱能力整体收拢于 GraphView；资产 HTML 查看器（iframe）挂载于壳层，两页签均可打开。
-- 必须：资产卡片为圆角矩形（缩略图 + 名称 + 概述）；无图时以类型色占位（项目资产带类型徽标）；图片懒加载（loading="lazy"）。
+- 必须：资产卡片为圆角矩形（缩略图 + 名称 + 概述），遵循 §9 统一卡片规范；无图时以类型色占位（项目资产带类型徽标）；图片懒加载（loading="lazy"）。
 - 必须：图片与资产页地址一律经 api 客户端派生（图片规范地址 `/api/assets/file/{stored_name}`，与 HTML 资产页同源），禁止在其他层拼接后端地址。
-- 规划（DESIGN.md §5.3，随工作台重构功能项落地后转为硬约束）：资产管理页升级为「通用参考库（挂『跨项目共享』徽标，不随项目切换）｜项目资产」分区；项目资产两级钻取（7 类型库墙 → 类型卡片墙 → 实体 HTML）；各分区独立搜索框（前端过滤）；通用资产表单 modal 化（OQ-3）；空状态引导卡统一模式。
+- 必须（F12 落地，DESIGN.md §5.3）：资产页分区即子路由（URL 即状态）——`assets/general`（默认落点，OQ-6）| `assets/project`（类型库墙）| `assets/project/:entityType`（类型库详情）；无效 entityType 重定向回类型库墙；嵌套 `<Outlet>` 必须回传上层 context（projectId）——react-router 不自动继承，遗漏会使深层路由在 store 同步前读到 undefined。
+- 必须（F12 落地）：各分区独立搜索为前端过滤（通用区标题/描述/分类与 chips AND 叠加；类型详情名称/描述），空串/纯空白 = 不过滤；空状态统一模式——空库/空类型引导卡（一句话 + 单个主按钮）、搜索无命中独立提示（与空库文案可区分）；空类型引导「去图谱页创建」经 `?create=entity&type=<valid>` 查询参数联动（GraphView 挂载时消费并清理参数）。
+- 必须（F12 落地，OQ-3）：通用资产新建/编辑经居中 modal（ui/Modal），禁止整区替换列表；modal 不自带 Esc 关闭（表单含未保存输入，显式取消按钮为唯一出口）。
 
 ## 渲染性能
 - 禁止：图高频交互（拖拽/缩放/hover）路径上的全树重渲染；交互状态必须通过 selector 局部订阅。

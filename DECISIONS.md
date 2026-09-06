@@ -191,3 +191,8 @@
 - 原因: F10（Agent 长对话与项目记忆）硬依赖多项目隔离（图谱/项目资产/记忆/会话随项目，通用资产与 harness/skills 全局），而现状为隐式单项目且前端无路由、无项目概念、agent 零载体；经与用户对齐四项交互决策后成稿交互设计基线（现状诊断 9 条/两层作用域模型/路由方案/五页面设计/端到端剧本/前后端蓝图/测试锚点/开放问题 OQ1–OQ7）。
 - 否决: 直达最近项目无独立首屏（项目上下文错位代价高，误写入污染图谱与记忆）；侧边栏临时快聊不持久（割裂长期记忆，违背 F10 目标）；通用库独立顶层入口（创作时找参考多一跳）；多项目改造并入 F10（粒度过大，违背一次一个功能点）。
 - 约束: 本轮只交付设计文档——不改代码、不改 features.md 功能清单，落地拆解（建议：多项目底座→工作台与资产页重构→F10 挪后）待用户审阅 DESIGN.md 后另行立功能项；路由库引入（OQ-1 推荐 react-router）等开放问题实现期正式决策；AgentDock 会话级 SSE 生命周期落地时须同步修订 frontend/CONSTRAINTS.md「SSE 随组件卸载中断」条目；DESIGN.md 已收录 AGENTS.md 专题文档路由（改导航/页面结构/多项目交互前必读）。
+
+## 2026-09-06: F12 工作台导航与资产页重构——分区路由化 + 两级钻取 + modal 化落定（按 DESIGN.md §5.3/§9/§10 实施）
+- 原因: F12 立项（F11/F12 拆解决策延续）——资产页原为组件内 useState 双分区（刷新即丢、无法深链），项目资产平铺 7 组过长（D2/D4/D7），通用资产表单整区替换丢上下文（D5）；按交互基线将分区状态升级入 URL。
+- 否决: 分区/类型库状态留 store 不入 URL（违背「URL 即状态」原则，浏览器后退/深链失效——两级钻取的后退收益正是路由化动机）；搜索词入 URL（DESIGN §4.2 明确 MVP 留 store/组件态，深链需求出现再评估）；复用 ProjectPicker 内联 modal 结构（三处 modal 使用已具共性，抽 ui/Modal 组件收敛，但不回改 ProjectPicker 既有 modal——不在实现 A 时顺便重构 B）。
+- 约束: ①资产页分区即子路由 `assets/general`（默认落点，OQ-6）|`assets/project`（类型库墙）|`assets/project/:entityType`（详情），无效 entityType 重定向回墙；②react-router 嵌套 `<Outlet>` 不自动继承 context——AssetLibrary 必须显式回传 Workbench 的 projectId context（集成测试抓出的真缺陷：遗漏时深链在 store 同步前拼出 /projects/undefined/...，已入 frontend/CONSTRAINTS.md）；③空类型引导「去图谱页创建」经 `?create=entity&type=<valid>` 查询参数联动，GraphView 挂载时消费并清理（防重挂载重复弹出），非法类型回落默认；④分区搜索为前端过滤纯函数（lib/assetFilters.ts，L1 覆盖），空库引导卡与搜索无命中提示文案可区分；⑤F12 纯前端无后端改动——变异证据门禁按模块定位规则自动跳过（无 test_<module>_service.py 约定文件），后端资产集成回归 16 项通过；ProjectAssetSection 平铺分组组件语义退役删除，testid 迁移映射见 docs/tests/F12 测试文档。

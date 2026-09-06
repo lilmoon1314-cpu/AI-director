@@ -1,7 +1,8 @@
 /**
- * 资产卡片瓦片（F08）：圆角矩形卡片——缩略图（无图用类型色占位）+ 名称 + 概述。
+ * 资产卡片瓦片（F08，F12 按 DESIGN.md §9 统一卡片规范）：
+ * 圆角毛玻璃卡片——封面（16:10 裁切懒加载，hover scale-105）+ 名称（1 行）+ 概述（2 行）。
  * - 通用资产与项目资产共用；占位色取 lib/palette 的类型色（项目资产）或中性色；
- * - 点击卡片触发 onOpen（由父级决定打开查看器或编辑）。
+ * - hover 上浮 -translate-y-1 + shadow-md，过渡 150–200ms；点击卡片触发 onOpen。
  */
 
 import { TYPE_COLORS, TYPE_LABELS } from "../../lib/palette";
@@ -33,10 +34,10 @@ export function AssetCardTile({
       type="button"
       data-testid={testId}
       onClick={onOpen}
-      className="group flex flex-col overflow-hidden rounded-2xl bg-white/80 text-left shadow-sm ring-1 ring-black/5 backdrop-blur transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-800/80 dark:ring-white/10"
+      className="group flex flex-col overflow-hidden rounded-2xl bg-white/80 text-left shadow-sm ring-1 ring-black/5 backdrop-blur transition-all duration-150 hover:-translate-y-1 hover:shadow-md dark:bg-slate-800/80 dark:ring-white/10"
     >
       <div
-        className="relative flex h-28 w-full items-center justify-center overflow-hidden"
+        className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden"
         style={{ backgroundColor: `${placeholderColor}22` }}
       >
         {coverUrl ? (
@@ -44,12 +45,12 @@ export function AssetCardTile({
             src={coverUrl}
             alt={title}
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.03]"
+            className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-105"
           />
         ) : (
           <span
             aria-hidden
-            className="h-10 w-10 rounded-full ring-2 ring-white/70"
+            className="h-10 w-10 rounded-full ring-2 ring-white/70 transition-transform duration-150 group-hover:scale-105"
             style={{ backgroundColor: placeholderColor }}
           />
         )}
@@ -62,7 +63,7 @@ export function AssetCardTile({
       <div className="flex flex-1 flex-col gap-1 px-3 py-2">
         <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
         {description ? (
-          <p className="line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          <p className="line-clamp-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
             {description}
           </p>
         ) : null}

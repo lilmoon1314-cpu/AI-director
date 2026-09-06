@@ -22,17 +22,19 @@ frontend/src/
 ├── views/
 │   ├── Workbench       # 工作台壳层（F11 路由化布局）：logo 返回首屏 + 项目切换器 + 主导航 NavLink「图谱 | 资产管理」（Agent 页签随 F10）
 │   ├── GraphView       # 图谱页（画布 + 操作栏 + 详情面板，原 Workbench 主视图）
-│   ├── AssetLibrary    # 资产管理页（通用资产 / 项目资产二级分区，F08；项目资产随项目过滤 F11；两级钻取 + 搜索随 F12，DESIGN.md §5.3）
+│   ├── AssetLibrary       # 资产管理页壳层（F08；F12 路由化：二级胶囊 NavLink「通用参考库｜项目资产」+ Outlet，
+│   │                       #   分区即子路由 assets/general（默认落点）|assets/project（类型库墙）|assets/project/:entityType（详情））
 │   ├── ProjectPicker   # 项目首屏（F11 已落地，DESIGN.md §5.1）
 │   └── AgentHome       # Agent 对话主页（规划，DESIGN.md §5.4）
 ├── components/
 │   ├── graph/          # GraphCanvas（G6 封装：布局/交互/缩放/拖拽）
 │   ├── entity-selector/# @ 触发的实体搜索选择器（含视角可见性提示）
 │   ├── entity-panel/   # 实体/关系详情（资产图片区、编辑表单）
-│   ├── assets/         # 资产卡片/编辑表单/通用与项目资产区/HTML 内嵌查看器（F08）
+│   ├── assets/         # 资产域组件（F08；F12 两级钻取：GeneralAssetSection 通用参考库含搜索/chips/modal 表单、
+│   │                   #   ProjectTypeWall 类型库墙、EntityTypeAssets 类型库详情、AssetCardTile §9 规范卡、HTML 内嵌查看器）
 │   ├── agent-panel/    # 对话面板（规划随 F10：SSE 渲染 + 草案确认 UI + AgentDock 右侧边栏，DESIGN.md §5.4/§5.5）
 │   ├── projects/        # 项目域组件（ProjectSwitcher 顶栏切换器，F11）
-│   └── ui/             # 自研轻量通用组件（毛玻璃面板/按钮/输入框，shadcn/ui 风格）
+│   └── ui/             # 自研轻量通用组件（毛玻璃面板/按钮/输入框/modal，shadcn/ui 风格）
 └── lib/                # 工具（格式化、防抖等）
 ```
 
@@ -45,7 +47,7 @@ frontend/src/
 | graphStore | nodes/edges/loading | 视角切换、CRUD 完成后按需刷新 |
 | perspectiveStore | perspective/character_id | 视角切换控件（切换即触发 graphStore 重载） |
 | selectionStore | 选中 id、面板开合 | 图节点点击 |
-| assetStore | 通用/项目资产卡片、HTML 查看器开关 | 资产管理页挂载与写操作后刷新（F08） |
+| assetStore | 通用/项目资产卡片、HTML 查看器开关 | 资产管理页挂载与写操作后刷新（F08；F12 分区切换经路由，store 只承载数据缓存） |
 | projectStore（F11 已落地） | projects/currentProjectId/routeInvalid | 首屏与切换器数据源；syncRoute 把路由参数同步为项目上下文（校验存在性），Outlet context 渲染期供给叶子视图（避免父子 effect 顺序竞态）；切换重置换机由叶子视图按 projectId 陈旧检测执行（矩阵见 DESIGN.md §7；generalCards 全局缓存跨项目复用） |
 | agentStore | 消息列表、流式缓冲、草案 | SSE 流、propose/confirm（规划：按项目的会话池，SSE 挂会话级生命周期） |
 

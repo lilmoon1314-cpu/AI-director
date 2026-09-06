@@ -27,12 +27,17 @@ import { Button } from "../ui/Button";
 import { CheckboxInput, SelectInput, TextArea, TextInput } from "../ui/Field";
 import { PropertiesFields } from "./PropertiesFields";
 
-export function CreateEntityForm() {
+export function CreateEntityForm({ defaultType }: { defaultType?: string }) {
   const reloadGraph = useGraphStore((s) => s.loadGraph);
   const projectId = useProjectId();
-  const [form, setForm] = useState<EntityFormValues>(EMPTY_ENTITY_FORM);
+  // 预选类型（F12 空类型库引导联动）：仅接受合法类型，非法值回落默认
+  const initialType =
+    defaultType && (ENTITY_TYPES as readonly string[]).includes(defaultType)
+      ? defaultType
+      : EMPTY_ENTITY_FORM.type;
+  const [form, setForm] = useState<EntityFormValues>({ ...EMPTY_ENTITY_FORM, type: initialType });
   const [propValues, setPropValues] = useState<PropertyFormState>(() =>
-    toPropertyFormState(EMPTY_ENTITY_FORM.type, {}),
+    toPropertyFormState(initialType, {}),
   );
   const [propIssues, setPropIssues] = useState<Record<string, string>>({});
   const [issues, setIssues] = useState<FormIssue[]>([]);

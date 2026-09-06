@@ -1,6 +1,6 @@
 # DESIGN.md — 前端交互设计基线（多项目工作台 v1）
 
-> 状态：**设计基线**（2026-09-06 与用户对齐四项关键决策后成稿）。落地进度：**F11 多项目底座已实现**（§4 导航骨架/§5.1 项目首屏/§7 重置矩阵/§8 后端蓝图，2026-09-06 verify F11 passing）；F12（§5.3 资产页两级钻取等）与 F10（§5.4/§5.5 Agent）待实施。
+> 状态：**设计基线**（2026-09-06 与用户对齐四项关键决策后成稿）。落地进度：F11 多项目底座（§4 导航骨架/§5.1 项目首屏/§7 重置矩阵/§8 后端蓝图）与 F12 工作台导航与资产页重构（§5.3 资产页两级钻取与分区搜索/空态引导/modal 化、§9 卡片规范资产卡落地、§10 testid 迁移；分区入 URL，OQ-3/OQ-6 落定）**均已实现**——验收状态以 docs/features.md 对应功能行（验证脚本唯一写入）与 docs/tests/F11、F12 测试文档为准，本文件不重复登记；F10（§5.4/§5.5 Agent）待实施。
 > 读者：实现工作台导航 / 资产页 / Agent 界面 / 多项目改造相关功能前的 agent 与用户。
 > 与其他文档的关系：本文约束**信息架构与交互流程**；视觉硬指标以 `frontend/CONSTRAINTS.md` 为准、技术决策以 `DECISIONS.md` 为准、数据蓝图以 `docs/data_struct_define.md` 为准——若冲突，以后三者为准并回改本文。
 
@@ -385,14 +385,14 @@ Claude 式两栏（左栏可折叠）：
 
 ## 10. 测试与验收锚点
 
-### testid 迁移映射（保护既有 e2e）
+### testid 迁移映射（保护既有 e2e；F11/F12 落地后已按实际名回写）
 
-| 既有（保留） | 新增 |
+| 既有（保留） | 新增（落地实际名） |
 |---|---|
-| `main-nav` / `tab-graph` / `tab-assets` | `tab-agent` |
-| `section-general` / `section-project` | `project-picker` / `project-card` / `project-create` / `project-search` |
-| `asset-viewer`（HTML 查看器） | `asset-type-card` / `asset-type-back` / `asset-search` |
-| `sidebar` / `entity-panel` / `perspective-*` / `filter-*` | `agent-dock` / `agent-dock-toggle` / `agent-session-list` / `agent-input` / `memory-doc-card` |
+| `main-nav` / `tab-graph` / `tab-assets` | `tab-agent`（随 F10） |
+| `section-general` / `section-project`（F12 起为 NavLink，分区入 URL） | `project-picker` / `project-card-{id}` / `project-create` / `project-menu-{id}`（F11 首屏）；`asset-type-wall` / `asset-type-card-{type}` / `asset-type-back` / `asset-search` / `asset-general-empty` / `asset-search-empty`（F12 资产页，全清单见 docs/tests/F12 测试文档「testid 迁移契约」） |
+| `asset-viewer`（HTML 查看器） | — |
+| `sidebar` / `entity-panel` / `perspective-*` / `filter-*` | `agent-dock` / `agent-dock-toggle` / `agent-session-list` / `agent-input` / `memory-doc-card`（随 F10） |
 
 ### e2e 场景建议（实现各功能项时入测试文档）
 
