@@ -52,6 +52,10 @@ class ChatCapture:
         self, system: str, messages: list[dict[str, str]], **kwargs: Any
     ) -> AssistantTurn:
         self.calls.append({"system": system, "messages": messages, **kwargs})
+        if not self.script:
+            # 有界判杀桩（T-20260907-02）：无限循环变异体会反复调用 LLM，
+            # 耗尽即抛使其快速转为断言失败被杀，而非挂死整个 mutmut 运行
+            raise RuntimeError("ChatCapture 脚本耗尽仍被调用（疑似无限循环变异体）")
         return self.script.pop(0)
 
     def prompt_text(self, call_index: int = 0) -> str:

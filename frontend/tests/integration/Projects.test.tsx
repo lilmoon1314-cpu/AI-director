@@ -31,7 +31,9 @@ const PROJECTS = [
     entity_count: 42,
     relation_count: 18,
     created_at: "2026-09-04T00:00:00Z",
-    updated_at: "2026-09-06T08:00:00Z",
+    // 动态生成（E18）：相对时间断言「今天」的 fixture 禁止硬编码日期，
+    // 否则写成定时炸弹——硬编码日次日（2026-09-07）起「今天」永久变「昨天」
+    updated_at: new Date().toISOString(),
   },
   {
     id: "project-b",

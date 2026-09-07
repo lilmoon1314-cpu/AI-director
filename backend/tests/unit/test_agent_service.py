@@ -178,17 +178,35 @@ def _seed_conversation(store: Store, conversation_id: str = "conv-1", title: str
     )
 
 
+def _scripted_llm(*turns: AssistantTurn) -> Any:
+    """按脚本回放 LLM 回复；脚本耗尽后再被调用即抛 RuntimeError。
+
+    作用: 为 stream_chat 提供有界判杀桩——无限循环类变异体（如工具分支
+    条件 and→or，T-20260907-02）会让循环反复调用 LLM，无界桩会挂死整个
+    mutmut 运行（Windows 无 SIGALRM，mutmut 超时机制失效）；耗尽即抛使
+    此类变异体快速转为断言失败被杀。
+    参数: turns — 按调用顺序回放的 AssistantTurn 序列。
+    返回值: async fake（签名与 llm.chat_turn 一致）。
+    异常: RuntimeError — 脚本耗尽仍被调用（测试基建守卫，非被测行为）。
+    依赖: 无。
+    """
+    script = list(turns)
+
+    async def _fake(*_a: Any, **_k: Any) -> AssistantTurn:
+        if not script:
+            raise RuntimeError("LLM 桩脚本耗尽仍被调用（疑似无限循环变异体）")
+        return script.pop(0)
+
+    return _fake
+
+
 async def test_stream_chat_normal_flow(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
     """U23: 正常轮 → message_start/token/done 事件齐全，user+assistant 落库。
 
     设计依据: 等价类-有效会话轮。
     """
     _seed_conversation(store)
-
-    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="你好，创作者。")
-
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="你好，创作者。")))
     events = [evt async for evt in service.stream_chat("conv-1", "介绍项目", perspective="author")]
 
     names = [e["event"] for e in events]
@@ -210,10 +228,7 @@ async def test_title_from_first_message_truncated(
 ) -> None:
     """U27 参数化: 会话标题取首条用户消息截断（边界值-恰为上限/超 1）。"""
 
-    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="ok")
-
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
     _seed_conversation(store)
 
     _ = [evt async for evt in service.stream_chat("conv-1", first_message, perspective="author")]
@@ -236,6 +251,8 @@ async def test_tool_loop_quota_then_plain_answer(
 
     async def fake_chat_turn(_system: str, _msgs: list[dict], **kwargs: Any) -> AssistantTurn:
         calls.append({"kwargs": kwargs, "messages": _msgs})
+        if len(calls) > 2:
+            raise RuntimeError("工具配额桩被调用超过 2 次（疑似无限循环变异体）")
         if kwargs.get("tools"):
             return AssistantTurn(
                 content=None,
@@ -272,10 +289,9 @@ async def test_content_review_blocks_before_persist(
 ) -> None:
     """U28: 合规开关开启且命中 → error 事件（不落库）；关闭 → 正常（等价类-开关两态）。"""
 
-    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="ok")
-
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(
+        llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok"), AssistantTurn(content="ok"))
+    )
 
     _install(store, monkeypatch, settings=ReviewSettingsStub())
     _seed_conversation(store)
@@ -306,11 +322,8 @@ async def test_rolling_summary_overflow(store: Store, monkeypatch: pytest.Monkey
     async def fake_summarize(text: str, _instruction: str) -> str:
         return f"摘要[{text[:10]}]"
 
-    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="ok")
-
     monkeypatch.setattr(llm, "summarize", fake_summarize)
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
 
     conv = _seed_conversation(store)
     # 窗口=2：先造 2 条历史（不溢出），完成本轮后共 4 条 → 溢出 2 条最旧
@@ -372,6 +385,8 @@ async def test_stream_chat_injects_current_message_once(
 
     async def fake_chat_turn(_system: str, messages: list[dict], **_k: Any) -> AssistantTurn:
         captured.append(messages)
+        if len(captured) > 1:
+            raise RuntimeError("U30 桩仅允许一次调用（疑似无限循环变异体）")
         return AssistantTurn(content="ok")
 
     monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
@@ -395,11 +410,8 @@ async def test_rolling_summary_empty_result_keeps_state(
     async def fake_summarize(_text: str, _instruction: str) -> str:
         return "   "
 
-    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="ok")
-
     monkeypatch.setattr(llm, "summarize", fake_summarize)
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
 
     conv = store.add_conversation(
         SimpleNamespace(

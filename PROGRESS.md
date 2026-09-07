@@ -43,7 +43,10 @@
 - [x] 逻辑自查修复三处（用户消息先行 commit 兑现失败保留语义 / 本轮输入 exclude 防双份注入 / 滚动摘要空串保护）+ 大写栅栏兼容；补判杀用例 U29–U31、I12、栅栏参数化（T-20260907-01：mutmut 中断变异体残留 llm.py 已还原，架构测试拦截）
 - [x] 文档同步：DECISIONS 登记 5 项新决策、agent/frontend ARCHITECTURE+CONSTRAINTS 落地态、data_struct_define §11.3、DESIGN OQ-2 裁决标注、测试文档用例矩阵校准（U29–U31/I12/描述漂移修正）
 - [x] 验收审查（§10 第 3 轮）12 条发现全处置：P1×5（切会话语义定稿+全局单流输入锁 / 三 action 补 catch 落错误态→**E16 登记** / U17 截断锁全文断言 / U15 非整数 seq / DocPatchCard 虚报更正）+ P2×7（E05 锁值、恒真断言、FU1-6/7、I9 越权边界 DECISIONS、U11/I3 校准、增强用例登记、DESIGN 三注记）；审查记录入测试文档
-- [ ] 提交 agent 终态 → mutmut（kill rate ≥85%，代码定稿提交后运行）→ 测试文档变异小节 → verify F10 → push + F13 登记「下一步」
+- [x] 提交 agent 终态（0c02d08：审查 12 条处置 + 逻辑自查修复 + agent 模块文档落地态，21 文件）
+- [x] 变异运行挂死处置（T-20260907-02 + **E17 登记**）：无限循环变异体（service.py 工具分支 and→or 使 break 不可达）× 判杀桩无界 × Windows 无 SIGALRM，两次独立挂死于 664/1015——判杀桩全改有界（单测 _scripted_llm 耗尽即抛替换 5 处重复型桩 / U16·U30 调用上限守卫 / 集成 ChatCapture 耗尽显式抛错），手工应用该变异体验证 0.81s 快速判杀；testing.md §9 增「判杀桩有界性」Windows 必须守则；残留变异体与 .bak 经 git checkout 还原
+- [x] 前端回归抓出定时炸弹用例（T-20260907-03 + **E18 登记**）：Projects.test FU2 硬编码 updated_at=09-06 喂相对时间断言「今天」，撰写日次日起永久失败——fixture 改 new Date().toISOString() 动态生成；testing.md §10 清单补「相对时间 fixture 动态生成（E18）/ 判杀桩有界（E17）」必查项；AgentHome/AssetLibrary/EntityPicker 硬编码日期登记为待清理雷区
+- [ ] mutmut 全量重跑（kill rate ≥85%）→ 测试文档变异小节 → verify F10 → push + F13 登记「下一步」
 
 ## 已知问题
 - 无
