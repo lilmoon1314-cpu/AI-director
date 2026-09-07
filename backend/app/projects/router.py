@@ -12,6 +12,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent import service as agent_service
 from app.assets import service as assets_service
 from app.core.db import get_session
 from app.entities import service as entities_service
@@ -95,11 +96,12 @@ async def delete_project(
     异常: 404（项目不存在）/ 422（默认项目受保护）由全局异常处理器统一出口；
         主库删除原子提交，资产清扫失败由读取时孤儿清扫兜底。
     依赖: app.projects.service、app.relations.service、app.entities.service、
-        app.assets.service。
+        app.assets.service、app.agent.service（F10：会话与记忆文档清理）。
     """
     await service.assert_deletable(session, project_id)
     await relations_service.delete_by_project(session, project_id)
     entity_ids = await entities_service.delete_by_project(session, project_id)
+    await agent_service.delete_project_data(session, project_id)
     await service.delete(session, project_id)
     if entity_ids:
         await assets_service.sweep_entity_assets(asset_session, entity_ids)

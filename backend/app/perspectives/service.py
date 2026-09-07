@@ -17,7 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import PerspectiveError
 from app.core.observability import checkpoint
 from app.entities import service as entities_service
-from app.perspectives.schemas import GraphData, GraphEdge, GraphNode, Perspective
+from app.perspectives.schemas import (
+    EntityContext,
+    GraphData,
+    GraphEdge,
+    GraphNode,
+    Perspective,
+)
 from app.projects import service as projects_service
 from app.relations import service as relations_service
 
@@ -42,6 +48,9 @@ class _EntityLike(Protocol):
 
     @property
     def aliases(self) -> list[str]: ...
+
+    @property
+    def description(self) -> str: ...
 
     @property
     def audience_known(self) -> bool: ...
@@ -144,6 +153,56 @@ def _is_known_by(entity: _EntityLike, character_id: str) -> bool:
     return isinstance(value, list) and character_id in value
 
 
+def _validate_character(entities: list[_EntityLike], character_id: str | None) -> None:
+    """校验 character 视角的视角角色（存在性与类型）。
+
+    作用: get_graph 与 filter_entities_for_agent 共用的入口校验，错误
+        detail 契约保持一致（reason ∈ missing/not_found/not_character）。
+    参数: entities — 项目全量实体；character_id — 视角角色 id。
+    返回值: 无。异常: PerspectiveError — 缺参 / 角色不存在 / 非 character 类型。
+    依赖: _missing_character_id、_character_not_found、_not_character_type。
+    """
+    if not character_id:
+        raise _missing_character_id()
+    by_id = {e.id: e for e in entities}
+    if character_id not in by_id:
+        raise _character_not_found(character_id)
+    if by_id[character_id].type != "character":
+        raise _not_character_type(character_id, by_id[character_id].type)
+
+
+def _visible_sets(
+    entities: list[_EntityLike],
+    relations: list[_RelationLike],
+    perspective: Perspective,
+    character_id: str | None,
+) -> tuple[set[str], list[_RelationLike]]:
+    """按视角规则计算可见实体 id 集合与可见关系列表（唯一判定逻辑）。
+
+    作用: get_graph 与 filter_entities_for_agent 的共享内核——规则只写在
+        此处（单一事实源），任何新出口必须经本函数判定。
+    参数: entities — 项目全量实体；relations — 项目全量关系；
+        perspective — 视角枚举；character_id — character 视角角色 id。
+    返回值: (可见实体 id 集合, 可见关系列表)。异常: 无（character 校验由
+        _validate_character 先行）。
+    依赖: _is_known_by。
+    """
+    if perspective == "character":
+        assert character_id is not None  # _validate_character 已保证
+        edges = [r for r in relations if character_id in r.known_by]
+        visible = {character_id}
+        visible.update(e.id for e in entities if _is_known_by(e, character_id))
+        visible.update(node_id for r in edges for node_id in (r.source, r.target))
+        return visible, edges
+    if perspective == "audience":
+        visible = {e.id for e in entities if e.audience_known}
+        edges = [
+            r for r in relations if r.audience_known and r.source in visible and r.target in visible
+        ]
+        return visible, edges
+    return {e.id for e in entities}, list(relations)
+
+
 @checkpoint
 async def get_graph(
     session: AsyncSession,
@@ -156,7 +215,7 @@ async def get_graph(
 
     作用:
         聚合指定项目的 entities/relations 后按视角规则过滤，输出轻量节点/边
-        投影；视角可见性判定只发生在本函数（单一事实源的唯一执行点）；
+        投影；视角可见性判定只发生在本模块（单一事实源的唯一执行点）；
         project_id 过滤与视角过滤正交叠加（F11 多项目，缺省=默认项目）。
     参数:
         session — 数据库会话（只读使用）；perspective — 视角枚举；
@@ -180,26 +239,9 @@ async def get_graph(
     )
 
     if perspective == "character":
-        if not character_id:
-            raise _missing_character_id()
-        by_id = {e.id: e for e in entities}
-        if character_id not in by_id:
-            raise _character_not_found(character_id)
-        if by_id[character_id].type != "character":
-            raise _not_character_type(character_id, by_id[character_id].type)
-        edges = [r for r in relations if character_id in r.known_by]
-        visible = {character_id}
-        visible.update(e.id for e in entities if _is_known_by(e, character_id))
-        visible.update(node_id for r in edges for node_id in (r.source, r.target))
-        nodes = [e for e in entities if e.id in visible]
-    elif perspective == "audience":
-        nodes = [e for e in entities if e.audience_known]
-        visible = {e.id for e in nodes}
-        edges = [
-            r for r in relations if r.audience_known and r.source in visible and r.target in visible
-        ]
-    else:  # author
-        nodes, edges = entities, relations
+        _validate_character(entities, character_id)
+    visible, edges = _visible_sets(entities, relations, perspective, character_id)
+    nodes = [e for e in entities if e.id in visible]
 
     return GraphData(
         nodes=[
@@ -207,3 +249,62 @@ async def get_graph(
         ],
         edges=[GraphEdge(id=r.id, source=r.source, target=r.target, type=r.type) for r in edges],
     )
+
+
+@checkpoint
+async def filter_entities_for_agent(
+    session: AsyncSession,
+    *,
+    perspective: Perspective,
+    character_id: str | None = None,
+    project_id: str | None = None,
+    entity_ids: list[str] | None = None,
+) -> list[EntityContext]:
+    """按视角过滤实体并输出完整上下文投影（agent 上下文组装唯一入口，F10）。
+
+    作用:
+        对指定项目执行与 get_graph 同源的可见性判定（_visible_sets 单一
+        规则），返回可见实体的全量字段（含 description/properties——LLM
+        上下文需要语义细节）；entity_ids 非空时仅返回其中的可见子集
+        （请求了不可见/不存在 id 时不报错、静默剔除——由调用方决定语义）。
+    参数:
+        session — 数据库会话（只读使用）；perspective — 视角枚举；
+        character_id — character 视角的视角角色 id；project_id — 项目 id
+        （缺省=默认项目）；entity_ids — 限定判定的实体 id（None=全量可见实体）。
+    返回值: list[EntityContext]（可见实体的完整上下文投影）。
+    异常:
+        PerspectiveError — character 视角缺 character_id / 角色不存在 / 非 character 类型。
+        NotFoundError — project_id 不存在。
+    依赖: app.entities.service、app.relations.service、app.projects.service、_visible_sets。
+    """
+    resolved_project = project_id or projects_service.DEFAULT_PROJECT_ID
+    await projects_service.ensure_exists(session, resolved_project)
+
+    briefs = await entities_service.search(session, project_id=resolved_project)
+    entities: list[_EntityLike] = list(
+        await entities_service.get_many(session, [b.id for b in briefs])
+    )
+    relations: list[_RelationLike] = list(
+        await relations_service.get_all(session, project_id=resolved_project)
+    )
+
+    if perspective == "character":
+        _validate_character(entities, character_id)
+    visible, _edges = _visible_sets(entities, relations, perspective, character_id)
+    if entity_ids is not None:
+        wanted = set(entity_ids)
+        visible &= wanted
+    by_id = {e.id: e for e in entities}
+    return [
+        EntityContext(
+            id=e.id,
+            type=e.type,
+            name=e.name,
+            aliases=list(e.aliases),
+            description=e.description,
+            audience_known=e.audience_known,
+            properties=dict(e.properties),
+        )
+        for e_id in sorted(visible)
+        if (e := by_id.get(e_id)) is not None
+    ]

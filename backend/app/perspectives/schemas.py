@@ -7,7 +7,7 @@
 字段蓝图: docs/data_struct_define.md §1/§2（实体摘要与关系四元组）。
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -51,3 +51,21 @@ class GraphData(BaseModel):
 
     nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[GraphEdge] = Field(default_factory=list)
+
+
+class EntityContext(BaseModel):
+    """视角可见实体的完整上下文投影（agent 上下文组装专用，F10）。
+
+    作用: 与 GraphNode 的轻量投影不同——经可见性判定后的实体允许携带
+        description/properties 全量字段（LLM 上下文需要语义细节）；可见性
+        判定仍只发生在 service 层单一规则（含此投影的出口）。
+    参数: 无（字段定义见下）。返回值: 无（模型类）。异常: 无。依赖: pydantic。
+    """
+
+    id: str
+    type: str = Field(description="实体类型（character/faction/location/item/skill/event/concept）")
+    name: str
+    aliases: list[str]
+    description: str
+    audience_known: bool
+    properties: dict[str, Any] = Field(default_factory=dict)

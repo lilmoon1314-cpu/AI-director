@@ -262,6 +262,63 @@ def test_projects_schema_declared() -> None:
     )
 
 
+def test_agent_schema_declared() -> None:
+    """agent 四表（conversations/messages/memory_docs/memory_doc_sections）的 ORM DDL 契约（F10）。
+
+    失败含义:
+        【问题】agent 表的归属外键 / 级联删除 / CAS 版本列 / 索引声明不符
+        【原因】级联缺失会留下孤儿消息/段（项目删除后泄漏）；版本列缺失使
+            段级 patch 的 CAS 冲突消解失去数据库层载体；缺索引拖慢项目过滤
+        【修复】对照 app/agent/models.py 与 F10 迁移修正列声明并同步迁移
+    """
+    from app.agent.models import Conversation, MemoryDoc, MemoryDocSection, Message
+    from app.projects.models import Project
+
+    projects_table = Project.__table__
+
+    # 归属外键：conversations / memory_docs.project_id → projects.id，非空 + 索引
+    for model, label in ((Conversation, "conversations"), (MemoryDoc, "memory_docs")):
+        col = model.__table__.c["project_id"]
+        assert col.nullable is False, f"{label}.project_id 必须非空"
+        assert any(
+            fk.parent is col and fk.column.table is projects_table for fk in col.foreign_keys
+        ), f"{label}.project_id 必须声明指向 projects.id 的外键"
+        assert any(
+            "project_id" in {c.name for c in idx.columns} for idx in model.__table__.indexes
+        ), f"{label}.project_id 必须建索引（项目隔离过滤高频路径）"
+
+    # 级联删除：messages.conversation_id / memory_doc_sections.doc_id → ON DELETE CASCADE
+    for model, parent, label in (
+        (Message, Conversation, "messages.conversation_id"),
+        (MemoryDocSection, MemoryDoc, "memory_doc_sections.doc_id"),
+    ):
+        col_name = "conversation_id" if model is Message else "doc_id"
+        col = model.__table__.c[col_name]
+        fk = next(fk for fk in col.foreign_keys if fk.column.table is parent.__table__)
+        assert fk.ondelete == "CASCADE", f"{label} 必须声明 ON DELETE CASCADE（父行删除随之清理）"
+        assert any(col_name in {c.name for c in idx.columns} for idx in model.__table__.indexes), (
+            f"{label} 必须建索引（会话/文档内消息与段的高频读取路径）"
+        )
+
+    # CAS 版本令牌：memory_docs.version（文档级 ETag）与 memory_doc_sections.version（段级）默认 1
+    assert MemoryDoc.__table__.c["version"].default.arg == 1, "memory_docs.version 默认必须为 1"
+    assert MemoryDocSection.__table__.c["version"].default.arg == 1, (
+        "memory_doc_sections.version 默认必须为 1"
+    )
+    assert MemoryDocSection.__table__.c["updated_by"].default.arg == "user", (
+        "memory_doc_sections.updated_by 默认必须是 user（作者手写优先语义）"
+    )
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert migration_sql.count("ondelete='CASCADE'") >= 2, (
+        "【问题】F10 迁移未包含级联删除声明\n"
+        "【原因】ORM 声明与迁移 DDL 漂移，数据库层级联不生效\n"
+        "【修复】messages 与 memory_doc_sections 的 ForeignKeyConstraint 补 ondelete='CASCADE'"
+    )
+
+
 def test_no_bak_residue_in_app() -> None:
     """app/ 下禁止 .bak 残留文件（error.jsonl T-20260905-02：mutmut 中断残留变异体被误提交）。
 

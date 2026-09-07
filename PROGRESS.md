@@ -25,7 +25,23 @@
 - 2026-09-06（续四）: **F12 工作台导航与资产页重构（passing）**——资产页分区升级入 URL（react-router 子路由：`assets/general` 默认落点 OQ-6｜`assets/project` 类型库墙｜`assets/project/:entityType` 类型库详情，无效类型重定向回墙）；项目资产两级钻取（ProjectTypeWall 7 类型库卡聚合「N 实体·M 张图」/EntityTypeAssets 面包屑+asset-type-back+asset-search；空类型虚线卡与详情引导「去图谱页创建」经 `?create=entity&type=` 查询参数联动、GraphView 消费即清理）；通用参考库重命名与「跨项目共享」徽标 + 独立搜索（lib/assetFilters 纯函数：标题/描述/分类与 chips AND）+ 空库引导卡/搜索无命中独立提示 + 表单 modal 化（OQ-3，ui/Modal，卡片墙不再被整区替换）；AssetCardTile 按 DESIGN §9 统一（16:10 封面 scale-105/-translate-y-1/text-sm 概要/编辑按钮 hover+focus 可见）；三要素错误态落地（assetStore generalError/entityError + ui/ErrorStrip 错误条+重试，不再吞错成空态）。**验收审查（§10 协议第 2 轮）12 条发现（P0×0/P1×3/P2×9）全处置**：P1 抓出 DESIGN 虚登 verify 状态（E01 同型，改指 features.md 唯一事实源）、FI11 参数清理零断言（补 LocationProbe）、error 态偏离基线（按基线实现而非登记偏离）；集成测试抓出真缺陷 **E15**（react-router 嵌套 Outlet 不自动继承 context，深链冷启动拼 /projects/undefined——已入 CONSTRAINTS 硬约束 + FI4 判杀）与 assetStore 跨用例缓存泄漏（T-20260906-05）。测试：L1 assetFilters 10 参数化实例、L2 集成 51（FI1–FI13+保留回归）、L3 e2e 13/13、后端资产回归 16；ProjectAssetSection 退役。详见 docs/tests/F12_workbench_navigation_assets.md（含 testid 迁移契约与验收审查记录）、DECISIONS.md 与 git log
 
 ## 进行中
-- 无
+
+**F10（Agent 对话与确认写入）**——底座范围（创作工作流拆 F13，2026-09-06 用户决策：轻量 ReAct 内环 / 记忆文档 HTML 分段两段式 / 内置三防线+合规 hook / ToT 以多方案征求替代）：
+
+- [x] 激活 F10 + 撰写测试文档 docs/tests/F10_agent_chat.md（先行，pending 态）
+- [ ] config 新增 AGENT_*（预算/窗口/工具配额/合规开关）与 LLM_MODEL_LIGHT + .env.example 同步
+- [ ] Alembic 迁移：conversations / messages / memory_docs / memory_doc_sections 四表 + DDL 架构断言扩展
+- [ ] llm.py 封装（懒加载单例/超时/usage 记录/JSON 修复重试 1 次/轻量模型路由）+ 单测
+- [ ] perspectives.filter_entities_for_agent（可见实体完整属性，规则不出模块）+ 架构断言
+- [ ] prompts.py 上下文组装（分层顺序/图谱目录/文档目录 hash/预算裁剪/注入分隔符）+ 单测
+- [ ] tools.py 四检索工具（entity_detail/neighborhood/search/doc_section）+ 每轮配额 + 单测
+- [ ] memory_docs 段级 service + rendering.py 自包含 HTML（全转义）+ 段级 patch CAS + 单测
+- [ ] agent service：stream_chat（SSE 事件协议）/propose/confirm_write/会话 CRUD + 单测
+- [ ] router（/api/agent/*，project_id 查询参数渐进迁移约定）+ main 挂载 + openapi.json + import-linter agent 契约 + L2 集成测试
+- [ ] 前端：gen:api-types → agentStore（SSE 会话级生命周期）→ AgentHome/AgentDock/消息流/草案确认卡/DocPatchCard/DocEditor → 路由 + vitest
+- [ ] L3 e2e（后端流 + 前端 Playwright）+ make check + mutmut（kill rate ≥85%）+ 测试文档状态更新
+- [ ] 文档同步：DECISIONS 登记 5 项新决策（HTML 分段记忆文档取代 OQ-2/思考模式/检索模式/安全三防线/F10-F13 切分）、agent 与 frontend ARCHITECTURE/CONSTRAINTS 修订、data_struct_define §11 落地态、DESIGN OQ-2 裁决标注、F13 登记「下一步」
+- [ ] 验收审查子代理（§10）→ triage → verify F10 → 提交推送
 
 ## 已知问题
 - 无

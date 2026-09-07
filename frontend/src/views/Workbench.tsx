@@ -1,16 +1,18 @@
 /**
- * 工作台壳层（F11 路由化，DESIGN.md §4.3）：
- * - 顶栏 = logo（返回项目首屏）+ 项目切换器 + 主导航「图谱 | 资产管理」（NavLink，
- *   testid 沿用 tab-graph/tab-assets，e2e 锚点不变；Agent 页签随 F10 落地）；
+ * 工作台壳层（F11 路由化，DESIGN.md §4.3；F10 Agent 页签 + AgentDock 挂载）：
+ * - 顶栏 = logo（返回项目首屏）+ 项目切换器 + 主导航「图谱 | 资产管理 | Agent」（NavLink，
+ *   testid tab-graph/tab-assets/tab-agent，e2e 锚点契约）；
  * - 路由参数 :projectId 为项目上下文事实源：挂载/变化即同步 projectStore（校验存在性），
- *   叶子视图（GraphView/AssetLibrary）从 store 读当前项目并按变化重置换机；
+ *   叶子视图（GraphView/AssetLibrary/AgentHome）从 store 读当前项目并按变化重置换机；
  * - 无效项目 id → 三要素错误页 +「返回项目首屏」；
- * - AssetHtmlViewer 挂载于壳层——任一页签打开资产页均以全屏查看层呈现。
+ * - AssetHtmlViewer 挂载于壳层——任一页签打开资产页均以全屏查看层呈现；
+ * - AgentDock 挂载于壳层——图谱/资产/Agent 任一页签均可唤起侧边栏（同一会话池）。
  */
 
 import { useEffect } from "react";
 import { Link, NavLink, Outlet, useParams } from "react-router-dom";
 
+import { AgentDock } from "../components/agent-panel/AgentDock";
 import { AssetHtmlViewer } from "../components/assets/AssetHtmlViewer";
 import { ProjectSwitcher } from "../components/projects/ProjectSwitcher";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -20,6 +22,7 @@ import { useProjectStore } from "../stores/projectStore";
 const TABS = [
   { key: "graph", label: "图谱", to: "graph" },
   { key: "assets", label: "资产管理", to: "assets" },
+  { key: "agent", label: "Agent", to: "agent" },
 ] as const;
 
 export function Workbench() {
@@ -96,6 +99,7 @@ export function Workbench() {
       </div>
 
       <AssetHtmlViewer />
+      <AgentDock projectId={projectId ?? ""} />
     </div>
   );
 }

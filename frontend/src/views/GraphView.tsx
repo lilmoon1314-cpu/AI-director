@@ -20,6 +20,7 @@ import { GlassPanel } from "../components/ui/GlassPanel";
 import { ENTITY_TYPES } from "../lib/entityForm";
 import { TYPE_COLORS, TYPE_LABELS } from "../lib/palette";
 import { useAssetStore } from "../stores/assetStore";
+import { useAgentStore } from "../stores/agentStore";
 import { useEntityIndexStore } from "../stores/entityIndexStore";
 import { useGraphStore } from "../stores/graphStore";
 import { PERSPECTIVE_LABELS, usePerspectiveStore } from "../stores/perspectiveStore";
@@ -79,6 +80,7 @@ export function GraphView() {
       useSelectionStore.getState().clear();
       useEntityIndexStore.getState().reset();
       useAssetStore.getState().resetProjectScoped();
+      useAgentStore.getState().resetProjectScoped();
     }
     void loadGraph(projectId);
   }, [projectId, loadGraph]);

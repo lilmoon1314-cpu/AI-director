@@ -31,6 +31,7 @@ async def _run_on_metadata(operation: str) -> None:
         同时处理主库（Base）与资产库（AssetsBase，F08 起双库）。
     参数: operation — "create" 或 "drop"。返回值: 无。异常: 无。依赖: SQLAlchemy。
     """
+    import app.agent.models  # noqa: F401 — 注册表元数据（F10）
     import app.assets.models  # noqa: F401 — 注册资产库元数据
     import app.entities.models  # noqa: F401 — 注册表元数据
     import app.projects.models  # noqa: F401 — 注册表元数据（F11）

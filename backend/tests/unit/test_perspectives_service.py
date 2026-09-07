@@ -30,6 +30,7 @@ def _entity(
     *,
     audience: bool = False,
     props: dict[str, Any] | None = None,
+    description: str = "",
 ) -> SimpleNamespace:
     """构造协议结构一致的实体桩（字段契约见 service._EntityLike）。"""
     return SimpleNamespace(
@@ -37,6 +38,7 @@ def _entity(
         type=etype,
         name=name,
         aliases=[],
+        description=description,
         audience_known=audience,
         properties=props or {},
     )
@@ -402,13 +404,16 @@ def test_graph_node_type_is_required() -> None:
     ("owner", "member"),
     [
         (service._EntityLike, n)
-        for n in ("id", "type", "name", "aliases", "audience_known", "properties")
+        for n in ("id", "type", "name", "aliases", "description", "audience_known", "properties")
     ]
     + [
         (service._RelationLike, n)
         for n in ("id", "source", "target", "type", "known_by", "audience_known")
     ],
-    ids=["entity-" + n for n in ("id", "type", "name", "aliases", "audience_known", "properties")]
+    ids=[
+        "entity-" + n
+        for n in ("id", "type", "name", "aliases", "description", "audience_known", "properties")
+    ]
     + ["relation-" + n for n in ("id", "source", "target", "type", "known_by", "audience_known")],
 )
 def test_protocol_members_are_readonly_properties(owner: type, member: str) -> None:
@@ -436,4 +441,79 @@ def test_get_graph_is_checkpoint_decorated() -> None:
         "【问题】get_graph 丢失 __wrapped__\n"
         "【原因】@checkpoint 装饰器被移除（信号 2/3 采集断链）\n"
         "【修复】检查 get_graph 保持 @checkpoint 装饰"
+    )
+
+
+# ---- F10 补充: filter_entities_for_agent（agent 上下文组装唯一入口）----
+
+
+async def test_agent_context_returns_full_fields_for_visible(world: None) -> None:
+    """F10-A1 author 视角全量可见 → EntityContext 携带 description/properties 全量字段。
+
+    前置: 标准种子；动作: filter_entities_for_agent(author)；
+    预期: 全部实体返回且字段完整（与 GraphNode 轻量投影的差异点）。
+    设计依据: 等价类—有效-全量可见（agent 上下文需要语义细节）。
+    """
+    result = await service.filter_entities_for_agent(_SESSION, perspective="author")
+
+    assert {e.id for e in result} == {
+        "char-a",
+        "char-b",
+        "char-c",
+        "item-x",
+        "event-e",
+        "loc-l",
+    }, f"author 视角必须返回全量可见实体: {sorted(e.id for e in result)}"
+    item = next(e for e in result if e.id == "item-x")
+    assert item.properties == {"seen_by": ["char-a"]}, (
+        f"可见实体的 properties 必须完整保留: {item.properties}"
+    )
+    assert item.description == "", "description 字段必须在投影中（可为空串）"
+
+
+async def test_agent_context_drops_invisible_requested_ids(world: None) -> None:
+    """F10-A2 character 视角请求含不可见 id → 只返回可见子集（静默剔除）。
+
+    前置: 标准种子；动作: filter_entities_for_agent(character, char-b,
+        entity_ids=[char-b, event-e, char-c])；预期: 返回 char-b（自身恒可见）
+        与 event-e（known_by 命中），char-c（不可见）被剔除且不报错。
+    设计依据: 等价类—无效-视角不可见（剔除语义由调用方决定报错或忽略）。
+    """
+    result = await service.filter_entities_for_agent(
+        _SESSION,
+        perspective="character",
+        character_id="char-b",
+        entity_ids=["char-b", "event-e", "char-c"],
+    )
+
+    assert {e.id for e in result} == {"char-b", "event-e"}, (
+        f"character 视角必须只返回可见子集（char-c 不可见应剔除）: {sorted(e.id for e in result)}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("character_id", "reason"),
+    [("", "missing_character_id"), ("ghost", "character_not_found")],
+)
+async def test_agent_context_character_validations(
+    world: None, character_id: str, reason: str
+) -> None:
+    """F10-A3 参数化: character 视角校验与 get_graph 同契约（等价类-无效-角色缺失/不存在）。"""
+    with pytest.raises(PerspectiveError) as excinfo:
+        await service.filter_entities_for_agent(
+            _SESSION, perspective="character", character_id=character_id or None
+        )
+    assert excinfo.value.detail["reason"] == reason, (
+        f"错误 detail.reason 契约必须与 get_graph 一致: {excinfo.value.detail}"
+    )
+
+
+async def test_agent_context_ignores_unknown_ids(world: None) -> None:
+    """F10-A4 请求含不存在 id → 静默剔除不报错（等价类-无效-资源不存在的宽容边界）。"""
+    result = await service.filter_entities_for_agent(
+        _SESSION, perspective="author", entity_ids=["char-a", "no-such-id"]
+    )
+
+    assert [e.id for e in result] == ["char-a"], (
+        f"不存在的 id 必须被剔除且不抛错: {[e.id for e in result]}"
     )

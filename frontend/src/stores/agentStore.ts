@@ -1,0 +1,407 @@
+/**
+ * agentStore：Agent 对话与记忆文档全局状态（F10，DESIGN.md §5.4/§5.5/§7）。
+ * - 按项目的会话池（sessions + messagesBySession）；草案两段式（draftsBySession）；
+ * - **SSE 生命周期挂会话级**：AbortController 由 store 持有——AgentDock 收起、
+ *   组件卸载不断流，仅随会话切换/项目切换中断（frontend/CONSTRAINTS.md 生命周期条）；
+ * - confirm 成功后广播图谱失效（graphStore.loadGraph 重载）。
+ * 事件协议（agent/ARCHITECTURE.md）：message_start/token/tool/done/error；
+ * draft/doc_patch/ask_user 为 F13 预留类型——本 store 忽略不渲染（前向兼容）。
+ */
+
+import { create } from "zustand";
+
+import {
+  api,
+  agentChatPath,
+  ApiError,
+  type DraftItem,
+  type MemoryDocBrief,
+  type SessionRead,
+} from "../api/client";
+import { useGraphStore } from "./graphStore";
+import { useProjectStore } from "./projectStore";
+
+/** 三要素错误态（problem+fix 呈现；cause 由后端承载）。 */
+export interface AgentErrorState {
+  problem: string;
+  fix: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  role: "user" | "assistant" | "summary" | "tool";
+  content: string;
+  /** SSE 流式进行中的消息（光标动画渲染依据）。 */
+  streaming?: boolean;
+}
+
+export type PerspectiveValue = "author" | "character" | "audience";
+
+function toErrorState(cause: unknown, fallbackProblem: string): AgentErrorState {
+  const err = cause instanceof ApiError ? cause : null;
+  return {
+    problem: err?.problem ?? fallbackProblem,
+    fix: err?.fix ?? "确认后端服务已启动后重试",
+  };
+}
+
+/** SSE 会话级中断控制器（模块私有，不进可序列化状态）。 */
+const abortControllers = new Map<string, AbortController>();
+
+/** 解析 fetch 流为 SSE 事件（帧以空行分隔；事件名 + JSON data）。 */
+async function* parseSse(response: Response): AsyncGenerator<{ event: string; data: Record<string, unknown> }> {
+  const reader = response.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const frame = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      let event = "message";
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event: ")) event = line.slice(7);
+        else if (line.startsWith("data: ")) data = line.slice(6);
+      }
+      try {
+        yield { event, data: JSON.parse(data) as Record<string, unknown> };
+      } catch {
+        // 心跳/畸形帧忽略（后端不发送，防御代理层噪声）
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+}
+
+interface AgentState {
+  sessions: SessionRead[];
+  sessionsProjectId: string | null;
+  sessionsLoading: boolean;
+  sessionsError: AgentErrorState | null;
+  messagesBySession: Record<string, AgentMessage[]>;
+  messagesLoading: boolean;
+  /** 正在流式输出的会话（全局唯一：同一时刻至多一轮对话）。 */
+  streamingSessionId: string | null;
+  /** 检索行为指示（tool 事件驱动：「正在检索图谱…」）。 */
+  toolActivity: { name: string; phase: "start" | "done" } | null;
+  /** SSE error 事件 / 请求失败的三要素错误（按会话隔离）。 */
+  sessionErrors: Record<string, AgentErrorState | null>;
+  draftsBySession: Record<string, DraftItem[]>;
+  confirming: boolean;
+  docs: MemoryDocBrief[];
+  docsLoading: boolean;
+  docsError: AgentErrorState | null;
+  /** AgentDock 侧边栏开合（全局：页签间保持状态）。 */
+  dockOpen: boolean;
+  openDock: () => void;
+  closeDock: () => void;
+  loadSessions: (projectId: string, force?: boolean) => Promise<void>;
+  createSession: (projectId: string) => Promise<SessionRead>;
+  loadMessages: (conversationId: string, force?: boolean) => Promise<void>;
+  /** 发送一条消息并消费 SSE 事件流（会话级生命周期，可 stopStreaming 中断）。 */
+  sendMessage: (
+    conversationId: string,
+    message: string,
+    perspective: PerspectiveValue,
+    characterId?: string,
+  ) => Promise<void>;
+  stopStreaming: (conversationId: string) => void;
+  /** 生成写入草案（propose；草案卡内联渲染，确认走 confirmDrafts）。 */
+  proposeDrafts: (
+    conversationId: string,
+    message: string,
+    perspective: PerspectiveValue,
+    characterId?: string,
+  ) => Promise<void>;
+  confirmDrafts: (conversationId: string) => Promise<void>;
+  discardDrafts: (conversationId: string) => void;
+  loadDocs: (projectId: string, force?: boolean) => Promise<void>;
+  createDoc: (kind: string, projectId: string) => Promise<void>;
+  updateDocSection: (
+    docId: string,
+    sectionId: string,
+    content: string,
+    expectedVersion: number,
+  ) => Promise<void>;
+  resetProjectScoped: () => void;
+}
+
+let localIdCounter = 0;
+function localId(prefix: string): string {
+  localIdCounter += 1;
+  return `${prefix}-local-${localIdCounter}`;
+}
+
+export const useAgentStore = create<AgentState>((set, get) => ({
+  sessions: [],
+  sessionsProjectId: null,
+  sessionsLoading: false,
+  sessionsError: null,
+  messagesBySession: {},
+  messagesLoading: false,
+  streamingSessionId: null,
+  toolActivity: null,
+  sessionErrors: {},
+  draftsBySession: {},
+  confirming: false,
+  docs: [],
+  docsLoading: false,
+  docsError: null,
+  dockOpen: false,
+  openDock: () => set({ dockOpen: true }),
+  closeDock: () => set({ dockOpen: false }),
+
+  loadSessions: async (projectId, force = false) => {
+    if (!force && get().sessions.length > 0 && get().sessionsProjectId === projectId) return;
+    set({ sessionsLoading: true, sessionsError: null });
+    try {
+      const sessions = await api.listSessions(projectId);
+      set({ sessions, sessionsProjectId: projectId });
+    } catch (cause) {
+      set({ sessionsError: toErrorState(cause, "会话列表加载失败") });
+    } finally {
+      set({ sessionsLoading: false });
+    }
+  },
+
+  createSession: async (projectId) => {
+    const session = await api.createSession(projectId);
+    set({ sessions: [session, ...get().sessions] });
+    return session;
+  },
+
+  loadMessages: async (conversationId, force = false) => {
+    if (!force && (get().messagesBySession[conversationId]?.length ?? 0) > 0) return;
+    // 流式进行中禁止回读覆盖（挂载效应与乐观更新的竞态会把缓冲冲掉）——
+    // done 事件后的 force 回读是唯一权威写入方
+    if (!force && get().streamingSessionId === conversationId) return;
+    set({ messagesLoading: true });
+    try {
+      const rows = await api.listMessages(conversationId);
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [conversationId]: rows.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+        },
+      });
+    } finally {
+      set({ messagesLoading: false });
+    }
+  },
+
+  sendMessage: async (conversationId, message, perspective, characterId) => {
+    if (get().streamingSessionId) return; // 同一时刻仅一轮流式
+    const controller = new AbortController();
+    abortControllers.set(conversationId, controller);
+    const assistantLocalId = localId("msg");
+    set({
+      streamingSessionId: conversationId,
+      toolActivity: null,
+      sessionErrors: { ...get().sessionErrors, [conversationId]: null },
+      messagesBySession: {
+        ...get().messagesBySession,
+        [conversationId]: [
+          ...(get().messagesBySession[conversationId] ?? []),
+          { id: localId("msg"), role: "user", content: message },
+          { id: assistantLocalId, role: "assistant", content: "", streaming: true },
+        ],
+      },
+    });
+
+    const patchAssistant = (content: string) => {
+      const list = get().messagesBySession[conversationId] ?? [];
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [conversationId]: list.map((m) => (m.id === assistantLocalId ? { ...m, content } : m)),
+        },
+      });
+    };
+
+    let streamed = "";
+    try {
+      const resp = await fetch(agentChatPath(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message,
+          perspective,
+          character_id: characterId ?? "",
+        }),
+        signal: controller.signal,
+      });
+      if (!resp.ok || !resp.body) {
+        let body: Record<string, unknown> = {};
+        try {
+          body = (await resp.json()) as Record<string, unknown>;
+        } catch {
+          // 非 JSON 错误体（代理层）→ 占位三要素
+        }
+        throw new ApiError(resp.status, body);
+      }
+      for await (const { event, data } of parseSse(resp)) {
+        if (event === "token") {
+          streamed += String(data.text ?? "");
+          patchAssistant(streamed);
+        } else if (event === "tool") {
+          set({ toolActivity: { name: String(data.name ?? ""), phase: "start" } });
+        } else if (event === "error") {
+          set({
+            sessionErrors: {
+              ...get().sessionErrors,
+              [conversationId]: {
+                problem: String(data.problem ?? "对话处理失败"),
+                fix: String(data.fix ?? "重试；持续失败请检查服务端日志"),
+              },
+            },
+          });
+        } else if (event === "done") {
+          // 以服务端落库结果为准回读（标题/消息 id 对齐）
+          await get().loadMessages(conversationId, true);
+        }
+        // draft / doc_patch / ask_user：F13 预留事件——忽略（前向兼容）
+      }
+    } catch (cause) {
+      if (!(cause instanceof DOMException && cause.name === "AbortError")) {
+        set({
+          sessionErrors: {
+            ...get().sessionErrors,
+            [conversationId]: toErrorState(cause, "对话请求失败"),
+          },
+        });
+      }
+    } finally {
+      // 收尾：结束流式态；未回读成功（中断/错误）时保留本地缓冲但去掉 streaming 标记
+      abortControllers.delete(conversationId);
+      const list = get().messagesBySession[conversationId] ?? [];
+      set({
+        streamingSessionId: null,
+        toolActivity: null,
+        messagesBySession: {
+          ...get().messagesBySession,
+          [conversationId]: list.map((m) =>
+            m.id === assistantLocalId && m.content === "" ? { ...m, content: "（未产生回复）", streaming: false } : { ...m, streaming: false },
+          ),
+        },
+      });
+    }
+  },
+
+  stopStreaming: (conversationId) => {
+    abortControllers.get(conversationId)?.abort();
+  },
+
+  proposeDrafts: async (conversationId, message, perspective, characterId) => {
+    const response = await api.propose({
+      session_id: conversationId,
+      message,
+      perspective,
+      character_id: characterId ?? "",
+    });
+    set({
+      draftsBySession: { ...get().draftsBySession, [conversationId]: response.drafts ?? [] },
+      messagesBySession: {
+        ...get().messagesBySession,
+        [conversationId]: [
+          ...(get().messagesBySession[conversationId] ?? []),
+          { id: localId("msg"), role: "user", content: message },
+        ],
+      },
+    });
+  },
+
+  confirmDrafts: async (conversationId) => {
+    const drafts = get().draftsBySession[conversationId] ?? [];
+    if (drafts.length === 0) return;
+    set({ confirming: true });
+    try {
+      const result = await api.confirmDrafts({
+        session_id: conversationId,
+        items: drafts.map((d) => ({
+          draft_id: d.draft_id,
+          kind: d.kind as "entity" | "relation",
+          payload: d.payload as Record<string, unknown>,
+          confirmed: true,
+        })),
+      });
+      const ok = result.created?.length ?? 0;
+      const failedItems = result.failed ?? [];
+      const bad = failedItems.length;
+      const summary =
+        bad === 0
+          ? `✓ 已写入 ${ok} 项草案。`
+          : `✓ 写入 ${ok} 项，失败 ${bad} 项：${failedItems.map((f) => f.reason).join("；")}`;
+      set({
+        messagesBySession: {
+          ...get().messagesBySession,
+          [conversationId]: [
+            ...(get().messagesBySession[conversationId] ?? []),
+            { id: localId("msg"), role: "assistant", content: summary },
+          ],
+        },
+        draftsBySession: { ...get().draftsBySession, [conversationId]: [] },
+      });
+      // 广播图谱失效：确认写入改变图谱数据（DESIGN.md §5.4 确认后失效链路）
+      const projectId = useProjectStore.getState().currentProjectId;
+      if (projectId) void useGraphStore.getState().loadGraph(projectId);
+    } finally {
+      set({ confirming: false });
+    }
+  },
+
+  discardDrafts: (conversationId) => {
+    set({ draftsBySession: { ...get().draftsBySession, [conversationId]: [] } });
+  },
+
+  loadDocs: async (projectId, force = false) => {
+    if (!force && get().docs.length > 0 && get().sessionsProjectId === projectId) return;
+    set({ docsLoading: true, docsError: null });
+    try {
+      const docs = await api.listMemoryDocs(projectId);
+      set({ docs });
+    } catch (cause) {
+      set({ docsError: toErrorState(cause, "记忆文档加载失败") });
+    } finally {
+      set({ docsLoading: false });
+    }
+  },
+
+  createDoc: async (kind, projectId) => {
+    await api.createMemoryDoc(kind, projectId);
+    await get().loadDocs(projectId, true);
+  },
+
+  updateDocSection: async (docId, sectionId, content, expectedVersion) => {
+    await api.updateMemoryDocSection(docId, sectionId, { content, expected_version: expectedVersion });
+    await get().loadDocs(useProjectStore.getState().currentProjectId ?? "", true);
+  },
+
+  resetProjectScoped: () => {
+    // 项目切换即中断进行中的 SSE（DESIGN.md §7 重置矩阵：agentStore SSE abort 项）
+    const active = get().streamingSessionId;
+    if (active) abortControllers.get(active)?.abort();
+    set({
+      sessions: [],
+      sessionsProjectId: null,
+      sessionsLoading: false,
+      sessionsError: null,
+      messagesBySession: {},
+      messagesLoading: false,
+      streamingSessionId: null,
+      toolActivity: null,
+      sessionErrors: {},
+      draftsBySession: {},
+      confirming: false,
+      docs: [],
+      docsLoading: false,
+      docsError: null,
+      dockOpen: false,
+    });
+  },
+}));

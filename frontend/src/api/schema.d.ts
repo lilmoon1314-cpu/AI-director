@@ -540,7 +540,7 @@ export interface paths {
          *     异常: 404（项目不存在）/ 422（默认项目受保护）由全局异常处理器统一出口；
          *         主库删除原子提交，资产清扫失败由读取时孤儿清扫兜底。
          *     依赖: app.projects.service、app.relations.service、app.entities.service、
-         *         app.assets.service。
+         *         app.assets.service、app.agent.service（F10：会话与记忆文档清理）。
          */
         delete: operations["delete_project_api_projects__project_id__delete"];
         options?: never;
@@ -555,6 +555,198 @@ export interface paths {
          *     依赖: app.projects.service。
          */
         patch: operations["update_project_api_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/api/agent/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description 列出项目会话（最近活跃在前；缺省归属默认项目）。
+         */
+        get: operations["list_sessions_api_agent_sessions_get"];
+        put?: never;
+        /**
+         * Create Session
+         * @description 创建会话（201；项目维度归属校验经 projects.service）。
+         */
+        post: operations["create_session_api_agent_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/sessions/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Session Messages
+         * @description 读取会话全部消息（时间正序；会话不存在 404）。
+         */
+        get: operations["list_session_messages_api_agent_sessions__conversation_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description SSE 流式对话（事件协议见 agent/ARCHITECTURE.md；会话不存在 404）。
+         */
+        post: operations["chat_api_agent_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose
+         * @description 生成实体/关系写入草案（LLM JSON mode；不落库）。
+         */
+        post: operations["propose_api_agent_propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm
+         * @description 确认草案并落库（两段式第二段；服务端复核全部 payload）。
+         */
+        post: operations["confirm_api_agent_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memory-docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Memory Docs
+         * @description 列出项目记忆文档卡片（名称+更新时间+首段预览）。
+         */
+        get: operations["list_memory_docs_api_agent_memory_docs_get"];
+        put?: never;
+        /**
+         * Create Memory Doc
+         * @description 按模板创建记忆文档（kind ∈ positioning/style，缺省 positioning；201）。
+         */
+        post: operations["create_memory_doc_api_agent_memory_docs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memory-docs/{doc_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Memory Doc
+         * @description 读取记忆文档全文（含段列表与段版本）。
+         */
+        get: operations["get_memory_doc_api_agent_memory_docs__doc_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Memory Doc
+         * @description 删除记忆文档（段经级联清理；204）。
+         */
+        delete: operations["delete_memory_doc_api_agent_memory_docs__doc_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memory-docs/{doc_id}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Memory Doc Page
+         * @description 记忆文档自包含 HTML 页（iframe 预览数据源；全转义）。
+         */
+        get: operations["get_memory_doc_page_api_agent_memory_docs__doc_id__page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memory-docs/{doc_id}/sections/{section_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Memory Doc Section
+         * @description 段级更新（CAS 乐观锁：expected_version 不符 409；用户手改优先）。
+         */
+        patch: operations["update_memory_doc_section_api_agent_memory_docs__doc_id__sections__section_id__patch"];
         trace?: never;
     };
 }
@@ -667,12 +859,131 @@ export interface components {
             owner_id: string;
         };
         /**
+         * ChatRequest
+         * @description 对话请求（SSE 流式响应）。
+         *
+         *     参数: conversation_id — 会话 id；message — 用户输入；
+         *         perspective — 上下文视角（图谱数据经该视角过滤后注入）；
+         *         character_id — character 视角的角色 id。
+         */
+        ChatRequest: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message */
+            message: string;
+            /**
+             * Perspective
+             * @default author
+             * @enum {string}
+             */
+            perspective: "author" | "character" | "audience";
+            /**
+             * Character Id
+             * @default
+             */
+            character_id: string;
+        };
+        /**
+         * ConfirmFailedItem
+         * @description 确认结果：失败项（含三要素 reason）。
+         */
+        ConfirmFailedItem: {
+            /** Draft Id */
+            draft_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ConfirmItem
+         * @description 确认请求的单项（confirmed=False 表示放弃该条）。
+         */
+        ConfirmItem: {
+            /** Draft Id */
+            draft_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entity" | "relation";
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Confirmed */
+            confirmed: boolean;
+        };
+        /**
+         * ConfirmRequest
+         * @description 确认写入请求（无状态回传草案，服务端重新校验全部 payload）。
+         */
+        ConfirmRequest: {
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
+            /** Items */
+            items: components["schemas"]["ConfirmItem"][];
+        };
+        /**
+         * ConfirmResponse
+         * @description 确认写入响应。
+         */
+        ConfirmResponse: {
+            /** Created */
+            created?: components["schemas"]["ConfirmResultItem"][];
+            /** Failed */
+            failed?: components["schemas"]["ConfirmFailedItem"][];
+        };
+        /**
+         * ConfirmResultItem
+         * @description 确认结果：成功项（写入后的实体/关系 id 与名称）。
+         */
+        ConfirmResultItem: {
+            /** Draft Id */
+            draft_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entity" | "relation";
+            /** Target Id */
+            target_id: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * CoverSet
          * @description 设置封面请求体（PUT /general/{id}/cover）。
          */
         CoverSet: {
             /** Image Id */
             image_id: string;
+        };
+        /**
+         * DraftItem
+         * @description 单条写入草案（propose 产出；confirm 原样回传 payload）。
+         */
+        DraftItem: {
+            /** Draft Id */
+            draft_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entity" | "relation";
+            /**
+             * Payload
+             * @description entities/relations service 输入形状的宽松载荷
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Summary
+             * @description 给作者看的一句话摘要
+             */
+            summary: string;
         };
         /**
          * EntityAssetCard
@@ -912,6 +1223,104 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * MemoryDocBrief
+         * @description 记忆文档卡片摘要（列表视图：名称+更新时间+首行摘要，DESIGN §5.4）。
+         */
+        MemoryDocBrief: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Preview
+             * @description 首段内容预览（截断）
+             */
+            preview: string;
+        };
+        /**
+         * MemoryDocRead
+         * @description 记忆文档响应（含全部段，按 seq 排序）。
+         */
+        MemoryDocRead: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Sections */
+            sections?: components["schemas"]["MemoryDocSectionRead"][];
+        };
+        /**
+         * MemoryDocSectionRead
+         * @description 文档段响应（version 为段级 CAS 令牌）。
+         */
+        MemoryDocSectionRead: {
+            /** Id */
+            id: string;
+            /** Seq */
+            seq: number;
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /**
+             * Updated By
+             * @enum {string}
+             */
+            updated_by: "user" | "agent";
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MessageRead
+         * @description 消息响应。
+         */
+        MessageRead: {
+            /** Id */
+            id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "summary" | "tool";
+            /** Content */
+            content: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * ProjectCreate
          * @description 创建项目请求体（POST /api/projects）。
          *
@@ -969,6 +1378,37 @@ export interface components {
             name?: string | null;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * ProposeRequest
+         * @description 生成草案请求。
+         */
+        ProposeRequest: {
+            /** Session Id */
+            session_id: string;
+            /** Message */
+            message: string;
+            /**
+             * Perspective
+             * @default author
+             * @enum {string}
+             */
+            perspective: "author" | "character" | "audience";
+            /**
+             * Character Id
+             * @default
+             */
+            character_id: string;
+        };
+        /**
+         * ProposeResponse
+         * @description 草案列表响应。
+         */
+        ProposeResponse: {
+            /** Session Id */
+            session_id: string;
+            /** Drafts */
+            drafts?: components["schemas"]["DraftItem"][];
         };
         /**
          * RelationCreate
@@ -1128,6 +1568,59 @@ export interface components {
             properties?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * SectionUpdate
+         * @description 段内容更新请求（用户编辑与 agent patch 确认共用；乐观锁）。
+         *
+         *     参数: content — 新内容；expected_version — 调用方读取时的段版本，
+         *         与当前不一致即 409 冲突（用户手改优先，绝不静默覆盖）。
+         */
+        SectionUpdate: {
+            /** Content */
+            content: string;
+            /** Expected Version */
+            expected_version: number;
+        };
+        /**
+         * SessionCreate
+         * @description 创建会话请求。
+         *
+         *     参数: project_id — 归属项目（空=默认项目）；title — 会话标题（空=首条消息截断）。
+         */
+        SessionCreate: {
+            /**
+             * Project Id
+             * @default
+             */
+            project_id: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * SessionRead
+         * @description 会话响应（滚动摘要为内部字段，不外露）。
+         */
+        SessionRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2079,6 +2572,394 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_agent_sessions_get: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_agent_sessions_post: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_session_messages_api_agent_sessions__conversation_id__messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_api_agent_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_api_agent_propose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_api_agent_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_memory_docs_api_agent_memory_docs_get: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDocBrief"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_memory_doc_api_agent_memory_docs_post: {
+        parameters: {
+            query?: {
+                kind?: string;
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDocRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_doc_api_agent_memory_docs__doc_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDocRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_memory_doc_api_agent_memory_docs__doc_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_doc_page_api_agent_memory_docs__doc_id__page_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_memory_doc_section_api_agent_memory_docs__doc_id__sections__section_id__patch: {
+        parameters: {
+            query?: {
+                updated_by?: string;
+            };
+            header?: never;
+            path: {
+                doc_id: string;
+                section_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SectionUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDocSectionRead"];
                 };
             };
             /** @description Validation Error */

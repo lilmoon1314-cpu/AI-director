@@ -40,7 +40,23 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = "gpt-4o-mini"
+    # 轻量模型：摘要等辅助任务路由（成本分级，F10）
+    llm_model_light: str = "gpt-4o-mini"
     llm_timeout_seconds: int = 60
+
+    # --- Agent（F10 对话底座）---
+    # 单轮对话上下文硬预算（近似 tokens；超限按裁剪顺序降级，见 agent/prompts.py）
+    agent_context_max_tokens: int = 8000
+    # 近期消息全量注入窗口（条）；超窗最旧消息压缩进会话摘要
+    agent_history_window_messages: int = 20
+    # 受控 ReAct：每条用户消息允许的工具调用配额
+    agent_max_tool_calls_per_turn: int = 4
+    # 单次工具输出注入上下文的截断上限（字符）
+    agent_tool_output_max_chars: int = 2000
+    # 内容合规 hook 开关（MVP 本地敏感词表实现，预留外部审核 API 位）
+    agent_content_review_enabled: bool = False
+    # 敏感词表（逗号分隔；仅在 agent_content_review_enabled=true 时生效）
+    agent_content_review_words: str = ""
 
     # --- 跨域 ---
     cors_origins: str = "http://localhost:5173"

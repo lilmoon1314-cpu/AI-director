@@ -22,6 +22,14 @@ export type GeneralAssetUpdate = components["schemas"]["GeneralAssetUpdate"];
 export type ProjectRead = components["schemas"]["ProjectRead"];
 export type ProjectCreate = components["schemas"]["ProjectCreate"];
 export type ProjectUpdate = components["schemas"]["ProjectUpdate"];
+export type SessionRead = components["schemas"]["SessionRead"];
+export type MessageRead = components["schemas"]["MessageRead"];
+export type DraftItem = components["schemas"]["DraftItem"];
+export type ProposeResponse = components["schemas"]["ProposeResponse"];
+export type ConfirmResponse = components["schemas"]["ConfirmResponse"];
+export type MemoryDocBrief = components["schemas"]["MemoryDocBrief"];
+export type MemoryDocRead = components["schemas"]["MemoryDocRead"];
+export type MemoryDocSectionRead = components["schemas"]["MemoryDocSectionRead"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -175,4 +183,52 @@ export const api = {
   /** 资产 HTML 页地址（iframe src 用，不 fetch——后端返回 text/html）。 */
   assetPageUrl: (kind: "general" | "entity", id: string) =>
     kind === "general" ? joinUrl(API_BASE, `/assets/general/${id}/page`) : joinUrl(API_BASE, `/assets/entity/${id}/page`),
+  // ---- Agent（F10；DESIGN.md §5.4/§8.3，project_id 查询参数渐进迁移约定）----
+  /** 创建会话（project_id 空=默认项目——工作台内恒显式携带）。 */
+  createSession: (projectId: string) =>
+    apiFetch<SessionRead>(
+      `/agent/sessions?${new URLSearchParams({ project_id: projectId }).toString()}`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  listSessions: (projectId: string) =>
+    apiFetch<SessionRead[]>(
+      `/agent/sessions?${new URLSearchParams({ project_id: projectId }).toString()}`,
+    ),
+  listMessages: (conversationId: string) =>
+    apiFetch<MessageRead[]>(`/agent/sessions/${conversationId}/messages`),
+  propose: (body: { session_id: string; message: string; perspective: string; character_id?: string }) =>
+    apiFetch<ProposeResponse>("/agent/propose", { method: "POST", body: JSON.stringify(body) }),
+  confirmDrafts: (body: {
+    session_id: string;
+    items: { draft_id: string; kind: "entity" | "relation"; payload: Record<string, unknown>; confirmed: boolean }[];
+  }) => apiFetch<ConfirmResponse>("/agent/confirm", { method: "POST", body: JSON.stringify(body) }),
+  createMemoryDoc: (kind: string, projectId: string) =>
+    apiFetch<MemoryDocRead>(
+      `/agent/memory-docs?${new URLSearchParams({ kind, project_id: projectId }).toString()}`,
+      { method: "POST" },
+    ),
+  listMemoryDocs: (projectId: string) =>
+    apiFetch<MemoryDocBrief[]>(
+      `/agent/memory-docs?${new URLSearchParams({ project_id: projectId }).toString()}`,
+    ),
+  getMemoryDoc: (id: string) => apiFetch<MemoryDocRead>(`/agent/memory-docs/${id}`),
+  deleteMemoryDoc: (id: string) =>
+    apiFetch<void>(`/agent/memory-docs/${id}`, { method: "DELETE" }),
+  updateMemoryDocSection: (
+    docId: string,
+    sectionId: string,
+    body: { content: string; expected_version: number },
+    updatedBy: "user" | "agent" = "user",
+  ) =>
+    apiFetch<MemoryDocSectionRead>(
+      `/agent/memory-docs/${docId}/sections/${sectionId}?${new URLSearchParams({ updated_by: updatedBy }).toString()}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+  /** 记忆文档 HTML 页地址（iframe 预览用，不 fetch——后端返回 text/html）。 */
+  memoryDocPageUrl: (id: string) => joinUrl(API_BASE, `/agent/memory-docs/${id}/page`),
 };
+
+/** Agent 对话 SSE 端点路径（fetch 流式读取用；POST + body 不适用 EventSource）。 */
+export function agentChatPath(): string {
+  return joinUrl(API_BASE, "/agent/chat");
+}
