@@ -1,11 +1,13 @@
 /**
  * agentStore：Agent 对话与记忆文档全局状态（F10，DESIGN.md §5.4/§5.5/§7）。
  * - 按项目的会话池（sessions + messagesBySession）；草案两段式（draftsBySession）；
- * - **SSE 生命周期挂会话级**：AbortController 由 store 持有——AgentDock 收起、
- *   组件卸载不断流，仅随会话切换/项目切换中断（frontend/CONSTRAINTS.md 生命周期条）；
+ * - **SSE 生命周期挂会话级**：AbortController 由 store 持有——切会话、AgentDock
+ *   收起、组件卸载均不断流；中断仅发生于显式停止与项目切换。全局同一时刻
+ *   至多一轮流式（他会议流式中时输入层禁用，sendMessage 守卫兜底拒绝）；
  * - confirm 成功后广播图谱失效（graphStore.loadGraph 重载）。
  * 事件协议（agent/ARCHITECTURE.md）：message_start/token/tool/done/error；
  * draft/doc_patch/ask_user 为 F13 预留类型——本 store 忽略不渲染（前向兼容）。
+ * 约束：全部 async action 必须有 catch 并落三要素错误态（E16，frontend/CONSTRAINTS.md）。
  */
 
 import { create } from "zustand";
@@ -195,7 +197,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   sendMessage: async (conversationId, message, perspective, characterId) => {
-    if (get().streamingSessionId) return; // 同一时刻仅一轮流式
+    // 全局单流守卫（UI 层已在他会议流式时禁用输入；此处兜底拒绝重复轮，
+    // 拒绝时不清空任何状态——输入保留由调用方在守卫前置 disabled 保证）
+    if (get().streamingSessionId) return;
     const controller = new AbortController();
     abortControllers.set(conversationId, controller);
     const assistantLocalId = localId("msg");
@@ -298,22 +302,32 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   proposeDrafts: async (conversationId, message, perspective, characterId) => {
-    const response = await api.propose({
-      session_id: conversationId,
-      message,
-      perspective,
-      character_id: characterId ?? "",
-    });
-    set({
-      draftsBySession: { ...get().draftsBySession, [conversationId]: response.drafts ?? [] },
-      messagesBySession: {
-        ...get().messagesBySession,
-        [conversationId]: [
-          ...(get().messagesBySession[conversationId] ?? []),
-          { id: localId("msg"), role: "user", content: message },
-        ],
-      },
-    });
+    try {
+      const response = await api.propose({
+        session_id: conversationId,
+        message,
+        perspective,
+        character_id: characterId ?? "",
+      });
+      set({
+        draftsBySession: { ...get().draftsBySession, [conversationId]: response.drafts ?? [] },
+        messagesBySession: {
+          ...get().messagesBySession,
+          [conversationId]: [
+            ...(get().messagesBySession[conversationId] ?? []),
+            { id: localId("msg"), role: "user", content: message },
+          ],
+        },
+        sessionErrors: { ...get().sessionErrors, [conversationId]: null },
+      });
+    } catch (cause) {
+      set({
+        sessionErrors: {
+          ...get().sessionErrors,
+          [conversationId]: toErrorState(cause, "草案生成失败"),
+        },
+      });
+    }
   },
 
   confirmDrafts: async (conversationId) => {
@@ -350,6 +364,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       // 广播图谱失效：确认写入改变图谱数据（DESIGN.md §5.4 确认后失效链路）
       const projectId = useProjectStore.getState().currentProjectId;
       if (projectId) void useGraphStore.getState().loadGraph(projectId);
+    } catch (cause) {
+      set({
+        sessionErrors: {
+          ...get().sessionErrors,
+          [conversationId]: toErrorState(cause, "确认写入失败"),
+        },
+      });
     } finally {
       set({ confirming: false });
     }
@@ -373,8 +394,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   createDoc: async (kind, projectId) => {
-    await api.createMemoryDoc(kind, projectId);
-    await get().loadDocs(projectId, true);
+    try {
+      await api.createMemoryDoc(kind, projectId);
+      await get().loadDocs(projectId, true);
+    } catch (cause) {
+      set({ docsError: toErrorState(cause, "记忆文档创建失败") });
+    }
   },
 
   updateDocSection: async (docId, sectionId, content, expectedVersion) => {

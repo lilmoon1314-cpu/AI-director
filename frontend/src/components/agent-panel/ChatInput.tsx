@@ -38,7 +38,13 @@ export function ChatInput({
         data-testid={testId}
         value={text}
         disabled={disabled}
-        placeholder={streaming ? "回复生成中…" : "输入消息，Enter 发送，Shift+Enter 换行"}
+        placeholder={
+          streaming
+            ? "回复生成中…"
+            : disabled
+              ? "另一会话回复生成中，稍候…"
+              : "输入消息，Enter 发送，Shift+Enter 换行"
+        }
         className="max-h-32 min-h-[44px] w-full resize-none rounded-xl border border-slate-300 bg-white/70 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-200"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {

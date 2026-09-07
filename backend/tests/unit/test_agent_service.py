@@ -159,6 +159,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> Store:
     _install(store, monkeypatch)
     stub = SessionStub()
     monkeypatch.setattr(db, "get_session_factory", lambda: lambda: _AsyncCtx(stub))
+    store.session_stub = stub  # 暴露给用例断言 commit/rollback 计数
     return store
 
 
@@ -225,15 +226,16 @@ async def test_title_from_first_message_truncated(
 async def test_tool_loop_quota_then_plain_answer(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """U16: 工具配额=1 → 首轮允许工具，超限后不再提供 tools 且强制作答。
+    """U16+U17: 工具配额=1 → 首轮允许工具，超限后撤下 tools 强制作答；工具
+    输出截断后经注入分隔符进入作答轮 prompt（截断断言即 U17）。
 
-    设计依据: 边界值-配额恰好/超 1（受控 ReAct 防循环）。
+    设计依据: 边界值-配额恰好/超 1（受控 ReAct 防循环）；边界值-输出长度上限。
     """
     _seed_conversation(store)
     calls: list[dict[str, Any]] = []
 
     async def fake_chat_turn(_system: str, _msgs: list[dict], **kwargs: Any) -> AssistantTurn:
-        calls.append(kwargs)
+        calls.append({"kwargs": kwargs, "messages": _msgs})
         if kwargs.get("tools"):
             return AssistantTurn(
                 content=None,
@@ -244,7 +246,7 @@ async def test_tool_loop_quota_then_plain_answer(
         return AssistantTurn(content="根据检索结果作答。")
 
     async def fake_execute_tool(name: str, arguments: str, _ctx: Any) -> str:
-        return "x" * 500  # 超长输出，验证截断（U17）
+        return "x" * 500  # 超长输出（上限 50），验证截断（U17）
 
     monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
     monkeypatch.setattr(service.tools, "execute_tool", fake_execute_tool)
@@ -252,9 +254,14 @@ async def test_tool_loop_quota_then_plain_answer(
     events = [evt async for evt in service.stream_chat("conv-1", "查周兰", perspective="author")]
 
     assert len(calls) == 2, f"配额 1 → 恰好两次调用（工具轮+收尾轮）: {len(calls)}"
-    assert calls[0].get("tools") and calls[1].get("tools") is None, (
+    assert calls[0]["kwargs"].get("tools") and calls[1]["kwargs"].get("tools") is None, (
         "第二轮必须撤下工具定义（强制作答）"
     )
+    # U17: 工具结果截断到上限并带标记，且经注入分隔符包裹（agent_tool_output_max_chars=50）
+    tool_msg = next(m for m in calls[1]["messages"] if m.get("role") == "tool")
+    marker = "\n[输出已截断：原文 500 字符，上限 50]"
+    expected = service.wrap_data("工具 search_entities 结果", "x" * 50 + marker)
+    assert tool_msg["content"] == expected, f"截断+包裹必须精确: {tool_msg['content'][:90]}…"
     names = [e["event"] for e in events]
     assert names.count("tool") == 2, f"tool 事件 start+done 各一: {names}"
     assert names[-1] == "done", f"正常收尾: {names}"
@@ -324,6 +331,102 @@ async def test_rolling_summary_overflow(store: Store, monkeypatch: pytest.Monkey
     assert conv.summary_until_id is not None and conv.summary_until_id.startswith("msg-old"), (
         f"游标必须推进到溢出段末尾: {conv.summary_until_id!r}"
     )
+
+
+async def test_stream_chat_llm_failure_keeps_user_message(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U29: LLM 失败 → error 事件（三要素）收尾；用户消息已先行提交保留。
+
+    设计依据: 等价类-无效-LLM 失败路径（用户输入是已发生的事实，不得回滚丢失）。
+    """
+
+    async def fake_boom(*_a: Any, **_k: Any) -> AssistantTurn:
+        raise AgentError(problem="LLM 调用失败（APITimeoutError）", cause="超时", fix="重试")
+
+    monkeypatch.setattr(llm, "chat_turn", fake_boom)
+    _seed_conversation(store)
+    events = [evt async for evt in service.stream_chat("conv-1", "写个开头", perspective="author")]
+
+    names = [e["event"] for e in events]
+    assert names[0] == "message_start" and names[-1] == "error", f"失败轮事件首尾不符: {names}"
+    payload = events[-1]["data"]
+    # E05 范式：code 与 problem 锁具体值（文案变异在此被杀）
+    assert payload["code"] == "AGENT_FAILURE", f"错误码必须为 AgentError 默认码: {payload}"
+    assert payload["problem"] == "LLM 调用失败（APITimeoutError）", f"problem 须锁全文: {payload}"
+    assert payload["cause"] and payload["fix"], f"cause/fix 必须齐全: {payload}"
+    roles = [m.role for m in store.messages["conv-1"]]
+    assert roles == ["user"], f"LLM 失败后用户消息必须保留且无 assistant 行: {roles}"
+    assert store.session_stub.rollbacks >= 1, "失败轮必须回滚未完成写"
+
+
+async def test_stream_chat_injects_current_message_once(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U30: 本轮用户消息在 prompt 中恰好注入一次（历史行剔除，防双份注入）。
+
+    设计依据: 边界值-注入次数恰 1（同事务可见的 flush 行 + 显式追加曾致双份）。
+    """
+    _seed_conversation(store)
+    captured: list[list[dict[str, Any]]] = []
+
+    async def fake_chat_turn(_system: str, messages: list[dict], **_k: Any) -> AssistantTurn:
+        captured.append(messages)
+        return AssistantTurn(content="ok")
+
+    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    _ = [evt async for evt in service.stream_chat("conv-1", "独一无二的问题", perspective="author")]
+
+    user_contents = [m.get("content") for m in captured[0] if m.get("role") == "user"]
+    assert user_contents.count("独一无二的问题") == 1, (
+        f"本轮用户消息必须恰好注入一次（当前 {user_contents.count('独一无二的问题')} 次）: "
+        f"{user_contents}"
+    )
+
+
+async def test_rolling_summary_empty_result_keeps_state(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U31: 摘要返回空白 → 视为失败跳过（既有摘要与游标不得被清空/推进）。
+
+    设计依据: 边界值-空串摘要（清空 summary 且推进游标会静默丢失被压缩历史）。
+    """
+
+    async def fake_summarize(_text: str, _instruction: str) -> str:
+        return "   "
+
+    async def fake_chat_turn(*_a: Any, **_k: Any) -> AssistantTurn:
+        return AssistantTurn(content="ok")
+
+    monkeypatch.setattr(llm, "summarize", fake_summarize)
+    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+
+    conv = store.add_conversation(
+        SimpleNamespace(
+            id="conv-s",
+            project_id="proj-1",
+            title="t",
+            summary="既有摘要",
+            summary_until_id=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+    )
+    for i in range(3):  # 窗口=2：3 条历史 + 本轮 2 条 → 溢出 3 条触发压缩
+        store.add_message(
+            SimpleNamespace(
+                id=f"msg-h-{i}",
+                conversation_id="conv-s",
+                role="user",
+                content=f"历史{i}",
+                created_at=datetime.now(UTC),
+            )
+        )
+    events = [evt async for evt in service.stream_chat("conv-s", "新输入", perspective="author")]
+
+    assert events[-1]["event"] == "done", "空摘要不得破坏正常收尾"
+    assert conv.summary == "既有摘要", f"既有摘要不得被空白覆盖: {conv.summary!r}"
+    assert conv.summary_until_id is None, "摘要跳过时游标不得推进"
 
 
 async def test_propose_builds_drafts(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:

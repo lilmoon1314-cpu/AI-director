@@ -150,9 +150,14 @@ async def test_chat_turn_wraps_failures_as_agent_error(
     with pytest.raises(AgentError) as excinfo:
         await llm.chat_turn("sys", [{"role": "user", "content": "hi"}])
     err = excinfo.value
-    assert err.problem and err.cause and err.fix, f"[{label}] 三要素必须齐全: {err}"
-    assert err.detail["model"] == "model-main", f"[{label}] detail 必须携带模型名: {err.detail}"
-    assert err.detail["error_type"] == type(exc).__name__, f"[{label}] detail 必须携带错误类型"
+    # E05 范式：problem 锁全文、detail 整体相等（文案/detail 变异在此被杀）
+    assert err.problem == f"LLM 调用失败（{type(exc).__name__}）", f"[{label}] 须锁全文: {err}"
+    assert err.cause and err.fix.startswith("检查 LLM_BASE_URL"), f"[{label}] cause/fix: {err}"
+    assert err.detail == {
+        "component": "app.agent.llm",
+        "model": "model-main",
+        "error_type": type(exc).__name__,
+    }, f"[{label}] detail 必须整体相等: {err.detail}"
 
 
 async def test_client_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,6 +186,30 @@ async def test_complete_json_repairs_once(harness: LlmHarness) -> None:
     )
     repair_prompt = harness.completions.calls[1]["messages"][-1]["content"]
     assert "JSON" in repair_prompt, f"修复轮必须包含修复指令: {repair_prompt}"
+
+
+@pytest.mark.parametrize(
+    ("good_output", "label"),
+    [
+        ('{"a": 1}', "裸 JSON"),
+        ('```json\n{"a": 1}\n```', "小写栅栏"),
+        ('```JSON\n{"a": 1}\n```', "大写栅栏"),
+        ('```\n{"a": 1}\n```', "无语言标记栅栏"),
+    ],
+)
+async def test_complete_json_accepts_fenced_variants(
+    harness: LlmHarness, good_output: str, label: str
+) -> None:
+    """U3 补充参数化: 首轮合法输出（栅栏语言标记大小写不敏感）直接解析。
+
+    设计依据: 等价类-有效-输出形态四分类（边界值-语言标记大小写两态）。
+    """
+    harness.push(_response(good_output))
+
+    payload = await llm.complete_json("sys", [{"role": "user", "content": "x"}])
+
+    assert payload == {"a": 1}, f"[{label}] 必须解析成功: {good_output!r}"
+    assert len(harness.completions.calls) == 1, f"[{label}] 合法输出不得触发修复轮"
 
 
 @pytest.mark.parametrize(

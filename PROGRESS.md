@@ -29,19 +29,21 @@
 **F10（Agent 对话与确认写入）**——底座范围（创作工作流拆 F13，2026-09-06 用户决策：轻量 ReAct 内环 / 记忆文档 HTML 分段两段式 / 内置三防线+合规 hook / ToT 以多方案征求替代）：
 
 - [x] 激活 F10 + 撰写测试文档 docs/tests/F10_agent_chat.md（先行，pending 态）
-- [ ] config 新增 AGENT_*（预算/窗口/工具配额/合规开关）与 LLM_MODEL_LIGHT + .env.example 同步
-- [ ] Alembic 迁移：conversations / messages / memory_docs / memory_doc_sections 四表 + DDL 架构断言扩展
-- [ ] llm.py 封装（懒加载单例/超时/usage 记录/JSON 修复重试 1 次/轻量模型路由）+ 单测
-- [ ] perspectives.filter_entities_for_agent（可见实体完整属性，规则不出模块）+ 架构断言
-- [ ] prompts.py 上下文组装（分层顺序/图谱目录/文档目录 hash/预算裁剪/注入分隔符）+ 单测
-- [ ] tools.py 四检索工具（entity_detail/neighborhood/search/doc_section）+ 每轮配额 + 单测
-- [ ] memory_docs 段级 service + rendering.py 自包含 HTML（全转义）+ 段级 patch CAS + 单测
-- [ ] agent service：stream_chat（SSE 事件协议）/propose/confirm_write/会话 CRUD + 单测
-- [ ] router（/api/agent/*，project_id 查询参数渐进迁移约定）+ main 挂载 + openapi.json + import-linter agent 契约 + L2 集成测试
-- [ ] 前端：gen:api-types → agentStore（SSE 会话级生命周期）→ AgentHome/AgentDock/消息流/草案确认卡/DocPatchCard/DocEditor → 路由 + vitest
-- [ ] L3 e2e（后端流 + 前端 Playwright）+ make check + mutmut（kill rate ≥85%）+ 测试文档状态更新
-- [ ] 文档同步：DECISIONS 登记 5 项新决策（HTML 分段记忆文档取代 OQ-2/思考模式/检索模式/安全三防线/F10-F13 切分）、agent 与 frontend ARCHITECTURE/CONSTRAINTS 修订、data_struct_define §11 落地态、DESIGN OQ-2 裁决标注、F13 登记「下一步」
-- [ ] 验收审查子代理（§10）→ triage → verify F10 → 提交推送
+- [x] config 新增 AGENT_*（预算/窗口/工具配额/合规开关）与 LLM_MODEL_LIGHT + .env.example 同步
+- [x] Alembic 迁移：conversations / messages / memory_docs / memory_doc_sections 四表 + DDL 架构断言扩展
+- [x] llm.py 封装（懒加载单例/超时/usage 记录/JSON 修复重试 1 次/轻量模型路由）+ 单测
+- [x] perspectives.filter_entities_for_agent（可见实体完整属性，规则不出模块）+ 架构断言
+- [x] prompts.py 上下文组装（分层顺序/图谱目录/文档目录 hash/预算裁剪/注入分隔符）+ 单测
+- [x] tools.py 四检索工具（entity_detail/neighborhood/search/doc_section）+ 每轮配额 + 单测
+- [x] memory_docs 段级 service + rendering.py 自包含 HTML（全转义）+ 段级 patch CAS + 单测
+- [x] agent service：stream_chat（SSE 事件协议）/propose/confirm_write/会话 CRUD + 单测
+- [x] router（/api/agent/*，project_id 查询参数渐进迁移约定）+ main 挂载 + openapi.json + import-linter agent 契约 + L2 集成测试
+- [x] 前端：gen:api-types → agentStore（SSE 会话级生命周期）→ AgentHome/AgentDock/消息流/草案确认卡/DocEditor（doc_patch diff 卡随 F13）→ 路由 + vitest + Playwright FE1
+- [x] 三层测试全绿：后端 307（L1/L2/L3 + 架构）、前端 vitest 103 + 集成 55 + e2e 14；make check 全链通过
+- [x] 逻辑自查修复三处（用户消息先行 commit 兑现失败保留语义 / 本轮输入 exclude 防双份注入 / 滚动摘要空串保护）+ 大写栅栏兼容；补判杀用例 U29–U31、I12、栅栏参数化（T-20260907-01：mutmut 中断变异体残留 llm.py 已还原，架构测试拦截）
+- [x] 文档同步：DECISIONS 登记 5 项新决策、agent/frontend ARCHITECTURE+CONSTRAINTS 落地态、data_struct_define §11.3、DESIGN OQ-2 裁决标注、测试文档用例矩阵校准（U29–U31/I12/描述漂移修正）
+- [x] 验收审查（§10 第 3 轮）12 条发现全处置：P1×5（切会话语义定稿+全局单流输入锁 / 三 action 补 catch 落错误态→**E16 登记** / U17 截断锁全文断言 / U15 非整数 seq / DocPatchCard 虚报更正）+ P2×7（E05 锁值、恒真断言、FU1-6/7、I9 越权边界 DECISIONS、U11/I3 校准、增强用例登记、DESIGN 三注记）；审查记录入测试文档
+- [ ] 提交 agent 终态 → mutmut（kill rate ≥85%，代码定稿提交后运行）→ 测试文档变异小节 → verify F10 → push + F13 登记「下一步」
 
 ## 已知问题
 - 无

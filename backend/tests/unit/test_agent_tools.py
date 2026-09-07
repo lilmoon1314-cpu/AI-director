@@ -135,16 +135,28 @@ def doc_world(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize(
-    ("seq", "expect"),
-    [(1, "第一人称。"), (2, "冷色调。"), (0, "工具执行失败"), (3, "工具执行失败")],
-    ids=["有效段1", "有效段2", "越界-0", "越界-上限+1"],
+    ("seq_json", "expect"),
+    [
+        ("1", "第一人称。"),
+        ("2", "冷色调。"),
+        ("0", "不存在第 0 段"),
+        ("3", "不存在第 3 段"),
+        ('"abc"', "seq 非法"),
+        ("null", "seq 非法"),
+    ],
+    ids=["有效段1", "有效段2", "越界-0", "越界-上限+1", "seq非整数", "seq缺省null"],
 )
 async def test_read_doc_section_boundaries(
-    doc_world: dict[str, Any], seq: int, expect: str
+    doc_world: dict[str, Any], seq_json: str, expect: str
 ) -> None:
-    """U15 参数化: 段读取有效/越界（边界值-序号两侧邻界）。"""
-    text = await execute_tool("read_doc_section", f'{{"doc_id": "mdoc-1", "seq": {seq}}}', _ctx())
-    assert expect in text, f"[seq={seq}] 结果不符: {text}"
+    """U15 参数化: 段读取有效/越界/参数非法（边界值-序号两侧邻界；等价类-无效-参数类型）。
+
+    设计依据: seq 非整数与缺省走 int 解析失败分支，折叠为三要素文本（不抛异常）。
+    """
+    text = await execute_tool(
+        "read_doc_section", f'{{"doc_id": "mdoc-1", "seq": {seq_json}}}', _ctx()
+    )
+    assert expect in text, f"[seq={seq_json}] 结果不符: {text}"
 
 
 async def test_read_doc_section_rejects_cross_project(doc_world: dict[str, Any]) -> None:

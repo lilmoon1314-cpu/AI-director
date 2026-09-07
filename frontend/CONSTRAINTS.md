@@ -32,6 +32,9 @@
 - 必须：布局收敛后的硬分离（separateOverlaps）随每次数据变更重跑（持久 afterlayout 监听 + 防抖）——力导碰撞是软约束，残余重叠会触发标签避让隐藏节点名。
 
 ## 生命周期
-- 必须：SSE 连接随组件卸载中断（AbortController），防泄漏。**规划修订（随 F10/AgentDock 落地时更新本条，DESIGN.md §5.5）**：SSE 生命周期挂会话级（agentStore），随会话结束/项目切换中断；侧边栏收起不中断（防泄漏本意由会话级 AbortController 承担）。
+- 必须（F10 已落地，DESIGN.md §5.5）：SSE 连接生命周期挂**会话级**（agentStore 持有 AbortController）——AgentDock 收起、切会话、组件卸载均不中断流式；中断仅发生于显式停止与项目切换（resetProjectScoped abort）。「随组件卸载中断」旧条目就此废止（防泄漏本意由会话级 AbortController 承担）。
+- 必须（F10 已落地）：全局同一时刻至多一轮流式——其他会话流式中时输入层必须禁用（SessionView busyElsewhere → ChatInput disabled），store.sendMessage 守卫兜底拒绝；禁止静默吞掉已提交输入。
+- 必须（E16）：store 的全部 async action 必须有 catch 并落三要素错误态（sessionErrors/docsError/sessionsError），禁止 unhandled rejection；新增 action 时对应 FU 用例须覆盖失败分支。
 - 必须：检索输入防抖后再调用 API。
-- 必须（F11 已落地，DESIGN.md §4.4/§7）：切换项目按 store 重置换机执行（perspective/selection/entityIndex/asset 项目分区重置，generalCards 全局缓存保留；SSE 中止项随 F10 AgentDock 落地）；路由参数 `:projectId` 为项目上下文唯一事实源（Outlet context 渲染期同步）。
+- 必须（F11 已落地，DESIGN.md §4.4/§7）：切换项目按 store 重置换机执行（perspective/selection/entityIndex/asset 项目分区重置，generalCards 全局缓存保留；agentStore.resetProjectScoped 含 SSE abort 与 dock 开合复位，已由 GraphView 置换链与 AgentHome 陈旧检测双路触发）；路由参数 `:projectId` 为项目上下文唯一事实源（Outlet context 渲染期同步）。
+- 必须（F10 落地）：store selector 返回引用型默认值必须用模块级常量（如 EMPTY_DRAFTS），禁止内联 `?? []`——useSyncExternalStore 会因每次新引用触发无限重渲染告警。

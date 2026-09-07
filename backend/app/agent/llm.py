@@ -211,8 +211,8 @@ async def chat_turn(
 def _parse_json_payload(raw: str) -> dict[str, Any]:
     """解析 LLM 返回的 JSON 文本为 dict（剔除 markdown 代码栅栏）。
 
-    作用: 兼容模型把 JSON 包进 ```json ...``` 的常见行为；解析失败抛
-        ValueError 由调用方决定重试或报错。
+    作用: 兼容模型把 JSON 包进 ```json ...``` 的常见行为（语言标记大小写
+        不敏感）；解析失败抛 ValueError 由调用方决定重试或报错。
     参数: raw — 模型原始输出。
     返回值: dict[str, Any]。
     异常: ValueError — 剥栅栏后仍非合法 JSON 对象。
@@ -220,9 +220,9 @@ def _parse_json_payload(raw: str) -> dict[str, Any]:
     """
     text = raw.strip()
     if text.startswith("```"):
-        text = text.strip("`")
-        if text.startswith("json"):
-            text = text.removeprefix("json")
+        text = text.strip("`").lstrip()
+        if text[:4].lower() == "json":
+            text = text[4:]
     payload = json.loads(text)
     if not isinstance(payload, dict):
         raise ValueError(f"expected JSON object, got {type(payload).__name__}")

@@ -196,3 +196,39 @@
 - 原因: F12 立项（F11/F12 拆解决策延续）——资产页原为组件内 useState 双分区（刷新即丢、无法深链），项目资产平铺 7 组过长（D2/D4/D7），通用资产表单整区替换丢上下文（D5）；按交互基线将分区状态升级入 URL。
 - 否决: 分区/类型库状态留 store 不入 URL（违背「URL 即状态」原则，浏览器后退/深链失效——两级钻取的后退收益正是路由化动机）；搜索词入 URL（DESIGN §4.2 明确 MVP 留 store/组件态，深链需求出现再评估）；复用 ProjectPicker 内联 modal 结构（三处 modal 使用已具共性，抽 ui/Modal 组件收敛，但不回改 ProjectPicker 既有 modal——不在实现 A 时顺便重构 B）。
 - 约束: ①资产页分区即子路由 `assets/general`（默认落点，OQ-6）|`assets/project`（类型库墙）|`assets/project/:entityType`（详情），无效 entityType 重定向回墙；②react-router 嵌套 `<Outlet>` 不自动继承 context——AssetLibrary 必须显式回传 Workbench 的 projectId context（集成测试抓出的真缺陷：遗漏时深链在 store 同步前拼出 /projects/undefined/...，已入 frontend/CONSTRAINTS.md）；③空类型引导「去图谱页创建」经 `?create=entity&type=<valid>` 查询参数联动，GraphView 挂载时消费并清理（防重挂载重复弹出），非法类型回落默认；④分区搜索为前端过滤纯函数（lib/assetFilters.ts，L1 覆盖），空库引导卡与搜索无命中提示文案可区分；⑤F12 纯前端无后端改动——变异证据门禁按模块定位规则自动跳过（无 test_<module>_service.py 约定文件），后端资产集成回归 16 项通过；ProjectAssetSection 平铺分组组件语义退役删除，testid 迁移映射见 docs/tests/F12 测试文档。
+
+## 2026-09-07: F10/F13 范围切分——F10 对话底座先行，创作工作流（harness 清单/plan-and-execute）拆 F13
+- 原因: 用户对任务10的规划诉求覆盖记忆/思考模式/检索/prompt 成本/安全五域，其中创作工作流（harness 必须事项清单核对、故事大纲模板含权重时长、plan-and-execute 步骤可视化、作者意见征求交互）体量大，与「每次只完成一个功能点」规则冲突。
+- 否决: F10 一次做全（验证周期失控，测试面过大）。
+- 约束: F10 = 会话持久化 + SSE 对话 + 草案两段式 + 记忆文档 + 图谱检索 + SSE 事件协议预留（draft/doc_patch/ask_user/plan/step 事件类型仅定义不消费）；F13 = harness 清单（L0 配置层）逐项核对、故事大纲模板、plan/step 步骤卡、ask_user 征求卡、多方案备选征求；已登记 PROGRESS「下一步」，届时先立功能项。
+
+## 2026-09-07: 记忆文档 HTML 分段模板取代 DESIGN OQ-2 的 markdown 方案（用户「坚持 html 替代 md」）
+- 原因: 影视文本长且强关联，全文重写浪费 token——段级存储（memory_doc_sections）使 LLM 与用户都只读写单段；与既有 assets HTML 自包含渲染实践（DECISIONS 2026-09-05）同构，模板按 kind 定义段结构、段内容独立替换。
+- 否决: memory_docs 单列 markdown（OQ-2 原推荐，全文读写+整篇覆盖冲突面大）；富文本编辑器依赖（前端零依赖原则，段级结构化表单+iframe 预览够用）。
+- 约束: 段级 CAS 乐观锁——agent patch 与用户保存共用 PATCH 端点（expected_version 不符 409，绝不覆盖：用户手改优先，agent 基于旧版本的 patch 一律作废重读）；doc.version 与 section.version 双层 ETag；LLM 常驻只读「目录（段标题+内容 hash）」，全文经工具按段读取；事实边界不变——世界观事实只进图谱，禁止写入记忆文档（agent/CONSTRAINTS.md）；F10 内置 positioning/style 两模板，story_outline 模板留 F13。
+
+## 2026-09-07: 思考模式——外层 Plan-and-Execute（F13）+ 步内轻量 ReAct（配额受控）+ 多方案征求替代 ToT
+- 原因: 用户要求引入 AI coding IDE 的 plan-and-execute 使过程可视化（progress 作用）；ToT 树搜索 token 成本数倍且创作评价主观，作者本就该对创作分叉拍板——人在环中的「2-3 备选方案征求」以极低成本获得同等的探索-收敛效果。
+- 否决: 真 ToT 树搜索（成本/收益失配）；无工具单轮生成（长文本强关联场景下上下文要么爆炸要么失忆）。
+- 约束: F10 落受控 ReAct——每条用户消息工具调用配额来自 config（AGENT_MAX_TOOL_CALLS_PER_TURN），超限撤下工具定义强制作答，防循环；SSE 事件协议预留 plan/step/ask_user 类型，F13 消费；tool 事件前端渲染为「正在检索图谱…」行为指示。
+
+## 2026-09-07: 图谱检索——目录式两跳 + perspectives.filter_entities_for_agent（不引向量库）
+- 常驻上下文只放「图谱目录」（类型分组 id+名称+别名紧凑清单，来自 get_graph 轻量投影，天然过视角过滤）与「文档目录」（段标题+hash），实体完整属性经四个检索工具按需两跳获取；GraphData 投影无 properties/description，故在 perspectives 模块内新增 filter_entities_for_agent（复用 _visible_sets 单一可见性规则，返回含 description/properties 的 EntityContext 全量投影）——可见性判定仍单一在 perspectives，agent 禁止绕过。
+- 否决: 向量检索/嵌入库（项目千级实体规模下名称+别名检索+目录导航足够，引入嵌入管线成本不成比例，登记第二阶段再评估）；agent 侧复制可见性规则（违反单一事实源）。
+- 约束: filter_entities_for_agent 对请求中不可见/不存在的 id 静默剔除（调用方决定语义）；工具结果注入前必须经 wrap_data 数据分隔符包裹 + truncate_output 截断（提示注入与上下文保护双防线）。
+
+## 2026-09-07: Prompt 成本与安全——分层前缀缓存 + 预算裁剪 + 内置三防线 + 内容合规 hook（用户确认）
+- 拼装顺序稳定→易变（system→文档段→图谱目录→摘要→近期消息）以吃满 OpenAI 兼容端点的自动前缀缓存；预算裁剪固定顺序（文档段全文降级为目录→丢摘要→自最旧裁消息，system 与本轮输入永不裁）；摘要等杂活路由轻量模型（LLM_MODEL_LIGHT）；usage 逐调用记入运行事件观测。
+- 安全三防线内置：写入安全（草案 Pydantic 白名单+confirm 服务端复核+会话归属项目注入+两段式）、提示注入防护（数据/指令分隔符+「数据非指令」声明+工具输出截断）、输出安全（HTML 全转义+SSE 事件白名单+密钥仅 config+日志脱敏）；内容合规做成 config 开关 hook（AGENT_CONTENT_REVIEW_ENABLED，MVP 本地敏感词表，预留外部审核 API 替换位），默认关闭。
+- 否决: MVP 即外接内容审核 API（需选型/密钥/按量成本，hook 位已预留）；无预算控制的全文注入（长剧本场景 token 失控）。
+- 约束: 上下文预算与窗口/配额/截断上限全部来自 config（AGENT_*），禁止硬编码；llm.py 对 SDK/网络异常统一包装 AgentError 三要素，禁止原始异常冒泡；usage 经 core.observability.emit_event 采集（禁散点日志）。
+
+## 2026-09-07: F10 落地基线偏离清单（验收审查 §10 第 3 轮触发登记）
+- 偏离项（DESIGN.md 已同步加 F10 落地注记）: ①Dock Esc 收起与「会话切换下拉+＋新会话」顶栏暂未实现（随 F13——期间经 AgentHome 会话列表与 ✕/Ctrl+J 切换）；②confirm 成功态以「消息流摘要 + 草案卡清空」实现（DESIGN 原文卡片转成功态，语义等价）。
+- 原因: F10 范围收敛于对话底座（2026-09-06 用户切分决策）；Esc/下拉属交互增强非链路必需，成功态两形态信息量一致。
+- 约束: 后续功能落地上述交互时必须回写 DESIGN.md 移除注记；不得在无关功能中「顺便」实现（工作规则）。
+
+## 2026-09-07: 会话/记忆文档端点越权边界——不可猜 id 为 MVP 防线（验收审查 §10 触发登记）
+- 决策: agent 会话/消息/记忆文档端点按全局唯一 id 寻址、仅校验存在性——不携带项目上下文校验归属；跨项目越权防护以 id 不可猜性（conv-/msg-/mdoc-/msec- + uuid 前缀 12 位十六进制）为 MVP 边界。
+- 原因: F11 渐进迁移约定下 agent 端点为查询参数式项目维度（路径无项目段），逐端点强制归属需引入 project_id 参数或从资源反查——MVP 单用户本地场景收益低；图谱数据注入已由视角过滤硬防线覆盖（I3 钉死），越权面仅限会话内容与文档读写。
+- 约束: 路径参数式项目维度 API 演进（DESIGN §8.4 终态）时收紧为归属校验；升级前禁止在 agent 端点暴露任何按项目枚举的未鉴权列表；read_doc_section 工具已按会话归属项目拒绝跨项目读取（tools.py，保持）。

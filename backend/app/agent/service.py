@@ -203,6 +203,7 @@ async def _assemble_chat_context(
     perspective: Perspective,
     character_id: str,
     user_message: str,
+    exclude_message_id: str | None = None,
 ) -> list[dict[str, str]]:
     """组装对话上下文消息序列（system + 项目上下文 + 摘要 + 窗口内历史 + 本轮输入）。
 
@@ -210,7 +211,8 @@ async def _assemble_chat_context(
         记忆文档取目录 + 段全文（预算内），历史按「摘要游标之后的尾部」
         截取最近 N 条（LLM 上下文视角过滤的唯一入口，agent/CONSTRAINTS.md）。
     参数: db_session — 数据库会话；conversation — 会话；perspective/character_id —
-        视角；user_message — 本轮用户输入。
+        视角；user_message — 本轮用户输入；exclude_message_id — 已单独作为
+        user_message 注入的消息行 id（stream_chat 落库本轮输入后传入，防止双份注入）。
     返回值: list[dict] — openai 消息格式。异常: 无。依赖: perspectives/prompts。
     """
     settings = get_settings()
@@ -253,6 +255,9 @@ async def _assemble_chat_context(
         )
 
     rows = await repository.list_messages(db_session, conversation.id)
+    if exclude_message_id is not None:
+        # 本轮用户输入已单独作为 user_message 注入——历史行中剔除，防双份
+        rows = [r for r in rows if r.id != exclude_message_id]
     # 摘要游标之后的消息为「未覆盖尾部」；只注入其中最近 N 条
     if conversation.summary_until_id is None:
         tail = rows
@@ -310,7 +315,7 @@ async def _maintain_rolling_summary(db_session: AsyncSession, conversation: Conv
         "不要逐句复述。"
     )
     try:
-        conversation.summary = await llm.summarize(combined, instruction)
+        new_summary = await llm.summarize(combined, instruction)
     except Exception as exc:  # noqa: BLE001 — 摘要失败不阻断已完成的对话轮
         emit_event(
             "agent_summary_skipped",
@@ -318,6 +323,15 @@ async def _maintain_rolling_summary(db_session: AsyncSession, conversation: Conv
             data={"conversation_id": conversation.id, "error": type(exc).__name__},
         )
         return
+    if not new_summary.strip():
+        # 空摘要视为失败：清空 summary 且推进游标会静默丢失被压缩的历史
+        emit_event(
+            "agent_summary_skipped",
+            component="app.agent.service",
+            data={"conversation_id": conversation.id, "error": "EmptySummary"},
+        )
+        return
+    conversation.summary = new_summary
     conversation.summary_until_id = overflow[-1].id
     await repository.save_conversation(db_session, conversation)
 
@@ -396,9 +410,9 @@ async def stream_chat(
 
     作用:
         事件序列 = message_start → (tool …)* → token … → done | error。
-        工具调用配额来自 config（超限后不再提供工具，强制作答）；完成后
-        user/assistant 消息落库并触发超窗摘要压缩。LLM 失败发 error 事件
-        （三要素）正常收尾，用户消息保留。
+        工具调用配额来自 config（超限后不再提供工具，强制作答）；user 消息
+        先行落库（LLM 失败也不丢用户输入），assistant 消息完成后落库并触发
+        超窗摘要压缩。LLM 失败发 error 事件（三要素）正常收尾。
     参数:
         conversation_id — 会话 id；message — 用户输入；perspective — 视角；
         character_id — character 视角角色 id。
@@ -437,6 +451,8 @@ async def stream_chat(
         if not conversation.title:
             conversation.title = message[:20]
             await repository.save_conversation(db_session, conversation)
+        # 用户输入独立提交：LLM 失败（rollback）也不丢已发生的用户消息
+        await db_session.commit()
 
         try:
             messages = await _assemble_chat_context(
@@ -445,6 +461,7 @@ async def stream_chat(
                 perspective=perspective,
                 character_id=character_id,
                 user_message=message,
+                exclude_message_id=user_row.id,
             )
             tool_ctx = tools.ToolContext(
                 session=db_session,

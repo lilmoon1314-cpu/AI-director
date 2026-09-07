@@ -299,7 +299,7 @@
 
 ---
 
-### 11. 多项目与 Agent 数据（11.1/11.2/11.4 已就位 [F11，2026-09-06]；11.3 规划随 F10；来源 DESIGN.md §8）
+### 11. 多项目与 Agent 数据（11.1/11.2/11.4 已就位 [F11，2026-09-06]；11.3 已就位 [F10，2026-09-07]；来源 DESIGN.md §8）
 
 #### 11.1 项目表（`projects`，主库，F11 已建表）
 
@@ -317,13 +317,14 @@
 - `entities` / `relationships` 增加 `project_id`（FK projects + 索引）；Alembic 迁移将既有数据打包进自动创建的「默认项目」（向后兼容）。
 - §8 `global_state` 为单例设计（隐含单世界假设）——**第 2 批建表时须改为按 project 维度**。
 
-#### 11.3 Agent 会话与记忆（建议入主库——单一事实源；assets.db 定位为派生展示层，不承载会话/记忆）
+#### 11.3 Agent 会话与记忆（已就位 [F10，2026-09-07]——入主库；记忆文档为 HTML 分段模板，取代原 markdown 规划，DECISIONS 2026-09-07）
 
 | 表 | 关键字段 | 说明 |
 |----|---------|------|
-| `conversations` | `id, project_id, title, updated_at` | 会话（按项目隔离；前端 AgentHome 与 AgentDock 侧边栏为同一会话池） |
-| `messages` | `id, conversation_id, role, content, created_at` | 消息（SSE 流式完成后落库） |
-| `memory_docs` | `id, project_id, title, content(markdown), updated_at` | 记忆文档 = 项目工作上下文（定位/风格约定/创作阶段/决策待办），**非世界观事实副本**（单一事实源原则，事实以图谱为准） |
+| `conversations` | `id, project_id(FK), title, summary, summary_until_id, created_at, updated_at` | 会话（按项目隔离；AgentHome 与 AgentDock 同一会话池）；summary/summary_until_id 为滚动摘要与其覆盖游标（超窗历史增量压缩，L2 短期记忆持久层） |
+| `messages` | `id, conversation_id(FK CASCADE), role(user/assistant/summary/tool), content, created_at` | 消息（SSE 完成后落库；历史不删除，窗口裁剪只作用于注入） |
+| `memory_docs` | `id, project_id(FK), kind, title, version, created_at, updated_at` | 记忆文档容器（HTML 分段模板：kind=positioning/style，story_outline 留 F13）；version 为文档级 ETag；**非世界观事实副本**（事实以图谱为准） |
+| `memory_doc_sections` | `id, doc_id(FK CASCADE), seq, title, content, updated_by(user/agent), version, updated_at` | 段级存储单元（段级 patch 只改一段）；version 为段级 CAS 令牌（expected_version 不符 409，用户手改优先绝不覆盖） |
 
 #### 11.4 资产库（assets.db）的多项目语义（F11 已落地）
 

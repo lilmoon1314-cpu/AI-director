@@ -19,6 +19,8 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
   const messages = useAgentStore((s) => s.messagesBySession[conversationId]);
   const messagesLoading = useAgentStore((s) => s.messagesLoading);
   const streaming = useAgentStore((s) => s.streamingSessionId === conversationId);
+  // 全局单流：其他会话流式中禁用本会话输入（守卫兜底在 store.sendMessage）
+  const busyElsewhere = useAgentStore((s) => s.streamingSessionId !== null && s.streamingSessionId !== conversationId);
   const toolActivity = useAgentStore((s) => s.toolActivity);
   const error = useAgentStore((s) => s.sessionErrors[conversationId] ?? null);
   const drafts = useAgentStore((s) => s.draftsBySession[conversationId] ?? EMPTY_DRAFTS);
@@ -59,7 +61,7 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
       />
       <ChatInput
         testId={testId}
-        disabled={false}
+        disabled={busyElsewhere}
         streaming={streaming}
         onSend={(text) => {
           const { perspective, characterId } = withPerspective();

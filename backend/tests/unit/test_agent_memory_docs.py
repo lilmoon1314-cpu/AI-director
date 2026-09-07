@@ -167,7 +167,6 @@ async def test_update_section_by_user_bumps_versions(store: Store, db_session: C
     设计依据: 等价类-段级隔离写入（其余段不动）。
     """
     doc = await agent_service.create_doc(db_session, "proj-1", "style")
-    other_seq = doc.sections[3]
 
     updated = await agent_service.update_section(
         db_session,
@@ -181,7 +180,7 @@ async def test_update_section_by_user_bumps_versions(store: Store, db_session: C
     assert updated.content == "第一人称限制视角。"
     doc_after = await agent_service.get_doc(db_session, doc.id)
     assert doc_after.version == 2, f"文档 version 必须同步 +1: {doc_after.version}"
-    assert other_seq.content == "" or True  # other_seq 是快照对象；以下用最新读取验证
+    # 建档响应是快照对象——「其余段不动」以重新读取的最新状态验证
     fresh_other = next(s for s in doc_after.sections if s.seq == 4)
     assert fresh_other.version == 1 and fresh_other.content == "", "其余段不得被波及"
 

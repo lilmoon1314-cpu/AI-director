@@ -65,12 +65,13 @@ describe("agentStore（FU1）", () => {
     vi.unstubAllGlobals();
   });
 
-  it("FU1-1: sendMessage 正常流 → token 拼接、done 后回读消息（等价类—有效会话轮）", async () => {
+  it("FU1-1: sendMessage 正常流 → token 拼接、done 后回读消息（等价类—有效会话轮；未知事件类型忽略不崩溃）", async () => {
     const fetchMock = routeFetch((url) => {
       if (url.includes("/agent/chat")) {
         return sseResponse([
           { event: "message_start", data: { conversation_id: "conv-1" } },
           { event: "token", data: { text: "你好" } },
+          { event: "future_event", data: { anything: true } }, // F13 预留/未知类型：前向兼容忽略
           { event: "token", data: { text: "，作者。" } },
           { event: "done", data: { message_id: "msg-2" } },
         ]);
@@ -179,14 +180,63 @@ describe("agentStore（FU1）", () => {
     expect(useAgentStore.getState().dockOpen).toBe(false);
   });
 
-  it("FU1-5: 记忆文档加载与新建（等价类—文档域读写）", async () => {
+  it("FU1-6: 流式中收起 Dock 不中断（等价类—SSE 会话级生命周期非中断态）", async () => {
+    const stream = new ReadableStream<Uint8Array>({ start() {} });
+    let capturedSignal: AbortSignal | null = null;
+    const fetchMock = routeFetch((url, init) => {
+      if (url.includes("/agent/chat")) {
+        capturedSignal = init?.signal ?? null;
+        return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({ dockOpen: true });
+    const pending = useAgentStore.getState().sendMessage("conv-1", "hi", "author");
+    await new Promise((r) => setTimeout(r, 0));
+
+    useAgentStore.getState().closeDock();
+    await new Promise((r) => setTimeout(r, 0));
+    void pending; // 挂起流由测试环境丢弃；不 await
+
+    expect(capturedSignal?.aborted).toBe(false);
+    expect(useAgentStore.getState().streamingSessionId).toBe("conv-1");
+  });
+
+  it("FU1-7: 他会议流式期间 sendMessage 全局单流守卫拒绝（边界值—重复轮次拒绝）", async () => {
+    const stream = new ReadableStream<Uint8Array>({ start() {} });
     const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/chat")) {
+        return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = useAgentStore.getState().sendMessage("conv-1", "hi", "author");
+    await new Promise((r) => setTimeout(r, 0));
+
+    await useAgentStore.getState().sendMessage("conv-2", "another", "author"); // 守卫：静默拒绝
+    void pending;
+
+    expect(useAgentStore.getState().streamingSessionId).toBe("conv-1");
+    expect(useAgentStore.getState().messagesBySession["conv-2"]).toBeUndefined();
+  });
+
+  it("FU1-5: 会话列表与记忆文档加载（等价类—列表域读取）", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/sessions")) {
+        return jsonResponse([SESSION]);
+      }
       if (url.includes("/agent/memory-docs") && !url.includes("sections")) {
         return jsonResponse([DOC]);
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
+
+    await useAgentStore.getState().loadSessions("project-x");
+    expect(useAgentStore.getState().sessions).toHaveLength(1);
+    expect(useAgentStore.getState().sessions[0].title).toBe("既有会话");
 
     await useAgentStore.getState().loadDocs("project-x");
     expect(useAgentStore.getState().docs).toHaveLength(1);

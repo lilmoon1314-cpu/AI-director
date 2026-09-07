@@ -122,7 +122,9 @@ def test_chat_sse_persists_messages(client: TestClient, monkeypatch: pytest.Monk
     """I2: SSE 全链路 → 事件流含 message_start/token/done，消息双行落库。"""
     project = _create_project(client, "剧本项目")
     session = _create_session(client, project["id"])
-    _install_chat_script(monkeypatch, [AssistantTurn(content="这是一个关于海难与救赎的故事。")])
+    capture = _install_chat_script(
+        monkeypatch, [AssistantTurn(content="这是一个关于海难与救赎的故事。")]
+    )
 
     resp = client.post(
         "/api/agent/chat",
@@ -147,6 +149,11 @@ def test_chat_sse_persists_messages(client: TestClient, monkeypatch: pytest.Monk
     assert [m["role"] for m in messages] == ["user", "assistant"], (
         f"user+assistant 必须落库: {messages}"
     )
+    # 本轮用户消息在 prompt 中恰好一次（flush 可见行 + 显式追加曾致双份注入）
+    user_contents = [
+        m.get("content") for m in capture.calls[0]["messages"] if m.get("role") == "user"
+    ]
+    assert user_contents.count("帮我起个故事头") == 1, f"本轮输入必须恰好注入一次: {user_contents}"
     # 首条消息回填标题（OQ-7）
     sessions = client.get("/api/agent/sessions", params={"project_id": project["id"]}).json()
     assert sessions[0]["title"].startswith("帮我起个故事头"), f"标题须取首条消息: {sessions[0]}"
@@ -433,10 +440,15 @@ def test_agent_404s_for_missing_resources(client: TestClient) -> None:
     """I9: 不存在的会话/文档/段路径 → 404 三要素（无效等价类兜底）。"""
     missing_messages = client.get("/api/agent/sessions/conv-nope/messages")
     assert missing_messages.status_code == 404, "不存在会话必须 404"
-    assert missing_messages.json()["problem"], f"三要素必须齐全: {missing_messages.json()}"
+    assert missing_messages.json()["problem"] == "会话不存在", (
+        f"problem 须锁全文（E05）: {missing_messages.json()}"
+    )
 
     missing_doc = client.get("/api/agent/memory-docs/mdoc-nope")
     assert missing_doc.status_code == 404, "不存在文档必须 404"
+    assert missing_doc.json()["problem"] == "记忆文档不存在", (
+        f"三要素必须齐全: {missing_doc.json()}"
+    )
 
     project = _create_project(client, "404项目")
     doc = client.post(
@@ -448,6 +460,7 @@ def test_agent_404s_for_missing_resources(client: TestClient) -> None:
         json={"content": "x", "expected_version": section["version"]},
     )
     assert cross.status_code == 404, f"段与文档不匹配必须 404: {cross.status_code}"
+    assert cross.json()["problem"] == "文档段不存在", f"三要素必须齐全: {cross.json()}"
 
 
 @pytest.mark.parametrize(
@@ -494,7 +507,13 @@ def test_llm_failure_degrades_with_three_elements(
     assert resp.status_code == 502, f"[{label}] 降级必须 502: {resp.status_code} {resp.text[:200]}"
     body = resp.json()
     assert body["code"] == "AGENT_FAILURE", f"[{label}] 错误码必须为 AGENT_FAILURE: {body}"
-    assert body["problem"] and body["cause"] and body["fix"], f"[{label}] 三要素必须齐全: {body}"
+    # E05 范式：problem 按分支锁具体文案（文案变异在此被杀）
+    if failure == "missing_key":
+        expected_problem = "LLM 客户端不可用：API 密钥未配置"
+    else:
+        expected_problem = "LLM 调用失败（APITimeoutError）"
+    assert body["problem"] == expected_problem, f"[{label}] problem 须锁全文: {body}"
+    assert body["cause"] and body["fix"], f"[{label}] cause/fix 必须齐全: {body}"
 
 
 def test_chat_tool_round_with_real_retrieval(
@@ -540,3 +559,42 @@ def test_chat_tool_round_with_real_retrieval(
         f"真实检索结果必须以数据块进入作答轮 prompt: {second_prompt[-400:]}"
     )
     assert names[-1] == "done", f"正常收尾: {names}"
+
+
+def test_chat_llm_failure_error_event_keeps_user_message(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I12: chat LLM 失败 → SSE error 事件（三要素）+ 用户消息与标题回填保留。
+
+    设计依据: 等价类-无效-LLM 失败路径（用户输入先行提交，回滚不得丢失）。
+    """
+    from app.core.exceptions import AgentError
+
+    project = _create_project(client, "chat降级项目")
+    session = _create_session(client, project["id"])
+
+    async def boom(*_a: Any, **_k: Any) -> AssistantTurn:
+        raise AgentError(problem="LLM 调用失败（APITimeoutError）", cause="超时", fix="重试")
+
+    monkeypatch.setattr(agent_llm, "chat_turn", boom)
+    resp = client.post(
+        "/api/agent/chat",
+        json={
+            "conversation_id": session["id"],
+            "message": "帮我写第一幕",
+            "perspective": "author",
+        },
+    )
+    assert resp.status_code == 200, "SSE 端点本身必须 200（失败以 error 事件承载）"
+    events = _parse_sse(resp.text)
+    assert events[0]["event"] == "message_start", f"首事件不符: {events[0]}"
+    assert events[-1]["event"] == "error", f"失败轮必须以 error 收尾: {events[-1]}"
+    payload = events[-1]["data"]
+    assert payload["code"] == "AGENT_FAILURE", f"错误码必须为 AGENT_FAILURE: {payload}"
+    assert payload["problem"] == "LLM 调用失败（APITimeoutError）", f"problem 须锁全文: {payload}"
+    assert payload["cause"] and payload["fix"], f"cause/fix 必须齐全: {payload}"
+
+    messages = client.get(f"/api/agent/sessions/{session['id']}/messages").json()
+    assert [m["role"] for m in messages] == ["user"], f"用户消息必须保留: {messages}"
+    sessions = client.get("/api/agent/sessions", params={"project_id": project["id"]}).json()
+    assert sessions[0]["title"].startswith("帮我写第一幕"), f"标题回填必须已提交: {sessions[0]}"
