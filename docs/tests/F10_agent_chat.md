@@ -100,11 +100,13 @@
 
 - FE1: agent 工作流——进入 Agent 页 → 新建会话 → 发送消息（mock 流式回复）→ 草案卡确认 → 提示已写入 → 打开记忆文档编辑段保存（设计依据：DESIGN §6 剧本 C 前半链路）
 
-## 变异测试结果（用例实现完成后填写）
+## 变异测试结果
 
-- scope（被测模块）: backend/app/agent/（待运行；判杀基线为本页用例全绿后的最终代码，含 2026-09-07 逻辑自查修复）
+- scope（被测模块）: backend/app/agent/（9 文件 1015 个变异体；判杀基线为 0c02d08 定稿代码 + d3e1d8f 判杀桩有界化测试增强）
 - 判杀器: L1 tests/unit/test_agent_service.py、test_agent_llm.py、test_agent_prompts.py、test_agent_tools.py、test_agent_memory_docs.py + L2 tests/integration/test_agent_api.py + 架构测试（§9 层级覆盖：模块含 router 必须 L2；L3 视存活体分析决定是否追加）
-- kill rate / 存活变异体分析: 待填写（首跑曾至 90/1003 全部杀死，因模块文档未随代码提交触发了 E12 顺序门禁而主动中止重启）
+- **kill rate: 100%（实杀 1015/1015，等价登记 0，存活 0 / 超时 0 / 可疑 0）**——零存活故无需 L3 判杀器追加与等价性登记（2026-09-07 第三次运行，前两次运行事故见下）
+- 运行事故与判杀器强化（T-20260907-02 / **E17**）：前两次运行均挂死于同一变异体（service.py 工具分支条件 `and`→`or`，位于第 665 位）——该变异使 stream_chat 对纯文本回复也进工具分支 `continue`，无工具执行致 `used` 恒 0、`enable_tools` 恒真，无限循环调用 LLM；原判杀桩无界（假 LLM 有求必应）且 mutmut 超时依赖 SIGALRM 在 Windows 不存在，pytest 永不返回（实测载荷进程 2109s 纯空转）。修复：判杀桩全改有界（单测 `_scripted_llm` 脚本耗尽即抛替换 5 处重复型桩、U16/U30 调用上限守卫、集成 ChatCapture 耗尽显式抛错），手工应用该变异体验证 0.81s 断言失败（挂死→快速判杀）；规程固化于 testing.md §9「判杀桩有界性」
+- 运行残留处置：三次运行终止后均按 T-20260907-01 规程做三方对照（git diff / .bak / 当前），残留变异体与 .bak 全部经 `git checkout` 还原、架构测试拦截确认
 
 ## 验收审查记录（docs/testing.md §10）
 

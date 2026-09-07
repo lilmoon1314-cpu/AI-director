@@ -1,9 +1,9 @@
 # PROGRESS.md
 
 ## 当前状态
-- 最新commit：F12 工作台导航与资产页重构完成（passing，见 git log）
-- 测试状态：后端 224 通过 + 前端 vitest 92 单元（含 assetFilters 10 参数化实例）+ 集成 51（FI1–FI13 + F08 保留回归）+ Playwright e2e 13（含 FE1–FE3 两级钻取全链路）；变异门禁按纯前端规则自动跳过（无后端 service 改动，后端资产回归 16 过）
-- 功能清单：F01–F08、F11、F12 passing；F09 已取消；F10 not_started
+- 最新commit：F10 Agent 对话与确认写入完成（passing，见 git log）
+- 测试状态：后端 309 通过（L1/L2/L3 + 架构）+ 前端 vitest 156（单元+集成）+ Playwright e2e 14（含 FE1 agent 工作流）；变异门禁：agent 模块 1015 变异体 kill rate 100%（2026-09-07）；make check 全链通过
+- 功能清单：F01–F08、F10、F11、F12 passing；F09 已取消
 - Lint：make check 全绿（后端 ruff/format/lint-imports 7 契约/mypy/pytest + 前端 check-api-types/typecheck/lint/build）
 
 ## 当前已完成
@@ -23,36 +23,17 @@
 - 2026-09-06（续三）: **质量门禁双强化（用户决策）**——①变异证据机器门禁：verify_feature.py 写 passing 前强制校验（缓存存在/含该模块变异体/kill rate≥85%/缓存晚于模块最后提交，F04 起生效、L1 文件名约定定位模块、纯前端与空壳模块跳过；9 项单测；实测 F11 通过、F08/F04 重验将被要求重跑各自模块变异——DoD 诚实反映），E12 流程风险闭环；②验收审查子代理协议落 docs/testing.md §10（只读/自包含 prompt/结构化发现/verify 前触发/发现按 lessons §1 提升）+ AGENTS.md 工作规则；**F11 首次试点即抓出 P0**：GraphView 重置换机 useRef 判定在 key=projectId 整树重挂载下不可达（视角/选中/查看器跨项目残留，E14 登记）→ 改读全局 graphStore.loadedProjectId 陈旧检测 + FU1 集成用例锁定（generalCards 保留断言）；P1×2 文档漂移（FU1 机制/I8 known_by 维度）与 P2×4（默认项目常量收敛 client.ts/测试目标口径/e2e 判杀重叠论证）全部处置，处置记录入 F11 测试文档「验收审查记录」
 
 - 2026-09-06（续四）: **F12 工作台导航与资产页重构（passing）**——资产页分区升级入 URL（react-router 子路由：`assets/general` 默认落点 OQ-6｜`assets/project` 类型库墙｜`assets/project/:entityType` 类型库详情，无效类型重定向回墙）；项目资产两级钻取（ProjectTypeWall 7 类型库卡聚合「N 实体·M 张图」/EntityTypeAssets 面包屑+asset-type-back+asset-search；空类型虚线卡与详情引导「去图谱页创建」经 `?create=entity&type=` 查询参数联动、GraphView 消费即清理）；通用参考库重命名与「跨项目共享」徽标 + 独立搜索（lib/assetFilters 纯函数：标题/描述/分类与 chips AND）+ 空库引导卡/搜索无命中独立提示 + 表单 modal 化（OQ-3，ui/Modal，卡片墙不再被整区替换）；AssetCardTile 按 DESIGN §9 统一（16:10 封面 scale-105/-translate-y-1/text-sm 概要/编辑按钮 hover+focus 可见）；三要素错误态落地（assetStore generalError/entityError + ui/ErrorStrip 错误条+重试，不再吞错成空态）。**验收审查（§10 协议第 2 轮）12 条发现（P0×0/P1×3/P2×9）全处置**：P1 抓出 DESIGN 虚登 verify 状态（E01 同型，改指 features.md 唯一事实源）、FI11 参数清理零断言（补 LocationProbe）、error 态偏离基线（按基线实现而非登记偏离）；集成测试抓出真缺陷 **E15**（react-router 嵌套 Outlet 不自动继承 context，深链冷启动拼 /projects/undefined——已入 CONSTRAINTS 硬约束 + FI4 判杀）与 assetStore 跨用例缓存泄漏（T-20260906-05）。测试：L1 assetFilters 10 参数化实例、L2 集成 51（FI1–FI13+保留回归）、L3 e2e 13/13、后端资产回归 16；ProjectAssetSection 退役。详见 docs/tests/F12_workbench_navigation_assets.md（含 testid 迁移契约与验收审查记录）、DECISIONS.md 与 git log
+- 2026-09-07: **F10 Agent 对话与确认写入（passing）**——后端 agent 模块从零建九件套（llm/prompts/tools/rendering/service/repository/router/schemas/models）：四表迁移（conversations/messages/memory_docs/memory_doc_sections）+ LLM 封装（懒加载单例/usage 记录/轻量模型路由/JSON 栅栏修复重试）+ 受控 ReAct 工具轮（每轮配额+四检索工具，视角过滤经 perspectives 唯一入口）+ SSE 伪流式对话轮（用户消息先行提交/标题回填/滚动摘要+空串保护/exclude 防双份注入/错误统一转 error 事件）+ 记忆文档 HTML 分段模板与段级 CAS patch（自包含全转义渲染）+ 合规 hook 替换位；前端 agentStore（SSE 会话级生命周期+全局单流+action 全路径 catch→E16）+ AgentHome/AgentDock/消息流/草案确认卡/DocEditor + tab-agent 路由。**质量链**：验收审查（§10 第 3 轮）12 条全处置；变异 mutmut 1015 变异体 **kill rate 100%**（零存活零等价）——期间两次运行挂死于同一无限循环变异体，判杀桩有界化修复（**E17**）+ 前端定时炸弹用例修复（**E18**），T-20260907-01/02/03 登记；agent 模块 ARCHITECTURE/CONSTRAINTS 重写为落地态，DECISIONS 登记 7 条（HTML 分段记忆文档/思考方式/检索方式/安全三防线/F10-F13 切分/落地基线偏离/越权边界）。测试：后端 309 全绿（L1/L2/L3+架构）、前端 vitest 156、Playwright 14（含 FE1 agent 工作流）；make check 全链通过，verify F10 含变异证据机器门禁通过。详见 docs/tests/F10_agent_chat.md 与 git log
 
 ## 进行中
-
-**F10（Agent 对话与确认写入）**——底座范围（创作工作流拆 F13，2026-09-06 用户决策：轻量 ReAct 内环 / 记忆文档 HTML 分段两段式 / 内置三防线+合规 hook / ToT 以多方案征求替代）：
-
-- [x] 激活 F10 + 撰写测试文档 docs/tests/F10_agent_chat.md（先行，pending 态）
-- [x] config 新增 AGENT_*（预算/窗口/工具配额/合规开关）与 LLM_MODEL_LIGHT + .env.example 同步
-- [x] Alembic 迁移：conversations / messages / memory_docs / memory_doc_sections 四表 + DDL 架构断言扩展
-- [x] llm.py 封装（懒加载单例/超时/usage 记录/JSON 修复重试 1 次/轻量模型路由）+ 单测
-- [x] perspectives.filter_entities_for_agent（可见实体完整属性，规则不出模块）+ 架构断言
-- [x] prompts.py 上下文组装（分层顺序/图谱目录/文档目录 hash/预算裁剪/注入分隔符）+ 单测
-- [x] tools.py 四检索工具（entity_detail/neighborhood/search/doc_section）+ 每轮配额 + 单测
-- [x] memory_docs 段级 service + rendering.py 自包含 HTML（全转义）+ 段级 patch CAS + 单测
-- [x] agent service：stream_chat（SSE 事件协议）/propose/confirm_write/会话 CRUD + 单测
-- [x] router（/api/agent/*，project_id 查询参数渐进迁移约定）+ main 挂载 + openapi.json + import-linter agent 契约 + L2 集成测试
-- [x] 前端：gen:api-types → agentStore（SSE 会话级生命周期）→ AgentHome/AgentDock/消息流/草案确认卡/DocEditor（doc_patch diff 卡随 F13）→ 路由 + vitest + Playwright FE1
-- [x] 三层测试全绿：后端 307（L1/L2/L3 + 架构）、前端 vitest 103 + 集成 55 + e2e 14；make check 全链通过
-- [x] 逻辑自查修复三处（用户消息先行 commit 兑现失败保留语义 / 本轮输入 exclude 防双份注入 / 滚动摘要空串保护）+ 大写栅栏兼容；补判杀用例 U29–U31、I12、栅栏参数化（T-20260907-01：mutmut 中断变异体残留 llm.py 已还原，架构测试拦截）
-- [x] 文档同步：DECISIONS 登记 5 项新决策、agent/frontend ARCHITECTURE+CONSTRAINTS 落地态、data_struct_define §11.3、DESIGN OQ-2 裁决标注、测试文档用例矩阵校准（U29–U31/I12/描述漂移修正）
-- [x] 验收审查（§10 第 3 轮）12 条发现全处置：P1×5（切会话语义定稿+全局单流输入锁 / 三 action 补 catch 落错误态→**E16 登记** / U17 截断锁全文断言 / U15 非整数 seq / DocPatchCard 虚报更正）+ P2×7（E05 锁值、恒真断言、FU1-6/7、I9 越权边界 DECISIONS、U11/I3 校准、增强用例登记、DESIGN 三注记）；审查记录入测试文档
-- [x] 提交 agent 终态（0c02d08：审查 12 条处置 + 逻辑自查修复 + agent 模块文档落地态，21 文件）
-- [x] 变异运行挂死处置（T-20260907-02 + **E17 登记**）：无限循环变异体（service.py 工具分支 and→or 使 break 不可达）× 判杀桩无界 × Windows 无 SIGALRM，两次独立挂死于 664/1015——判杀桩全改有界（单测 _scripted_llm 耗尽即抛替换 5 处重复型桩 / U16·U30 调用上限守卫 / 集成 ChatCapture 耗尽显式抛错），手工应用该变异体验证 0.81s 快速判杀；testing.md §9 增「判杀桩有界性」Windows 必须守则；残留变异体与 .bak 经 git checkout 还原
-- [x] 前端回归抓出定时炸弹用例（T-20260907-03 + **E18 登记**）：Projects.test FU2 硬编码 updated_at=09-06 喂相对时间断言「今天」，撰写日次日起永久失败——fixture 改 new Date().toISOString() 动态生成；testing.md §10 清单补「相对时间 fixture 动态生成（E18）/ 判杀桩有界（E17）」必查项；AgentHome/AssetLibrary/EntityPicker 硬编码日期登记为待清理雷区
-- [ ] mutmut 全量重跑（kill rate ≥85%）→ 测试文档变异小节 → verify F10 → push + F13 登记「下一步」
+- 无
 
 ## 已知问题
 - 无
 
 ## 下一步
-1. F10（Agent 对话与确认写入）：POST /api/agent/chat SSE 流式回复（上下文经视角过滤）；propose 结构化草案；confirm 确认落库；AgentHome + AgentDock 载体按 DESIGN.md §5.4/§5.5（开工时 `python scripts/task.py verify F10 --activate`；首任务撰写测试文档 docs/tests/F10；SSE 会话级生命周期落地时修订 frontend/CONSTRAINTS.md 并按 §10 派验收审查子代理）
-2. 第二阶段候选项（届时先立功能项）：通用资产自定义属性 schema 注册表 + agent 辅助定制（分类→属性定义→动态表单/HTML 模板）、通用资产页 HTML 源码级编辑、资产注入 LLM 多模态上下文（依赖 F10）
-3. mutmut 运行规程提醒：mutmut 必须在代码定稿并提交后单独运行，运行期间禁止编辑被测模块（E11，已由脏树守卫拦截）
+1. F13（Agent 创作工作流，F10 底座上的后续功能）：harness 必须事项清单（L0 配置层）逐项核对、故事大纲模板（结构分段+权重+时长）、plan/step 步骤卡可视化与 ask_user 多方案征求卡（F10 SSE 事件协议已预留 draft/doc_patch/ask_user/plan/step）、doc_patch diff 卡、Dock 会话切换下拉与 Esc 快捷键（F10 落地基线偏离清单见 DECISIONS 2026-09-07）；开工时 `python scripts/task.py verify F13 --activate`，首任务撰写测试文档 docs/tests/F13_*.md
+2. 第二阶段候选项（届时先立功能项）：通用资产自定义属性 schema 注册表 + agent 辅助定制（分类→属性定义→动态表单/HTML 模板）、通用资产页 HTML 源码级编辑、资产注入 LLM 多模态上下文（依赖 F10，已就绪）
+3. mutmut 运行规程提醒：必须在代码定稿并提交后单独运行，运行期间禁止编辑被测模块（E11 脏树守卫）；判杀桩必须有界——脚本耗尽即抛错，禁止无条件重复回复的桩（E17，Windows 无 SIGALRM 挂死教训）；变异运行期间避免机器睡眠（T-20260907-02：挂死两次均发生于此）
+4. 前端测试雷区清理（低优先级）：AgentHome/AssetLibrary/EntityPicker 测试存在硬编码日期（E18，当轮未喂相对时间断言故未爆），触碰时按 E18 动态化
 
