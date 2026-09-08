@@ -15,14 +15,14 @@ describe("agentUsage（FU2/FU3）", () => {
     [0.81, true, "边界值-超0.8警示"],
     [1, true, "满容量"],
     [1.2, true, "超上限原值"],
-  ])("FU2: isUsageWarn(%s) → %s（%s）", (ratio, expected, _label) => {
+  ])("FU2: isUsageWarn(%s) → %s（%s）", (ratio, expected) => {
     expect(isUsageWarn(ratio)).toBe(expected);
   });
 
   it.each([
     [null, false, "None 安全"],
     [undefined, false, "缺省安全"],
-  ])("FU2: isUsageWarn(%s) → false（%s）", (ratio, expected, _label) => {
+  ])("FU2: isUsageWarn(%s) → false（%s）", (ratio, expected) => {
     expect(isUsageWarn(ratio)).toBe(expected);
   });
 
@@ -31,7 +31,7 @@ describe("agentUsage（FU2/FU3）", () => {
     [0.5, 50, "半容量"],
     [0.8, 80, "边界值"],
     [1.5, 100, "展示层钳制到100"],
-  ])("FU2: ratioPercent(%s) → %s（%s）", (ratio, expected, _label) => {
+  ])("FU2: ratioPercent(%s) → %s（%s）", (ratio, expected) => {
     expect(ratioPercent(ratio)).toBe(expected);
   });
 
