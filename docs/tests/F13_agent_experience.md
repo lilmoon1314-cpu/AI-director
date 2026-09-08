@@ -22,7 +22,7 @@
 | 前端 L1/L2 | docPreview 转义 / usage 派生纯函数 / store SSE 消费与删除 action / 组件交互 | `pnpm test:unit && pnpm test:integration` | pass（120+71=191 例） |
 | 架构 | messages 新列 DDL 契约断言 | `pytest tests/architecture` | pass（A1；后端全量 338 绿） |
 | Playwright | FE1 agent 工作流（扩展 usage 帧断言）+ 全量回归 | `pnpm test:e2e` | pass（14/14） |
-| 变异 | mutmut 定向 agent 模块（llm/service/repository） | `python scripts/task.py mutate` | pending |
+| 变异 | mutmut 定向 agent 模块（llm/service/repository） | `python scripts/task.py mutate` | pass（100%，见下节） |
 | 全链 | make check | `make check` | pass |
 
 ## 用例说明
@@ -119,12 +119,16 @@
 
 > 规程（docs/testing.md §9）：用例实现完成、verify F13 之前对 agent 模块定向运行 mutmut；kill rate ≥ 85% 且存活变异体逐一分析（补用例或登记等价性）；判杀桩必须有界（E17）；运行期禁改被测模块（E11）。
 
+- scope（被测模块）: backend/app/agent/（10 文件 1174 变异体；基线 bb6484d 定稿代码）
+- 判杀器: L1 tests/unit/test_agent_service.py、test_agent_llm.py、test_agent_prompts.py、test_agent_tools.py、test_agent_memory_docs.py + L2 tests/integration/test_agent_api.py + 架构测试（§9 层级覆盖：模块含 router 必须 L2；零存活故无需 L3 判杀器追加）
+- 运行后处置（T-20260907-01/02 规程）: git status 无 M、无 .bak 残留；后端全量 338 绿 + make check exit 0 + Playwright 14/14 复跑确认还原
+
 | 指标 | 值 |
 |---|---|
-| 运行时间 | pending |
-| 变异体总数 / 判杀 / 存活 / 等价 / 超时 | pending |
-| kill rate | pending（门槛 ≥85%） |
-| 存活体处置 | pending |
+| 运行时间 | 2026-09-08，约 97 分钟（一次完整运行，零挂死——E17 有界判杀桩全程生效） |
+| 变异体总数 / 判杀 / 存活 / 等价 / 超时 | 1174 / 实杀 1173 / 存活 0 / 等价登记 0 / 超时 0 / 可疑 1 |
+| kill rate | **100%**（1173/1174 实杀 + 唯一可疑体 687 手工复判为实杀；严格按 mutmut 桶口径 99.9%，远超 85% 门槛） |
+| 存活体处置 | 零存活。可疑体 687（service.py `_maintain_rolling_summary` 溢出计数 `-`→`+`）：mutmut 计时分类噪声——手工 `mutmut apply 687` 后 `pytest -k rolling_summary` 0.85s 断言失败实杀（test_rolling_summary_overflow 的游标断言 `summary_until_id.startswith("msg-old")` 精确覆盖溢出切片边界） |
 
 ## 验收审查记录（docs/testing.md §10）
 
@@ -149,9 +153,9 @@
 
 ## 验收判定
 
-- [ ] 后端 L1/L2/L3 全 pass
-- [ ] 前端 L1/L2 全 pass（既有 Playwright e2e 回归通过）
-- [ ] 架构断言 pass、make check 全绿
-- [ ] mutmut kill rate ≥ 85%（证据入上表）
-- [ ] 验收审查发现全 triage
-- [ ] `python scripts/task.py verify F13` → passing
+- [x] 后端 L1/L2/L3 全 pass（338）
+- [x] 前端 L1/L2 全 pass（vitest 191；Playwright 14/14）
+- [x] 架构断言 pass、make check 全绿（exit 0，变异运行后复验）
+- [x] mutmut kill rate ≥ 85%（100%，证据入上节）
+- [x] 验收审查发现全 triage（P0×4/P1×2/P2×6，见审查记录表）
+- [x] `python scripts/task.py verify F13` → passing（2026-09-08，机器门禁含变异证据校验通过）
