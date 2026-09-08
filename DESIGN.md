@@ -424,6 +424,9 @@ Claude 式两栏（左栏可折叠）：
 | OQ-5 | 切换项目时未提交表单输入的保护 | MVP 不拦截；出现真实损失案例再做草稿暂存 |
 | OQ-6 | 资产页默认落点 | `assets/general`（按用户叙述顺序）；可随使用反馈调整 |
 | OQ-7 | Agent 会话标题生成 | MVP 取首条用户消息截断；自动命名（LLM）第二阶段 |
+| OQ-8 | agent 写入工具的用户许可模式 | **已裁决（2026-09-08）**：轮末统一确认（见 §12.2） |
+| OQ-9 | 多系列共享世界观的组织方式 | **已裁决（2026-09-08）**：项目内系列维度（见 §12.4） |
+| OQ-10 | 全局用户画像沉淀方式 | **已裁决（2026-09-08）**：自动沉淀 + 透明可编辑（见 §12.3） |
 
 ---
 
@@ -431,8 +434,112 @@ Claude 式两栏（左栏可折叠）：
 
 建议按依赖序拆三个功能项（编号顺延、F10 编号不变挪后执行）：
 
-1. **多项目底座**：后端 projects 表 + project_id 迁移 + 项目 CRUD API + 默认项目打包；前端 react-router + 项目首屏 + 顶栏切换器 + store 重置矩阵。
+1. **多项目底座**：后端 projects 表 + project_id 迁移 + 默认项目打包；前端 react-router + 项目首屏 + 顶栏切换器 + store 重置矩阵。
 2. **工作台导航与资产页重构**：资产页两级钻取 + 搜索 + 空状态引导 + 表单 modal 化 + testid 迁移。
 3. **F10 Agent 对话与确认写入**（既有清单项）：后端 chat/propose/confirm + 会话/记忆文档表 + AgentHome + AgentDock + 剧本 C 全链路。
 
 > 依 AGENTS.md 规则：正式开工前须先在 docs/features.md 增补功能项行（范围决策，非状态手改）+ 撰写对应 docs/tests/FXX 测试文档（先行）+ PROGRESS 任务清单。
+
+---
+
+## 13. Agent 体验与记忆体系升级（2026-09-08 验收反馈规划，F13–F16）
+
+> 背景：F10 验收暴露五类问题——①伪流式无思考可视化、无 token 观测；②会话/记忆文档不可删除；③agent 只有检索工具、写入流程断裂（草案需手动转录）；④指导文档可重复创建、编辑框过小、长期记忆体系（剧本/台本/分镜/用户画像/跨会话）缺失；⑤多系列共享世界观无从组织。四项关键分叉已由用户裁决（OQ-8/9/10 + 实施顺序），登记 DECISIONS 2026-09-08。
+
+### 13.1 F13 对话体验升级
+
+**真流式 + 思考可视化**（实测百炼 `deepseek-v4-flash-0731` 原生输出 `reasoning_content`，`stream=True` + `include_usage` 可用，2026-09-08）：
+
+- 后端 `llm.py` 新增 `stream_chat_turn`（流式生成器：reasoning delta / content delta / 聚合后的 tool_calls / usage 四类产出；流式 tool_calls 分片按 index 聚合）；`chat_turn` 保留给摘要/propose 等非流式路径。
+- SSE 协议扩展两事件：`reasoning`（思考增量，逐 chunk 下发）与 `usage`（done 前：prompt/completion tokens + 上下文容量占比 = 本轮 prompt_tokens ÷ AGENT_CONTEXT_MAX_TOKENS）；`token` 事件改真流式（废除 _TOKEN_CHUNK_CHARS 伪分块）。
+- 前端 `ThinkingBlock`：气泡内顶部灰字小字思考流；思考中自动展开跟随滚动、回复开始后自动折叠为「已思考 N 秒」标题行、点击可再展开（Z-code 式）；assistant 消息模型增加 `reasoning` 字段。
+- `UsageBar`：输入框上方细条——本轮 prompt/completion 数字 + 会话累计 + 容量占比条（超 80% 变琥珀色警示）。
+
+```
+┌─ Agent 气泡 ─────────────────────────────┐
+│ ▸ 已思考 6 秒                     （灰小字）│ ← 折叠态，点击展开
+│ 9.9 大（9.9 = 9.90 > 9.11）。正文流式逐字… │
+└──────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│ 上下文 3.2k / 100k ▓▓░░░░░ 3%  本轮 97+106 │ ← UsageBar
+└──────────────────────────────────────┘
+```
+
+**删除能力**：`DELETE /api/agent/sessions/{id}`（级联 messages）、`DELETE /api/agent/memory-docs/{id}`（级联 sections）；前端会话项 hover 🗑（输入标题确认，对齐项目删除模式）+ 文档卡 🗑（轻确认）。
+
+**文档编辑大弹窗**：DocEditor 由原地小框改全屏 Modal（max-w-5xl 级）：左栏段列表（当前段高亮）+ 右栏段编辑表单 + 底部 iframe 实时预览；Esc 关闭（有脏输入时确认）。
+
+**指导文档唯一性（验收缺陷，提前修复）**：`create_doc` 服务层按 kind 查重——指导类（positioning/style）项目内已存在即 409（三要素）；前端「＋新建」对指导类置灰并提示「每项目仅一份」。
+
+**Dock 遗留交互**（F10 落地基线偏离清单兑现）：顶部会话切换下拉 +「＋新会话」；焦点在 Dock 内 Esc 收起。
+
+### 13.2 F14 Agent 写入工具链（OQ-8：轮末统一确认）
+
+**工具扩展**（tools.py，写入类工具执行≠落库，仅登记 pending）：
+
+- 图谱写入：`create_entity(type, name, properties?)`、`update_entity(entity_id, properties_patch)`、`create_relation(source_name, target_name, relation_type, known_by?)`
+- 文档写入：`create_memory_doc(kind, title)`、`write_doc_section(doc_id, seq, title?, content)`（段级 CAS 语义保留：登记时记录基线 version，落库校验）
+- 读取不变：四检索工具 + 目录常驻。
+
+**轮末统一确认流**（已裁决）：
+
+```
+agent 调写入工具 → 工具登记 pending write（返回 tool result「已登记，待作者确认」）
+→ 本轮回复流式完毕（done 事件携带 pending_writes 摘要）
+→ 前端渲染待写入卡（复用草案卡视觉，逐项勾选/全选）
+→ [全部写入] → POST /api/agent/pending-writes/approve（批量）
+   → 服务端逐项二次校验（名称冲突/端点存在/段 CAS）→ 落库 → 卡片转成功态
+   → graphStore/docStore 失效刷新（画布新节点淡入）
+→ [放弃] → 状态置 rejected，卡片转灰
+```
+
+- 新表 `agent_pending_writes(id, conversation_id, project_id, kind, payload_json, baseline_json, status: pending/approved/rejected, created_at)`；对话内多轮的 pending 互不覆盖，确认以卡为单位。
+- `propose` 端点保留标注 legacy（对话内写入工具为主路径）；写入落库全部复用 entities/relations/agent 既有 service（校验单一来源）。
+- 安全：写入工具参数 Pydantic 白名单；approve 时服务端复核不信任前端；每轮 pending 数量上限（config AGENT_MAX_PENDING_WRITES）。
+
+### 13.3 F15 长期记忆体系（OQ-10：自动沉淀 + 透明可编辑）
+
+**文档类型学**（memory_docs.kind 扩展为两类）：
+
+- **guide 指导类（项目内唯一）**：世界观定位 positioning、风格约定 style——项目级共享，不可重复（13.1 已先行唯一性约束）；项目创建/存量项目首次进入 Agent 时惰性补建空模板。
+- **work 作品类（多实例）**：故事大纲 outline（结构分段 + 权重 + 时长，原 F13 计划并入）、剧本 screenplay、台本 episode_script、分镜 storyboard——模板注册表 DOC_TEMPLATES 扩展，各定义段结构；可建任意多份（「正传第 1 集剧本」「外传序幕」并存）。
+- UI：文档区分「指导 / 作品」两组；新建入口只列作品类模板；每卡显示 kind 徽标与更新时间。
+
+**全局用户画像（跨项目，自动沉淀）**：
+
+- 新表 `global_memory_entries(id, kind: preference/motif/taboo/fact, content, source_conversation_id, created_at, updated_at)`（主库，无 project_id）。
+- 每轮对话结束 `LLM_MODEL_LIGHT` 后台提炼候选条目（限 N 条/轮，config 开关 AGENT_PROFILE_AUTO_CAPTURE 默认开）→ 自动入库；下一轮 system 前缀注入全局画像摘要（预算内截断）——跨项目生效。
+- 透明可编辑：项目首屏新增「全局记忆」入口（/global-memory）——列表 + 手动新增/编辑/删除 + 来源会话链接；agent 自动条目与手动条目同权展示。
+
+**跨会话记忆**：
+
+- 新工具 `search_session_summaries(q)`：检索本项目历史会话 summary + 标题 + 时间（MVP LIKE 匹配）；默认不注入全部历史（成本），按需检索。
+- 会话滚动摘要（F10 已有）继续作为会话内压缩层；跨会话显式记忆一律沉淀进 memory_docs / 全局画像，维持「图谱=事实、文档=过程、画像=偏好」三源分工。
+
+### 13.4 F16 多系列剧情线（OQ-9：项目内系列维度）
+
+**模型**：项目 = 世界观宇宙；新增 `series(id, project_id FK, name, description, ...)` 与 `entity_series(entity_id, series_id)` 多对多——**无关联 = 全系列共享底座**，挂关联 = 系列专属/重点；`memory_docs.series_id FK NULL`（NULL=项目级共享文档；非 NULL=该系列剧情文档）。关系不挂系列（过滤按端点实体归属推导）。
+
+**过滤语义**：`GET /api/graph?series=<id|shared|all>`——series 视图 = 共享实体 ∪ 该系列实体 + 其间关系；agent 对话参数增 series（图谱目录与检索工具同口径过滤，创作默认聚焦当前系列、共享底座常驻）。
+
+**UI**：项目内系列管理（AgentHome 记忆区上方「系列」条：新建/改名/删除/切换当前系列）；图谱页顶栏系列筛选下拉（复用视角切换器视觉）；文档卡显示系列徽标；资产页按系列过滤为后置增强（图片资产随实体走）。
+
+```
+项目「长安怪谈宇宙」
+├─ 共享底座: 图谱 194 实体 · 指导文档 · 通用资产
+├─ 系列《正传》: 剧本/分镜/大纲挂系列 + 专属实体标记
+└─ 系列《外传》: 独立剧情文档 + 专属实体标记
+```
+
+### 13.5 功能拆分与编号重组（已立项 features.md F13–F16）
+
+| 功能 | 主题 | 来源 |
+|---|---|---|
+| F13 | 对话体验升级（真流式/思考可视化/usage 窗口/删除/大弹窗/指导唯一/Dock 遗留） | 反馈①② + F10 偏离清单 |
+| F14 | 写入工具链（读写工具 + 轮末统一确认 + pending 落库 + 图谱失效联动） | 反馈③ |
+| F15 | 长期记忆体系（文档类型学/作品模板/全局画像/跨会话检索） | 反馈④ |
+| F16 | 多系列剧情线（series 表/实体关联/文档挂载/过滤） | 反馈⑤ |
+
+- 实施顺序（用户裁决）：F13 → F14 → F15 → F16。
+- 原登记的「F13 创作工作流」重组：故事大纲模板并入 F15 作品类模板；ask_user 多方案征求卡并入 F14 确认机制族（后续增强）；plan/step 步骤卡与 harness 必须事项清单移第二阶段候选（PROGRESS 登记）。
+- 每个 FXX 照 AGENTS.md 流程：features.md 行 → 测试文档先行 → 实现 → §10 审查 → verify。

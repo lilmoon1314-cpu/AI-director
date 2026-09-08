@@ -24,6 +24,7 @@
 
 - 2026-09-06（续四）: **F12 工作台导航与资产页重构（passing）**——资产页分区升级入 URL（react-router 子路由：`assets/general` 默认落点 OQ-6｜`assets/project` 类型库墙｜`assets/project/:entityType` 类型库详情，无效类型重定向回墙）；项目资产两级钻取（ProjectTypeWall 7 类型库卡聚合「N 实体·M 张图」/EntityTypeAssets 面包屑+asset-type-back+asset-search；空类型虚线卡与详情引导「去图谱页创建」经 `?create=entity&type=` 查询参数联动、GraphView 消费即清理）；通用参考库重命名与「跨项目共享」徽标 + 独立搜索（lib/assetFilters 纯函数：标题/描述/分类与 chips AND）+ 空库引导卡/搜索无命中独立提示 + 表单 modal 化（OQ-3，ui/Modal，卡片墙不再被整区替换）；AssetCardTile 按 DESIGN §9 统一（16:10 封面 scale-105/-translate-y-1/text-sm 概要/编辑按钮 hover+focus 可见）；三要素错误态落地（assetStore generalError/entityError + ui/ErrorStrip 错误条+重试，不再吞错成空态）。**验收审查（§10 协议第 2 轮）12 条发现（P0×0/P1×3/P2×9）全处置**：P1 抓出 DESIGN 虚登 verify 状态（E01 同型，改指 features.md 唯一事实源）、FI11 参数清理零断言（补 LocationProbe）、error 态偏离基线（按基线实现而非登记偏离）；集成测试抓出真缺陷 **E15**（react-router 嵌套 Outlet 不自动继承 context，深链冷启动拼 /projects/undefined——已入 CONSTRAINTS 硬约束 + FI4 判杀）与 assetStore 跨用例缓存泄漏（T-20260906-05）。测试：L1 assetFilters 10 参数化实例、L2 集成 51（FI1–FI13+保留回归）、L3 e2e 13/13、后端资产回归 16；ProjectAssetSection 退役。详见 docs/tests/F12_workbench_navigation_assets.md（含 testid 迁移契约与验收审查记录）、DECISIONS.md 与 git log
 - 2026-09-07: **F10 Agent 对话与确认写入（passing）**——后端 agent 模块从零建九件套（llm/prompts/tools/rendering/service/repository/router/schemas/models）：四表迁移（conversations/messages/memory_docs/memory_doc_sections）+ LLM 封装（懒加载单例/usage 记录/轻量模型路由/JSON 栅栏修复重试）+ 受控 ReAct 工具轮（每轮配额+四检索工具，视角过滤经 perspectives 唯一入口）+ SSE 伪流式对话轮（用户消息先行提交/标题回填/滚动摘要+空串保护/exclude 防双份注入/错误统一转 error 事件）+ 记忆文档 HTML 分段模板与段级 CAS patch（自包含全转义渲染）+ 合规 hook 替换位；前端 agentStore（SSE 会话级生命周期+全局单流+action 全路径 catch→E16）+ AgentHome/AgentDock/消息流/草案确认卡/DocEditor + tab-agent 路由。**质量链**：验收审查（§10 第 3 轮）12 条全处置；变异 mutmut 1015 变异体 **kill rate 100%**（零存活零等价）——期间两次运行挂死于同一无限循环变异体，判杀桩有界化修复（**E17**）+ 前端定时炸弹用例修复（**E18**），T-20260907-01/02/03 登记；agent 模块 ARCHITECTURE/CONSTRAINTS 重写为落地态，DECISIONS 登记 7 条（HTML 分段记忆文档/思考方式/检索方式/安全三防线/F10-F13 切分/落地基线偏离/越权边界）。测试：后端 309 全绿（L1/L2/L3+架构）、前端 vitest 156、Playwright 14（含 FE1 agent 工作流）；make check 全链通过，verify F10 含变异证据机器门禁通过。详见 docs/tests/F10_agent_chat.md 与 git log
+- 2026-09-08: **F10 用户验收反馈会话（DESIGN.md §13 规划产出）**——用户亲自验收（百炼 deepseek-v4-flash-0731 已配置入 backend/.env 并直连/全链路双验证）提出五类问题：①伪流式无思考可视化无 token 观测 ②会话/文档不可删除 ③agent 缺写入工具交互断裂 ④指导文档可重复+编辑框小+长期记忆体系缺失 ⑤多系列共享世界观无从组织。四项分叉经 AskUserQuestion 裁决（轮末统一确认/项目内系列维度/画像自动沉淀+透明可编辑/顺序体验→写入→记忆→系列）登记 DECISIONS 2026-09-08 四条；DESIGN.md 新增 §13（F13–F16 升级设计，OQ-8/9/10 裁决入表）；features.md 增补 F13–F16 四行；原「F13 创作工作流」重组（大纲模板并入 F15、ask_user 并入 F14、plan-step 卡与 harness 清单移第二阶段候选）；技术前提实测：百炼模型原生 reasoning_content + stream + include_usage 可用，真流式方案成立
 
 ## 进行中
 - 无
@@ -32,8 +33,9 @@
 - 无
 
 ## 下一步
-1. F13（Agent 创作工作流，F10 底座上的后续功能）：harness 必须事项清单（L0 配置层）逐项核对、故事大纲模板（结构分段+权重+时长）、plan/step 步骤卡可视化与 ask_user 多方案征求卡（F10 SSE 事件协议已预留 draft/doc_patch/ask_user/plan/step）、doc_patch diff 卡、Dock 会话切换下拉与 Esc 快捷键（F10 落地基线偏离清单见 DECISIONS 2026-09-07）；开工时 `python scripts/task.py verify F13 --activate`，首任务撰写测试文档 docs/tests/F13_*.md
-2. 第二阶段候选项（届时先立功能项）：通用资产自定义属性 schema 注册表 + agent 辅助定制（分类→属性定义→动态表单/HTML 模板）、通用资产页 HTML 源码级编辑、资产注入 LLM 多模态上下文（依赖 F10，已就绪）
-3. mutmut 运行规程提醒：必须在代码定稿并提交后单独运行，运行期间禁止编辑被测模块（E11 脏树守卫）；判杀桩必须有界——脚本耗尽即抛错，禁止无条件重复回复的桩（E17，Windows 无 SIGALRM 挂死教训）；变异运行期间避免机器睡眠（T-20260907-02：挂死两次均发生于此）
-4. 前端测试雷区清理（低优先级）：AgentHome/AssetLibrary/EntityPicker 测试存在硬编码日期（E18，当轮未喂相对时间断言故未爆），触碰时按 E18 动态化
+1. **F13（Agent 对话体验升级，2026-09-08 立项）**：真流式 SSE（stream=True 逐 chunk + reasoning_content 思考可视化 + usage/上下文容量窗口）+ 会话/记忆文档删除 + 文档编辑大弹窗 + 指导类文档项目内唯一 + Dock 会话下拉/Esc（DESIGN.md §13.1；开工时 `python scripts/task.py verify F13 --activate`，首任务撰写测试文档 docs/tests/F13_agent_experience.md）
+2. 后续依赖序（用户裁决）：F14 写入工具链（轮末统一确认，§13.2）→ F15 长期记忆体系（文档类型学+全局画像+跨会话检索，§13.3）→ F16 多系列剧情线（series 维度，§13.4）
+3. 第二阶段候选：plan/step 步骤卡可视化、harness 必须事项清单、多方案备选征求卡增强、通用资产自定义属性 schema 注册表 + agent 辅助定制、通用资产页 HTML 源码级编辑、资产注入 LLM 多模态上下文
+4. 运行规程提醒：mutmut 代码定稿提交后单独运行、运行期禁改被测模块（E11）；判杀桩必须有界（E17）；相对时间断言 fixture 动态生成（E18）；变异运行期间避免机器睡眠
+5. 前端测试雷区清理（低优先级）：AgentHome/AssetLibrary/EntityPicker 测试硬编码日期（E18，触碰时动态化）
 

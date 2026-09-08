@@ -232,3 +232,24 @@
 - 决策: agent 会话/消息/记忆文档端点按全局唯一 id 寻址、仅校验存在性——不携带项目上下文校验归属；跨项目越权防护以 id 不可猜性（conv-/msg-/mdoc-/msec- + uuid 前缀 12 位十六进制）为 MVP 边界。
 - 原因: F11 渐进迁移约定下 agent 端点为查询参数式项目维度（路径无项目段），逐端点强制归属需引入 project_id 参数或从资源反查——MVP 单用户本地场景收益低；图谱数据注入已由视角过滤硬防线覆盖（I3 钉死），越权面仅限会话内容与文档读写。
 - 约束: 路径参数式项目维度 API 演进（DESIGN §8.4 终态）时收紧为归属校验；升级前禁止在 agent 端点暴露任何按项目枚举的未鉴权列表；read_doc_section 工具已按会话归属项目拒绝跨项目读取（tools.py，保持）。
+
+## 2026-09-08: Agent 写入工具用户许可——轮末统一确认（用户裁决，DESIGN OQ-8）
+- 原因: agent 具备写文档/建实体/建关系能力后必须保留作者主导权；轮末确认不打断流式、实现可靠（无 SSE 挂起等待机制）、与 F10 两段式写入哲学同构——写入工具执行时仅登记 pending（agent 收到「待作者确认」tool result），本轮 done 事件携带待写入清单，前端渲染确认卡（逐项勾选/全部写入/放弃），approve 时服务端二次校验后落库并触发图谱/文档失效刷新。
+- 否决: 工具级即时确认（每次写入暂停流式等待批准——SSE 单向流需挂起机制，长对话反复停顿体验碎、实现复杂度高）；全自动写入（违背作者主导）。
+- 约束: 新表 agent_pending_writes（conversation/project/kind/payload/baseline/status）；落库复用 entities/relations/agent 既有 service（校验单一来源）；approve 服务端复核不信任前端；每轮 pending 上限走 config（AGENT_MAX_PENDING_WRITES）；段级写入保留 CAS（baseline version 落库时校验，冲突作废重读）；propose 端点保留标注 legacy。
+
+## 2026-09-08: 多系列共享世界观——项目内系列维度（用户裁决，DESIGN OQ-9）
+- 原因: 项目 = 世界观宇宙（图谱/指导文档/通用资产全系列共享），series 表 + entity_series 多对多（无关联=共享底座、挂关联=系列专属），memory_docs.series_id 挂载剧情文档——一次建世界观多系列复用，图查询/资产/agent 上下文按系列过滤；用户明确否决分开管理（多项目割裂）。
+- 否决: 多项目 + 实体引用继承（引用同步复杂、切换割裂）；自由标签轻量起步（无结构约束力，后期迁移成本高）。
+- 约束: 关系不挂系列（过滤按端点实体归属推导）；series 视图 = 共享实体 ∪ 该系列实体；agent 对话带 series 参数（目录与检索工具同口径过滤，共享底座常驻）；资产图片随实体走不做独立系列归属；F16 落地。
+
+## 2026-09-08: 全局用户画像——自动沉淀 + 透明可编辑（用户裁决，DESIGN OQ-10）
+- 原因: 跨项目偏好/画像靠手动维护必然荒废（用户不记得自己的偏好表达），agent 每轮经 LLM_MODEL_LIGHT 后台提炼候选条目自动入库（限 N 条/轮，config 开关），下一轮 system 注入画像摘要跨项目生效；同时全部条目在 /global-memory 页可查看/编辑/删除/手动新增——自动积累与透明可控并存。
+- 否决: 每次确认后沉淀（频繁打断对话、积累慢）；纯手动（画像目标落空）。
+- 约束: 新表 global_memory_entries（无 project_id，kind: preference/motif/taboo/fact + 来源会话）；画像注入预算内截断；默认开关 AGENT_PROFILE_AUTO_CAPTURE=true；F15 落地。
+
+## 2026-09-08: F13–F16 立项与编号重组（用户裁决：体验→写入→记忆→系列）
+- 内容: F10 验收反馈五类问题拆四个功能项（features.md 已增行）：F13 对话体验升级（真流式+reasoning_content 思考可视化+usage/上下文容量窗口+会话/文档删除+编辑大弹窗+指导文档唯一性+Dock 下拉/Esc 兑现）；F14 写入工具链（轮末统一确认，见上条决策）；F15 长期记忆体系（guide 唯一/work 多实例文档类型学+outline/screenplay/episode_script/storyboard 作品模板+全局画像+search_session_summaries 跨会话检索）；F16 多系列剧情线（见上条决策）。
+- 原编号重组: 原「F13 创作工作流」拆解——故事大纲模板并入 F15 作品类模板注册表；ask_user 多方案征求卡并入 F14 确认机制族；plan/step 步骤卡与 harness 必须事项清单移第二阶段候选。
+- 技术前提（已实测 2026-09-08）: 百炼 deepseek-v4-flash-0731 原生输出 reasoning_content（默认开启）、stream=True 分片可用、include_usage 可取精确 token 统计——真流式与思考可视化方案成立。
+- 约束: 每功能照 AGENTS.md 全流程（测试文档先行/§10 审查/verify 含变异门禁）；实施顺序 F13→F14→F15→F16，不得并行开工。
