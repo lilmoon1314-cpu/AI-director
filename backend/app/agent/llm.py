@@ -8,6 +8,7 @@
 """
 
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -206,6 +207,98 @@ async def chat_turn(
             for tc in tool_calls
         ]
     return AssistantTurn(content=message.content, tool_calls=tool_calls, raw=raw)
+
+
+async def stream_chat_turn(
+    system: str,
+    messages: list[dict[str, str]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    model: str | None = None,
+) -> AsyncIterator[tuple[str, Any]]:
+    """执行一次流式对话补全，按到达顺序逐片产出规范化事件（真流式，F13）。
+
+    作用:
+        SDK 流式响应（stream=True + include_usage）归一化为四类事件元组——
+        ("reasoning_delta", str)（思考增量，逐片）；("content_delta", str)
+        （正文增量，逐片，与上游分片一一对应）；("usage", dict)（token 用量
+        prompt_tokens/completion_tokens，端点支持时末尾一次，不支持则不产出）；
+        ("turn", AssistantTurn)（聚合产物，恒最后产出：content 为全片拼接、
+        tool_calls 按 index 聚合（id/name 取首片、arguments 增量拼接）、raw
+        为历史回传形状与 chat_turn 一致）。usage 记入运行事件；SDK/网络异常
+        （含流中断）包装为 AgentError，禁止原始异常冒泡。
+    参数:
+        system — 系统提示词；messages — 对话消息（openai 格式 dicts）；
+        tools — 工具定义（openai function 格式，None=不启用）；
+        model — 模型名（None=主模型 config.llm_model）。
+    返回值: AsyncIterator[tuple[str, Any]] — 事件流（见「作用」）。
+    异常:
+        AgentError — API 密钥未配置 / 超时 / 端点失败 / 流中断。
+    依赖: get_client、app.config.get_settings、core.observability。
+    """
+    resolved_model = model or get_settings().llm_model
+    client = get_client()
+    chat_messages: list[dict[str, Any]] = [{"role": "system", "content": system}, *messages]
+    kwargs: dict[str, Any] = {
+        "model": resolved_model,
+        "messages": chat_messages,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if tools:
+        kwargs["tools"] = tools
+    try:
+        stream = await client.chat.completions.create(**kwargs)
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        # 流式 tool_calls 分片：index -> {"id", "name", "args": [分片…]}（按 index 聚合）
+        tool_acc: dict[int, dict[str, Any]] = {}
+        usage_payload: dict[str, int | None] | None = None
+        async for chunk in stream:
+            if chunk.usage is not None:
+                usage_payload = {
+                    "prompt_tokens": getattr(chunk.usage, "prompt_tokens", None),
+                    "completion_tokens": getattr(chunk.usage, "completion_tokens", None),
+                }
+                _record_usage(resolved_model, chunk.usage)
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            reasoning_text = getattr(delta, "reasoning_content", None)
+            if reasoning_text:
+                reasoning_parts.append(reasoning_text)
+                yield ("reasoning_delta", reasoning_text)
+            if delta.content:
+                content_parts.append(delta.content)
+                yield ("content_delta", delta.content)
+            for frag in delta.tool_calls or []:
+                slot = tool_acc.setdefault(frag.index, {"id": "", "name": "", "args": []})
+                if frag.id:
+                    slot["id"] = frag.id
+                if frag.function and frag.function.name:
+                    slot["name"] = frag.function.name
+                if frag.function and frag.function.arguments:
+                    slot["args"].append(frag.function.arguments)
+        tool_calls = [
+            ToolCall(call_id=slot["id"], name=slot["name"], arguments="".join(slot["args"]))
+            for _, slot in sorted(tool_acc.items())
+        ]
+        content = "".join(content_parts) if content_parts else None
+        raw: dict[str, Any] = {"role": "assistant", "content": content}
+        if tool_calls:
+            raw["tool_calls"] = [
+                {
+                    "id": tc.call_id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in tool_calls
+            ]
+        if usage_payload is not None:
+            yield ("usage", usage_payload)
+        yield ("turn", AssistantTurn(content=content, tool_calls=tool_calls, raw=raw))
+    except (openai.APITimeoutError, openai.APIError, openai.OpenAIError) as exc:
+        raise _wrap_llm_error(exc, model=resolved_model) from exc
 
 
 def _parse_json_payload(raw: str) -> dict[str, Any]:

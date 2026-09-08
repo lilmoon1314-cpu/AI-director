@@ -319,6 +319,33 @@ def test_agent_schema_declared() -> None:
     )
 
 
+def test_message_reasoning_usage_columns_declared() -> None:
+    """messages 思考与 usage 三列的 DDL 契约（F13）。
+
+    失败含义:
+        【问题】messages 缺少 reasoning / prompt_tokens / completion_tokens 列，
+            或迁移未同步该三列
+        【原因】思考过程与 token 用量是 F13 真流式的落库载体——列缺失时前端
+            「已思考」展开与 UsageBar 容量窗口在刷新后丢失数据
+        【修复】对照 app/agent/models.py 与 F13 迁移补齐三列（均可空）
+    """
+    from app.agent.models import Message
+
+    for col_name in ("reasoning", "prompt_tokens", "completion_tokens"):
+        col = Message.__table__.c[col_name]
+        assert col.nullable, f"messages.{col_name} 必须可空（兼容端点无 usage / 旧数据不回填）"
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    for token in ("'reasoning'", "'prompt_tokens'", "'completion_tokens'"):
+        assert token in migration_sql, (
+            f"【问题】迁移未包含 messages.{token.strip(chr(39))} 列\n"
+            "【原因】ORM 声明与迁移 DDL 漂移，新库缺列导致落库失败\n"
+            "【修复】F13 迁移 add_column 三列（reasoning/prompt_tokens/completion_tokens）"
+        )
+
+
 def test_no_bak_residue_in_app() -> None:
     """app/ 下禁止 .bak 残留文件（error.jsonl T-20260905-02：mutmut 中断残留变异体被误提交）。
 

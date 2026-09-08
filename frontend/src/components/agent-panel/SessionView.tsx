@@ -11,6 +11,7 @@ import { usePerspectiveStore } from "../../stores/perspectiveStore";
 import { ChatInput } from "./ChatInput";
 import { DraftConfirmCard } from "./DraftConfirmCard";
 import { MessageList } from "./MessageList";
+import { UsageBar } from "./UsageBar";
 
 /** 稳定空数组（selector 返回新引用会触发 useSyncExternalStore 无限循环警告）。 */
 const EMPTY_DRAFTS: never[] = [];
@@ -22,6 +23,7 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
   // 全局单流：其他会话流式中禁用本会话输入（守卫兜底在 store.sendMessage）
   const busyElsewhere = useAgentStore((s) => s.streamingSessionId !== null && s.streamingSessionId !== conversationId);
   const toolActivity = useAgentStore((s) => s.toolActivity);
+  const usage = useAgentStore((s) => s.usageBySession[conversationId] ?? null);
   const error = useAgentStore((s) => s.sessionErrors[conversationId] ?? null);
   const drafts = useAgentStore((s) => s.draftsBySession[conversationId] ?? EMPTY_DRAFTS);
   const confirming = useAgentStore((s) => s.confirming);
@@ -53,6 +55,7 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
         error={error}
         onErrorRetry={() => void loadMessages(conversationId, true)}
       />
+      <UsageBar usage={usage} messages={messages ?? []} />
       <DraftConfirmCard
         drafts={drafts}
         confirming={confirming}

@@ -41,22 +41,46 @@ def _parse_sse(text: str) -> list[dict[str, Any]]:
     return events
 
 
-class ChatCapture:
-    """chat_turn 捕获桩：记录每次调用的 system/messages/tools，按脚本回放。"""
+class StreamScript:
+    """一轮流式事件的显式脚本（F13 reasoning/usage 精细断言用）。
 
-    def __init__(self, script: list[AssistantTurn]) -> None:
+    参数: events — ("reasoning_delta"|"content_delta"|"usage", payload) 序列；
+        turn — 流结束后的聚合产物（("turn", …) 恒由桩补发）。
+    """
+
+    def __init__(self, events: list[tuple[str, Any]], turn: AssistantTurn) -> None:
+        self.events = events
+        self.turn = turn
+
+
+class ChatCapture:
+    """stream_chat_turn 捕获桩：记录每次调用的 system/messages/tools，按脚本回放。
+
+    脚本项可为 AssistantTurn（自动展开为 content_delta + turn）或 StreamScript
+    （显式事件序列）。有界判杀（T-20260907-02）：脚本耗尽即抛，使无限循环
+    变异体快速转为断言失败而非挂死 mutmut 运行。
+    """
+
+    def __init__(self, script: list[Any]) -> None:
         self.script = list(script)
         self.calls: list[dict[str, Any]] = []
 
-    async def __call__(
-        self, system: str, messages: list[dict[str, str]], **kwargs: Any
-    ) -> AssistantTurn:
+    async def __call__(self, system: str, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         self.calls.append({"system": system, "messages": messages, **kwargs})
         if not self.script:
             # 有界判杀桩（T-20260907-02）：无限循环变异体会反复调用 LLM，
             # 耗尽即抛使其快速转为断言失败被杀，而非挂死整个 mutmut 运行
             raise RuntimeError("ChatCapture 脚本耗尽仍被调用（疑似无限循环变异体）")
-        return self.script.pop(0)
+        item = self.script.pop(0)
+        if isinstance(item, StreamScript):
+            for evt in item.events:
+                yield evt
+            yield ("turn", item.turn)
+            return
+        turn: AssistantTurn = item
+        if turn.content:
+            yield ("content_delta", turn.content)
+        yield ("turn", turn)
 
     def prompt_text(self, call_index: int = 0) -> str:
         """拼接某次调用的完整 prompt 文本（注入断言用）。"""
@@ -72,12 +96,10 @@ def llm_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     return None
 
 
-def _install_chat_script(
-    monkeypatch: pytest.MonkeyPatch, script: list[AssistantTurn]
-) -> ChatCapture:
-    """把捕获桩接入 llm.chat_turn（service 经模块属性动态取用）。"""
+def _install_chat_script(monkeypatch: pytest.MonkeyPatch, script: list[Any]) -> ChatCapture:
+    """把捕获桩接入 llm.stream_chat_turn（service 经模块属性动态取用）。"""
     capture = ChatCapture(script)
-    monkeypatch.setattr(agent_llm, "chat_turn", capture)
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", capture)
     return capture
 
 
@@ -540,7 +562,7 @@ def test_chat_tool_round_with_real_retrieval(
             AssistantTurn(content="找到了青铜镜。"),
         ]
     )
-    monkeypatch.setattr(agent_llm, "chat_turn", capture)
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", capture)
 
     resp = client.post(
         "/api/agent/chat",
@@ -577,10 +599,12 @@ def test_chat_llm_failure_error_event_keeps_user_message(
     project = _create_project(client, "chat降级项目")
     session = _create_session(client, project["id"])
 
-    async def boom(*_a: Any, **_k: Any) -> AssistantTurn:
+    async def boom(*_a: Any, **_k: Any) -> Any:
+        if False:
+            yield  # pragma: no cover — 使本函数成为异步生成器以对接流式路径
         raise AgentError(problem="LLM 调用失败（APITimeoutError）", cause="超时", fix="重试")
 
-    monkeypatch.setattr(agent_llm, "chat_turn", boom)
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", boom)
     resp = client.post(
         "/api/agent/chat",
         json={
@@ -602,3 +626,145 @@ def test_chat_llm_failure_error_event_keeps_user_message(
     assert [m["role"] for m in messages] == ["user"], f"用户消息必须保留: {messages}"
     sessions = client.get("/api/agent/sessions", params={"project_id": project["id"]}).json()
     assert sessions[0]["title"].startswith("帮我写第一幕"), f"标题回填必须已提交: {sessions[0]}"
+
+
+# ---- F13：会话删除 / 流式协议扩展 / 指导文档唯一 ----
+
+
+def test_delete_session_204_then_404_with_cascade(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-I1: DELETE 存在会话 204 → 消息级联不可达；再删 404 三要素。"""
+    project = _create_project(client, "删除项目")
+    session = _create_session(client, project["id"])
+    _install_chat_script(monkeypatch, [AssistantTurn(content="ok")])
+    resp = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "hi", "perspective": "author"},
+    )
+    assert resp.status_code == 200, resp.text[:200]
+
+    delete = client.delete(f"/api/agent/sessions/{session['id']}")
+    assert delete.status_code == 204, f"删除必须 204: {delete.status_code}"
+    messages = client.get(f"/api/agent/sessions/{session['id']}/messages")
+    assert messages.status_code == 404, f"级联后消息读取必须 404: {messages.status_code}"
+
+    again = client.delete(f"/api/agent/sessions/{session['id']}")
+    assert again.status_code == 404, f"重复删除必须 404: {again.status_code}"
+    body = again.json()
+    assert body.get("problem") and body.get("cause") and body.get("fix"), f"三要素: {body}"
+
+
+def test_delete_session_isolated_per_project(client: TestClient) -> None:
+    """F13-I2: 删除一项目会话后，他项目会话列表完好（隔离性）。"""
+    project_a = _create_project(client, "隔离A")
+    project_b = _create_project(client, "隔离B")
+    session_a = _create_session(client, project_a["id"])
+    session_b = _create_session(client, project_b["id"])
+
+    assert client.delete(f"/api/agent/sessions/{session_a['id']}").status_code == 204
+
+    list_b = client.get("/api/agent/sessions", params={"project_id": project_b["id"]}).json()
+    assert [s["id"] for s in list_b] == [session_b["id"]], f"项目B 会话必须完好: {list_b}"
+
+
+def test_chat_sse_emits_reasoning_and_usage_events(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-I3: SSE 帧序列含 reasoning/usage 事件；token 按 SDK 分片多帧到达。"""
+    project = _create_project(client, "流式项目")
+    session = _create_session(client, project["id"])
+    _install_chat_script(
+        monkeypatch,
+        [
+            StreamScript(
+                events=[
+                    ("reasoning_delta", "思考片一。"),
+                    ("reasoning_delta", "思考片二。"),
+                    ("content_delta", "正文一。"),
+                    ("content_delta", "正文二。"),
+                    ("usage", {"prompt_tokens": 500, "completion_tokens": 60}),
+                ],
+                turn=AssistantTurn(content="正文一。正文二。"),
+            )
+        ],
+    )
+
+    resp = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "问", "perspective": "author"},
+    )
+    assert resp.status_code == 200, resp.text[:200]
+    events = _parse_sse(resp.text)
+    names = [e["event"] for e in events]
+
+    assert names == [
+        "message_start",
+        "reasoning",
+        "reasoning",
+        "token",
+        "token",
+        "usage",
+        "done",
+    ], f"事件序列必须符合扩展协议: {names}"
+    reasoning = "".join(e["data"]["text"] for e in events if e["event"] == "reasoning")
+    assert reasoning == "思考片一。思考片二。", f"思考增量逐帧: {reasoning}"
+    usage = next(e for e in events if e["event"] == "usage")["data"]
+    assert usage["prompt_tokens"] == 500 and usage["completion_tokens"] == 60, f"usage: {usage}"
+    assert usage["context_max_tokens"] > 0 and 0 < usage["context_ratio"] <= 1, (
+        f"容量窗口字段必须齐备: {usage}"
+    )
+
+
+def test_chat_messages_readback_carries_reasoning_tokens(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-I5: 对话完成后 GET messages 回读 assistant 行含 reasoning/tokens 字段。"""
+    project = _create_project(client, "回读项目")
+    session = _create_session(client, project["id"])
+    _install_chat_script(
+        monkeypatch,
+        [
+            StreamScript(
+                events=[
+                    ("reasoning_delta", "想一想。"),
+                    ("content_delta", "答复。"),
+                    ("usage", {"prompt_tokens": 100, "completion_tokens": 20}),
+                ],
+                turn=AssistantTurn(content="答复。"),
+            )
+        ],
+    )
+    client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "问", "perspective": "author"},
+    )
+
+    rows = client.get(f"/api/agent/sessions/{session['id']}/messages").json()
+    assistant = next(r for r in rows if r["role"] == "assistant")
+    assert assistant["reasoning"] == "想一想。", f"思考必须回读: {assistant}"
+    assert assistant["prompt_tokens"] == 100 and assistant["completion_tokens"] == 20, (
+        f"usage 必须回读: {assistant}"
+    )
+
+
+def test_create_guide_doc_duplicate_kind_conflicts(client: TestClient) -> None:
+    """F13-I4: 同项目重复创建指导类文档 → 409 三要素；列表不产生第二份。"""
+    project = _create_project(client, "唯一性项目")
+    pid = project["id"]
+    first = client.post(
+        "/api/agent/memory-docs", params={"project_id": pid, "kind": "positioning"}, json={}
+    )
+    assert first.status_code == 201, first.text[:200]
+
+    dup = client.post(
+        "/api/agent/memory-docs", params={"project_id": pid, "kind": "positioning"}, json={}
+    )
+    assert dup.status_code == 409, f"重复建档必须 409: {dup.status_code} {dup.text[:200]}"
+    body = dup.json()
+    assert body.get("problem") and body.get("cause") and body.get("fix"), f"三要素: {body}"
+
+    docs = client.get("/api/agent/memory-docs", params={"project_id": pid}).json()
+    assert len([d for d in docs if d["kind"] == "positioning"]) == 1, (
+        f"不得产生第二份定位文档: {docs}"
+    )

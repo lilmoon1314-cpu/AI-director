@@ -1,6 +1,6 @@
 /**
- * 消息流（F10，DESIGN.md §5.4）：user/assistant 消息渲染 + SSE 流式光标 +
- * 检索行为指示（tool 事件）+ 三要素错误条（error 事件）。
+ * 消息流（F10/F13，DESIGN.md §5.4/§13.1）：user/assistant 消息渲染 + 真流式光标 +
+ * 思考过程折叠卡（ThinkingBlock）+ 检索行为指示（tool 事件）+ 三要素错误条。
  * AgentHome 与 AgentDock 复用（同一会话池，DESIGN.md 决策②）。
  */
 
@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 
 import type { AgentMessage } from "../../stores/agentStore";
 import { ErrorStrip } from "../ui/ErrorStrip";
+import { ThinkingBlock } from "./ThinkingBlock";
 
 function MessageItem({ message }: { message: AgentMessage }) {
   const isUser = message.role === "user";
@@ -20,6 +21,14 @@ function MessageItem({ message }: { message: AgentMessage }) {
             : "ring-1 ring-black/5 bg-white/80 text-slate-800 backdrop-blur dark:ring-white/10 dark:bg-slate-800/80 dark:text-slate-200"
         }`}
       >
+        {!isUser ? (
+          <ThinkingBlock
+            reasoning={message.reasoning}
+            streaming={message.streaming}
+            hasContent={message.content.length > 0}
+            seconds={message.reasoningSeconds}
+          />
+        ) : null}
         {message.content}
         {message.streaming ? (
           <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-slate-400 align-middle dark:bg-slate-500" />

@@ -54,6 +54,7 @@ describe("agentStore（FU1）", () => {
       streamingSessionId: null,
       toolActivity: null,
       sessionErrors: {},
+      usageBySession: {},
       draftsBySession: {},
       confirming: false,
       docs: [],
@@ -240,5 +241,107 @@ describe("agentStore（FU1）", () => {
 
     await useAgentStore.getState().loadDocs("project-x");
     expect(useAgentStore.getState().docs).toHaveLength(1);
+  });
+
+  // ---- F13（FI1–FI3）：reasoning/usage 消费与会话/文档删除 ----
+
+  it("FI1: SSE reasoning/usage 事件 → 思考累积、usage 写入轮次状态、done 回读保留 reasoning", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/chat")) {
+        return sseResponse([
+          { event: "message_start", data: {} },
+          { event: "reasoning", data: { text: "先想一步。" } },
+          { event: "reasoning", data: { text: "再想一步。" } },
+          { event: "token", data: { text: "答案" } },
+          {
+            event: "usage",
+            data: { prompt_tokens: 300, completion_tokens: 40, context_max_tokens: 8000, context_ratio: 0.0375 },
+          },
+          { event: "done", data: { message_id: "msg-2" } },
+        ]);
+      }
+      if (url.includes("/messages")) {
+        return jsonResponse([
+          { id: "msg-1", conversation_id: "conv-1", role: "user", content: "hi", created_at: "2026-09-06T00:00:00Z" },
+          {
+            id: "msg-2",
+            conversation_id: "conv-1",
+            role: "assistant",
+            content: "答案",
+            reasoning: "先想一步。再想一步。",
+            prompt_tokens: 300,
+            completion_tokens: 40,
+            created_at: "2026-09-06T00:00:01Z",
+          },
+        ]);
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await useAgentStore.getState().sendMessage("conv-1", "hi", "author");
+
+    const usage = useAgentStore.getState().usageBySession["conv-1"];
+    expect(usage).toEqual({
+      promptTokens: 300,
+      completionTokens: 40,
+      contextMaxTokens: 8000,
+      contextRatio: 0.0375,
+    });
+    const messages = useAgentStore.getState().messagesBySession["conv-1"]!;
+    expect(messages[1].reasoning).toBe("先想一步。再想一步。");
+    expect(messages[1].promptTokens).toBe(300);
+    expect(useAgentStore.getState().streamingSessionId).toBeNull();
+  });
+
+  it("FI2: deleteSession 成功 → 列表与本地缓存移除；失败 → 三要素错误（等价类—两态）", async () => {
+    const fetchMock = routeFetch((url, init) => {
+      if (url.includes("/agent/sessions/conv-1") && init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/agent/sessions/conv-9") && init?.method === "DELETE") {
+        return jsonResponse(
+          { problem: "会话不存在", cause: "conv-9 未在库中", fix: "刷新会话列表" },
+          404,
+        );
+      }
+      if (url.includes("/agent/sessions")) return jsonResponse([SESSION]);
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({
+      sessions: [SESSION],
+      messagesBySession: { "conv-1": [{ id: "msg-1", role: "user", content: "hi" }] },
+    });
+
+    await useAgentStore.getState().deleteSession("conv-1");
+    expect(useAgentStore.getState().sessions).toHaveLength(0);
+    expect(useAgentStore.getState().messagesBySession["conv-1"]).toBeUndefined();
+    expect(useAgentStore.getState().sessionsError).toBeNull();
+
+    await useAgentStore.getState().deleteSession("conv-9");
+    expect(useAgentStore.getState().sessionsError?.problem).toBe("会话不存在");
+    expect(useAgentStore.getState().sessionsError?.fix).toBe("刷新会话列表");
+  });
+
+  it("FI3: deleteDoc 成功 → 刷新文档列表；失败 → 三要素错误", async () => {
+    let docDeleted = false;
+    const fetchMock = routeFetch((url, init) => {
+      if (url.includes("/agent/memory-docs/mdoc-1") && init?.method === "DELETE") {
+        docDeleted = true;
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/agent/memory-docs") && init?.method !== "DELETE") {
+        return jsonResponse(docDeleted ? [] : [DOC]);
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({ docs: [DOC] });
+
+    await useAgentStore.getState().deleteDoc("mdoc-1", "project-x");
+    expect(docDeleted).toBe(true);
+    expect(useAgentStore.getState().docs).toHaveLength(0);
+    expect(useAgentStore.getState().docsError).toBeNull();
   });
 });

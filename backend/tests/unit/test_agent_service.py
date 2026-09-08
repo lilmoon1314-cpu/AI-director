@@ -99,6 +99,10 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     async def fake_list_messages(_s: Any, conversation_id: str) -> list[Any]:
         return list(store.messages.get(conversation_id, []))
 
+    async def fake_delete_conversation(_s: Any, conversation: Any) -> None:
+        store.conversations.pop(conversation.id, None)
+        store.messages.pop(conversation.id, None)
+
     async def fake_list_docs(_s: Any, project_id: str) -> list[Any]:
         return list(store.docs_by_project.get(project_id, []))
 
@@ -114,6 +118,7 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     monkeypatch.setattr(repository, "add_conversation", fake_add_conversation)
     monkeypatch.setattr(repository, "get_conversation", fake_get_conversation)
     monkeypatch.setattr(repository, "save_conversation", fake_save_conversation)
+    monkeypatch.setattr(repository, "delete_conversation", fake_delete_conversation)
     monkeypatch.setattr(repository, "add_message", fake_add_message)
     monkeypatch.setattr(repository, "list_messages", fake_list_messages)
     monkeypatch.setattr(repository, "list_docs", fake_list_docs)
@@ -178,24 +183,45 @@ def _seed_conversation(store: Store, conversation_id: str = "conv-1", title: str
     )
 
 
-def _scripted_llm(*turns: AssistantTurn) -> Any:
-    """按脚本回放 LLM 回复；脚本耗尽后再被调用即抛 RuntimeError。
+def _scripted_stream(*turns: AssistantTurn) -> Any:
+    """按脚本回放流式 LLM 事件；脚本耗尽后再被调用即抛 RuntimeError。
 
-    作用: 为 stream_chat 提供有界判杀桩——无限循环类变异体（如工具分支
-    条件 and→or，T-20260907-02）会让循环反复调用 LLM，无界桩会挂死整个
-    mutmut 运行（Windows 无 SIGALRM，mutmut 超时机制失效）；耗尽即抛使
-    此类变异体快速转为断言失败被杀。
+    作用: 为 stream_chat 提供有界判杀桩（F13 真流式路径）——每个
+        AssistantTurn 展开为一轮流式事件：content 按小分片产出多个
+        content_delta（模拟 SDK 逐 chunk），随后产出聚合 ("turn", …)。
+        无限循环类变异体（如工具分支条件 and→or，T-20260907-02）会让循环
+        反复调用 LLM，无界桩会挂死整个 mutmut 运行（Windows 无 SIGALRM，
+        mutmut 超时机制失效）；耗尽即抛使此类变异体快速转为断言失败被杀。
     参数: turns — 按调用顺序回放的 AssistantTurn 序列。
-    返回值: async fake（签名与 llm.chat_turn 一致）。
+    返回值: async 生成器工厂（签名与 llm.stream_chat_turn 一致）。
     异常: RuntimeError — 脚本耗尽仍被调用（测试基建守卫，非被测行为）。
     依赖: 无。
     """
     script = list(turns)
 
-    async def _fake(*_a: Any, **_k: Any) -> AssistantTurn:
+    async def _fake(*_a: Any, **_k: Any) -> Any:
         if not script:
-            raise RuntimeError("LLM 桩脚本耗尽仍被调用（疑似无限循环变异体）")
-        return script.pop(0)
+            raise RuntimeError("LLM 流式桩脚本耗尽仍被调用（疑似无限循环变异体）")
+        turn = script.pop(0)
+        if turn.content:
+            for i in range(0, len(turn.content), 6):
+                yield ("content_delta", turn.content[i : i + 6])
+        yield ("turn", turn)
+
+    return _fake
+
+
+def _delta_stream(*events: tuple[str, Any]) -> Any:
+    """按给定事件序列精确回放一轮流式事件（U10/U11/U12 等精细断言用）。
+
+    参数: events — ("reasoning_delta"|"content_delta"|"usage"|"turn", payload) 序列。
+    返回值: async 生成器工厂（签名与 llm.stream_chat_turn 一致）。
+    异常: 无（事件由用例给定）。依赖: 无。
+    """
+
+    async def _fake(*_a: Any, **_k: Any) -> Any:
+        for kind, payload in events:
+            yield (kind, payload)
 
     return _fake
 
@@ -206,7 +232,9 @@ async def test_stream_chat_normal_flow(store: Store, monkeypatch: pytest.MonkeyP
     设计依据: 等价类-有效会话轮。
     """
     _seed_conversation(store)
-    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="你好，创作者。")))
+    monkeypatch.setattr(
+        llm, "stream_chat_turn", _scripted_stream(AssistantTurn(content="你好，创作者。"))
+    )
     events = [evt async for evt in service.stream_chat("conv-1", "介绍项目", perspective="author")]
 
     names = [e["event"] for e in events]
@@ -214,6 +242,8 @@ async def test_stream_chat_normal_flow(store: Store, monkeypatch: pytest.MonkeyP
     assert "token" in names and "error" not in names, f"必须有 token 且无 error: {names}"
     token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
     assert token_text == "你好，创作者。", f"token 拼接必须还原全文: {token_text}"
+    token_events = [e for e in events if e["event"] == "token"]
+    assert len(token_events) >= 2, f"真流式：正文必须按上游分片多帧到达: {len(token_events)}"
     roles = [m.role for m in store.messages["conv-1"]]
     assert roles == ["user", "assistant"], f"两条消息必须落库: {roles}"
 
@@ -228,7 +258,7 @@ async def test_title_from_first_message_truncated(
 ) -> None:
     """U27 参数化: 会话标题取首条用户消息截断（边界值-恰为上限/超 1）。"""
 
-    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
+    monkeypatch.setattr(llm, "stream_chat_turn", _scripted_stream(AssistantTurn(content="ok")))
     _seed_conversation(store)
 
     _ = [evt async for evt in service.stream_chat("conv-1", first_message, perspective="author")]
@@ -249,23 +279,31 @@ async def test_tool_loop_quota_then_plain_answer(
     _seed_conversation(store)
     calls: list[dict[str, Any]] = []
 
-    async def fake_chat_turn(_system: str, _msgs: list[dict], **kwargs: Any) -> AssistantTurn:
+    async def fake_stream(_system: str, _msgs: list[dict], **kwargs: Any) -> Any:
         calls.append({"kwargs": kwargs, "messages": _msgs})
         if len(calls) > 2:
             raise RuntimeError("工具配额桩被调用超过 2 次（疑似无限循环变异体）")
         if kwargs.get("tools"):
-            return AssistantTurn(
-                content=None,
-                tool_calls=[
-                    ToolCall(call_id="call-1", name="search_entities", arguments='{"q": "周兰"}')
-                ],
+            yield (
+                "turn",
+                AssistantTurn(
+                    content=None,
+                    tool_calls=[
+                        ToolCall(
+                            call_id="call-1", name="search_entities", arguments='{"q": "周兰"}'
+                        )
+                    ],
+                ),
             )
-        return AssistantTurn(content="根据检索结果作答。")
+            return
+        yield ("content_delta", "根据检索结果")
+        yield ("content_delta", "作答。")
+        yield ("turn", AssistantTurn(content="根据检索结果作答。"))
 
     async def fake_execute_tool(name: str, arguments: str, _ctx: Any) -> str:
         return "x" * 500  # 超长输出（上限 50），验证截断（U17）
 
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "stream_chat_turn", fake_stream)
     monkeypatch.setattr(service.tools, "execute_tool", fake_execute_tool)
 
     events = [evt async for evt in service.stream_chat("conv-1", "查周兰", perspective="author")]
@@ -290,7 +328,9 @@ async def test_content_review_blocks_before_persist(
     """U28: 合规开关开启且命中 → error 事件（不落库）；关闭 → 正常（等价类-开关两态）。"""
 
     monkeypatch.setattr(
-        llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok"), AssistantTurn(content="ok"))
+        llm,
+        "stream_chat_turn",
+        _scripted_stream(AssistantTurn(content="ok"), AssistantTurn(content="ok")),
     )
 
     _install(store, monkeypatch, settings=ReviewSettingsStub())
@@ -323,7 +363,7 @@ async def test_rolling_summary_overflow(store: Store, monkeypatch: pytest.Monkey
         return f"摘要[{text[:10]}]"
 
     monkeypatch.setattr(llm, "summarize", fake_summarize)
-    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
+    monkeypatch.setattr(llm, "stream_chat_turn", _scripted_stream(AssistantTurn(content="ok")))
 
     conv = _seed_conversation(store)
     # 窗口=2：先造 2 条历史（不溢出），完成本轮后共 4 条 → 溢出 2 条最旧
@@ -354,10 +394,12 @@ async def test_stream_chat_llm_failure_keeps_user_message(
     设计依据: 等价类-无效-LLM 失败路径（用户输入是已发生的事实，不得回滚丢失）。
     """
 
-    async def fake_boom(*_a: Any, **_k: Any) -> AssistantTurn:
+    async def fake_boom(*_a: Any, **_k: Any) -> Any:
+        if False:
+            yield  # pragma: no cover — 使本函数成为异步生成器以对接流式路径
         raise AgentError(problem="LLM 调用失败（APITimeoutError）", cause="超时", fix="重试")
 
-    monkeypatch.setattr(llm, "chat_turn", fake_boom)
+    monkeypatch.setattr(llm, "stream_chat_turn", fake_boom)
     _seed_conversation(store)
     events = [evt async for evt in service.stream_chat("conv-1", "写个开头", perspective="author")]
 
@@ -383,13 +425,13 @@ async def test_stream_chat_injects_current_message_once(
     _seed_conversation(store)
     captured: list[list[dict[str, Any]]] = []
 
-    async def fake_chat_turn(_system: str, messages: list[dict], **_k: Any) -> AssistantTurn:
+    async def fake_stream(_system: str, messages: list[dict], **_k: Any) -> Any:
         captured.append(messages)
         if len(captured) > 1:
             raise RuntimeError("U30 桩仅允许一次调用（疑似无限循环变异体）")
-        return AssistantTurn(content="ok")
+        yield ("turn", AssistantTurn(content="ok"))
 
-    monkeypatch.setattr(llm, "chat_turn", fake_chat_turn)
+    monkeypatch.setattr(llm, "stream_chat_turn", fake_stream)
     _ = [evt async for evt in service.stream_chat("conv-1", "独一无二的问题", perspective="author")]
 
     user_contents = [m.get("content") for m in captured[0] if m.get("role") == "user"]
@@ -411,7 +453,7 @@ async def test_rolling_summary_empty_result_keeps_state(
         return "   "
 
     monkeypatch.setattr(llm, "summarize", fake_summarize)
-    monkeypatch.setattr(llm, "chat_turn", _scripted_llm(AssistantTurn(content="ok")))
+    monkeypatch.setattr(llm, "stream_chat_turn", _scripted_stream(AssistantTurn(content="ok")))
 
     conv = store.add_conversation(
         SimpleNamespace(
@@ -587,4 +629,244 @@ async def test_confirm_write_invalid_payloads_fail_closed(
     assert response.created == [], "非法类型不得落库"
     assert len(response.failed) == 1 and "校验" in response.failed[0].reason, (
         f"失败原因必须可读: {response.failed}"
+    )
+
+
+# ---- F13：真流式 / reasoning / usage / 会话删除 ----
+
+
+async def test_stream_chat_reasoning_usage_events_and_persist(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U10: 全事件序列 = message_start → reasoning×2 → token×3 → usage → done，
+    思考与 usage 随 assistant 行落库。
+
+    设计依据: 等价类-有效思考+正文+usage 轮（协议扩展核心路径）。
+    """
+    _seed_conversation(store)
+    monkeypatch.setattr(
+        llm,
+        "stream_chat_turn",
+        _delta_stream(
+            ("reasoning_delta", "先想第一步。"),
+            ("reasoning_delta", "再想第二步。"),
+            ("content_delta", "答案一。"),
+            ("content_delta", "答案二。"),
+            ("content_delta", "答案三。"),
+            ("usage", {"prompt_tokens": 1000, "completion_tokens": 200}),
+            ("turn", AssistantTurn(content="答案一。答案二。答案三。")),
+        ),
+    )
+    events = [evt async for evt in service.stream_chat("conv-1", "问题", perspective="author")]
+
+    names = [e["event"] for e in events]
+    assert names == [
+        "message_start",
+        "reasoning",
+        "reasoning",
+        "token",
+        "token",
+        "token",
+        "usage",
+        "done",
+    ], f"事件序列必须逐片且有序: {names}"
+    reasoning_text = "".join(e["data"]["text"] for e in events if e["event"] == "reasoning")
+    assert reasoning_text == "先想第一步。再想第二步。", f"思考增量必须逐片透传: {reasoning_text}"
+    usage = events[-2]["data"]
+    assert usage["prompt_tokens"] == 1000 and usage["completion_tokens"] == 200, (
+        f"usage 数值: {usage}"
+    )
+    assert usage["context_max_tokens"] == 100000, "容量上限必须来自 config"
+    assert abs(usage["context_ratio"] - 0.01) < 1e-9, f"占比=prompt/max: {usage}"
+    assistant = store.messages["conv-1"][-1]
+    assert assistant.reasoning == "先想第一步。再想第二步。", (
+        f"思考必须落库: {assistant.reasoning!r}"
+    )
+    assert assistant.prompt_tokens == 1000 and assistant.completion_tokens == 200, "usage 必须落库"
+    assert assistant.content == "答案一。答案二。答案三。", "正文必须完整落库"
+
+
+@pytest.mark.parametrize(
+    ("prompt_tokens", "max_tokens", "expected"),
+    [(0, 8000, 0.0), (4000, 8000, 0.5), (9000, 8000, 9000 / 8000)],
+    ids=["零prompt", "恰半", "超上限原值透传"],
+)
+async def test_usage_context_ratio_boundaries(
+    store: Store,
+    monkeypatch: pytest.MonkeyPatch,
+    prompt_tokens: int,
+    max_tokens: int,
+    expected: float,
+) -> None:
+    """F13-U11 参数化: 容量占比边界——0、半、超上限原值透传（钳制在展示层）。
+
+    设计依据: 边界值分析；数据语义与展示语义分离。
+    """
+    _seed_conversation(store)
+    monkeypatch.setattr(
+        llm,
+        "stream_chat_turn",
+        _delta_stream(
+            ("content_delta", "好"),
+            ("usage", {"prompt_tokens": prompt_tokens, "completion_tokens": 1}),
+            ("turn", AssistantTurn(content="好")),
+        ),
+    )
+
+    class RatioStub(AgentSettingsStub):
+        agent_context_max_tokens = max_tokens
+
+    _install(store, monkeypatch, settings=RatioStub())
+    events = [evt async for evt in service.stream_chat("conv-1", "问", perspective="author")]
+
+    usage = next(e for e in events if e["event"] == "usage")
+    assert usage["data"]["context_ratio"] == pytest.approx(expected), f"占比边界: {usage}"
+
+
+async def test_stream_chat_without_usage_omits_event(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U12: 端点不返回 usage → 无 usage 事件，落库 tokens 为 None（兼容等价类）。"""
+    _seed_conversation(store)
+    monkeypatch.setattr(
+        llm,
+        "stream_chat_turn",
+        _delta_stream(("content_delta", "好"), ("turn", AssistantTurn(content="好"))),
+    )
+    events = [evt async for evt in service.stream_chat("conv-1", "问", perspective="author")]
+
+    names = [e["event"] for e in events]
+    assert "usage" not in names and names[-1] == "done", f"无 usage 必须缺省事件: {names}"
+    assistant = store.messages["conv-1"][-1]
+    assert assistant.prompt_tokens is None and assistant.completion_tokens is None, (
+        "缺失 usage 必须落库为 NULL"
+    )
+    assert assistant.reasoning is None, "无思考时 reasoning 必须为 NULL"
+
+
+async def test_tool_round_reasoning_streams_final_reasoning_persists(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U13: 工具轮思考照常透传；落库 reasoning 取最终轮思考（答案前思考）。
+
+    设计依据: 等价类-工具轮+思考组合轮。
+    """
+    _seed_conversation(store)
+
+    async def fake_stream(_system: str, _msgs: list[dict], **kwargs: Any) -> Any:
+        if kwargs.get("tools"):
+            yield ("reasoning_delta", "中间思考：先查图谱。")
+            yield (
+                "turn",
+                AssistantTurn(
+                    content=None,
+                    tool_calls=[ToolCall(call_id="c1", name="search_entities", arguments="{}")],
+                ),
+            )
+            return
+        yield ("reasoning_delta", "最终思考：组织答案。")
+        yield ("content_delta", "最终答案。")
+        yield ("turn", AssistantTurn(content="最终答案。"))
+
+    async def fake_execute_tool(_name: str, _arguments: str, _ctx: Any) -> str:
+        return "[]"
+
+    monkeypatch.setattr(llm, "stream_chat_turn", fake_stream)
+    monkeypatch.setattr(service.tools, "execute_tool", fake_execute_tool)
+    events = [evt async for evt in service.stream_chat("conv-1", "查一下", perspective="author")]
+
+    reasoning_text = "".join(e["data"]["text"] for e in events if e["event"] == "reasoning")
+    assert reasoning_text == "中间思考：先查图谱。最终思考：组织答案。", (
+        f"两轮思考必须都透传: {reasoning_text}"
+    )
+    assistant = store.messages["conv-1"][-1]
+    assert assistant.reasoning == "最终思考：组织答案。", (
+        f"落库 reasoning 必须取最终轮: {assistant.reasoning!r}"
+    )
+    assert [e["event"] for e in events].count("tool") == 2, "工具事件 start+done 各一"
+
+
+async def test_stream_chat_empty_reply_errors(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U14: 流结束无正文且无工具调用 → error 事件三要素（既有防御语义回归）。"""
+    _seed_conversation(store)
+    monkeypatch.setattr(
+        llm,
+        "stream_chat_turn",
+        _delta_stream(("turn", AssistantTurn(content="  "))),
+    )
+    events = [evt async for evt in service.stream_chat("conv-1", "问", perspective="author")]
+
+    assert events[-1]["event"] == "error", f"空回复必须以 error 收尾: {events[-1]}"
+    assert events[-1]["data"]["problem"] == "LLM 返回了空回复", "三要素 problem 必须锁值"
+    assert events[-1]["data"]["cause"] and events[-1]["data"]["fix"], "cause/fix 必须齐全"
+
+
+async def test_get_messages_readback_carries_reasoning_and_usage(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U15: get_messages 回读 assistant 行携带 reasoning/tokens（刷新后可展开）。
+
+    设计依据: 回读契约（前端 ThinkingBlock 历史展开的数据源）。
+    """
+    _seed_conversation(store)
+    store.add_message(
+        SimpleNamespace(
+            id="msg-a",
+            conversation_id="conv-1",
+            role="assistant",
+            content="答",
+            reasoning="思",
+            prompt_tokens=11,
+            completion_tokens=7,
+            created_at=datetime.now(UTC),
+        )
+    )
+    rows = await service.get_messages(SessionStub(), "conv-1")
+
+    assistant = next(r for r in rows if r.id == "msg-a")
+    assert assistant.reasoning == "思" and assistant.prompt_tokens == 11, f"回读字段: {assistant}"
+    assert assistant.completion_tokens == 7, "completion_tokens 必须回读"
+
+
+async def test_delete_conversation_cascades_messages(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F13-U17: 删除存在会话 → 会话与消息一并清理（级联语义）。"""
+    _seed_conversation(store)
+    store.add_message(
+        SimpleNamespace(
+            id="msg-1",
+            conversation_id="conv-1",
+            role="user",
+            content="hi",
+            created_at=datetime.now(UTC),
+        )
+    )
+    await service.delete_conversation(SessionStub(), "conv-1")
+
+    assert "conv-1" not in store.conversations, "会话必须被删除"
+    assert store.messages.get("conv-1") in (None, []), "消息必须级联清理"
+
+
+async def test_delete_conversation_not_found_three_elements(store: Store) -> None:
+    """F13-U18: 删除不存在会话 → NotFoundError 三要素齐全（无效等价类）。"""
+    with pytest.raises(NotFoundError) as excinfo:
+        await service.delete_conversation(SessionStub(), "ghost")
+    assert excinfo.value.problem and excinfo.value.cause and excinfo.value.fix, (
+        f"三要素必须齐全: {excinfo.value}"
+    )
+
+
+async def test_delete_conversation_isolated_per_project(store: Store) -> None:
+    """F13-U19: 删除一项目会话不影响他项目会话（隔离性）。"""
+    _seed_conversation(store, "conv-a")
+    _seed_conversation(store, "conv-b")
+    store.conversations["conv-b"].project_id = "proj-2"
+
+    await service.delete_conversation(SessionStub(), "conv-a")
+
+    assert "conv-a" not in store.conversations and "conv-b" in store.conversations, (
+        "他项目会话必须完好"
     )

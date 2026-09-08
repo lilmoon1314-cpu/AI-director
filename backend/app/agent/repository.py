@@ -57,6 +57,16 @@ async def save_conversation(session: AsyncSession, conversation: Conversation) -
     return conversation
 
 
+async def delete_conversation(session: AsyncSession, conversation: Conversation) -> None:
+    """删除会话（消息经 FK CASCADE 随之清理；不提交事务）。
+
+    参数: session — 数据库会话；conversation — 待删除的 ORM 实例。
+    返回值: 无。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    await session.delete(conversation)
+    await session.flush()
+
+
 # ---- 消息 ----
 
 
@@ -120,6 +130,16 @@ async def list_docs(session: AsyncSession, project_id: str) -> list[MemoryDoc]:
         .order_by(MemoryDoc.updated_at.desc(), MemoryDoc.id)
     )
     return list(await session.scalars(stmt))
+
+
+async def find_doc_by_kind(session: AsyncSession, project_id: str, kind: str) -> MemoryDoc | None:
+    """查询项目内指定 kind 的记忆文档（指导类唯一性查重用）。
+
+    参数: session — 数据库会话；project_id — 项目 id；kind — 模板键。
+    返回值: MemoryDoc 或 None。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    stmt = select(MemoryDoc).where(MemoryDoc.project_id == project_id, MemoryDoc.kind == kind)
+    return (await session.scalars(stmt)).first()
 
 
 async def delete_doc(session: AsyncSession, doc: MemoryDoc) -> None:

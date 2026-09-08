@@ -102,12 +102,19 @@ class SessionRead(BaseModel):
 
 
 class MessageRead(BaseModel):
-    """消息响应。"""
+    """消息响应。
+
+    参数: reasoning — assistant 消息的思考过程（None=无思考或非 assistant 行）；
+        prompt_tokens/completion_tokens — 本轮 LLM usage（None=端点未返回）。
+    """
 
     id: str
     conversation_id: str
     role: Literal["user", "assistant", "summary", "tool"]
     content: str
+    reasoning: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
     created_at: datetime
 
 

@@ -63,6 +63,8 @@ from app.relations import service as relations_service
 # SSE 事件名（前后端契约；前端按事件类型白名单渲染）
 EVENT_MESSAGE_START = "message_start"
 EVENT_TOKEN = "token"
+EVENT_REASONING = "reasoning"
+EVENT_USAGE = "usage"
 EVENT_TOOL = "tool"
 EVENT_DRAFT = "draft"
 EVENT_DOC_PATCH = "doc_patch"
@@ -70,7 +72,7 @@ EVENT_ASK_USER = "ask_user"
 EVENT_DONE = "done"
 EVENT_ERROR = "error"
 
-# 记忆文档模板（F10 内置两种；故事大纲模板随 F13 落地）
+# 记忆文档模板（F10 内置两种；作品类模板（outline/screenplay/…）随 F15 落地）
 DOC_TEMPLATES: dict[str, dict[str, Any]] = {
     "positioning": {
         "label": "世界观定位",
@@ -84,9 +86,9 @@ DOC_TEMPLATES: dict[str, dict[str, Any]] = {
     },
 }
 
-# 最终回答下发时的分块字符数（伪流式：上游整体返回后分块推送）
-_TOKEN_CHUNK_CHARS = 24
-
+# 指导类 kind（项目内唯一——每项目仅一份定位/风格文件；F13 验收缺陷修复，
+# 作品类多实例 kind 随 F15 扩展时在此登记分类学）
+GUIDE_KINDS = frozenset(DOC_TEMPLATES)
 
 # ---- 内部助手 ----
 
@@ -135,12 +137,15 @@ def _session_read(conversation: Conversation) -> SessionRead:
 
 
 def _message_read(message: Message) -> MessageRead:
-    """Message ORM → MessageRead DTO。"""
+    """Message ORM → MessageRead DTO（含思考与 usage 回读字段，F13）。"""
     return MessageRead(
         id=message.id,
         conversation_id=message.conversation_id,
         role=message.role,
         content=message.content,
+        reasoning=message.reasoning,
+        prompt_tokens=message.prompt_tokens,
+        completion_tokens=message.completion_tokens,
         created_at=message.created_at,
     )
 
@@ -396,6 +401,18 @@ async def get_messages(db_session: AsyncSession, conversation_id: str) -> list[M
     return [_message_read(m) for m in rows]
 
 
+@checkpoint
+async def delete_conversation(db_session: AsyncSession, conversation_id: str) -> None:
+    """删除会话（消息经 FK CASCADE 级联清理；不存在抛 404）。
+
+    参数: db_session — 数据库会话；conversation_id — 会话 id。
+    返回值: 无。异常: NotFoundError。依赖: app.agent.repository。
+    """
+    conversation = await _load_conversation(db_session, conversation_id)
+    await repository.delete_conversation(db_session, conversation)
+    await db_session.commit()
+
+
 # ---- 对话（SSE 流式）----
 
 
@@ -406,13 +423,18 @@ async def stream_chat(
     perspective: Perspective,
     character_id: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
-    """一次对话轮的 SSE 事件流（受控 ReAct + 伪流式下发 + 滚动摘要维护）。
+    """一次对话轮的 SSE 事件流（真流式 + 受控 ReAct + 滚动摘要维护，F13）。
 
     作用:
-        事件序列 = message_start → (tool …)* → token … → done | error。
-        工具调用配额来自 config（超限后不再提供工具，强制作答）；user 消息
-        先行落库（LLM 失败也不丢用户输入），assistant 消息完成后落库并触发
-        超窗摘要压缩。LLM 失败发 error 事件（三要素）正常收尾。
+        事件序列 = message_start → (tool …)* → reasoning … token … → usage?
+            → done | error。token/reasoning 逐 chunk 下发（llm.stream_chat_turn
+            真流式，废除伪分块）；usage 在 done 前下发（prompt/completion
+            tokens + 容量占比 = prompt_tokens ÷ AGENT_CONTEXT_MAX_TOKENS，
+            端点未返回 usage 时整个事件缺省）。工具调用配额来自 config（超限
+            后不再提供工具，强制作答）；user 消息先行落库（LLM 失败也不丢
+            用户输入），assistant 消息（含最终轮思考 reasoning 与 usage）
+            完成后落库并触发超窗摘要压缩。LLM 失败发 error 事件（三要素）
+            正常收尾。
     参数:
         conversation_id — 会话 id；message — 用户输入；perspective — 视角；
         character_id — character 视角角色 id。
@@ -470,13 +492,32 @@ async def stream_chat(
                 character_id=character_id,
             )
             used = 0
+            final_usage: dict[str, int | None] | None = None
+            turn: llm.AssistantTurn | None = None
             while True:
                 enable_tools = used < settings.agent_max_tool_calls_per_turn
-                turn = await llm.chat_turn(
+                turn_reasoning: list[str] = []
+                turn = None
+                async for kind, payload in llm.stream_chat_turn(
                     messages[0]["content"],
                     messages[1:],
                     tools=tools.TOOL_SPECS if enable_tools else None,
-                )
+                ):
+                    if kind == "reasoning_delta":
+                        turn_reasoning.append(str(payload))
+                        yield {"event": EVENT_REASONING, "data": {"text": payload}}
+                    elif kind == "content_delta":
+                        yield {"event": EVENT_TOKEN, "data": {"text": payload}}
+                    elif kind == "usage":
+                        final_usage = payload
+                    elif kind == "turn":
+                        turn = payload
+                if turn is None:
+                    raise AgentError(
+                        problem="LLM 流式响应中断",
+                        cause="流式补全未产出聚合结果即结束",
+                        fix="重试一次；持续出现请检查 LLM 端点稳定性",
+                    )
                 if turn.tool_calls and enable_tools:
                     messages.append(turn.raw)
                     for call in turn.tool_calls:
@@ -502,6 +543,7 @@ async def stream_chat(
                         )
                     continue
                 if turn.content is not None and turn.content.strip():
+                    final_reasoning = "".join(turn_reasoning)
                     break
                 raise AgentError(
                     problem="LLM 返回了空回复",
@@ -509,21 +551,30 @@ async def stream_chat(
                     fix="重试一次；持续出现请更换 LLM_MODEL 或简化问题",
                 )
 
-            content = turn.content
             assistant_row = Message(
                 id=generate_message_id(),
                 conversation_id=conversation_id,
                 role="assistant",
-                content=content,
+                content=turn.content or "",
+                reasoning=final_reasoning or None,
+                prompt_tokens=(final_usage or {}).get("prompt_tokens"),
+                completion_tokens=(final_usage or {}).get("completion_tokens"),
             )
             await repository.add_message(db_session, assistant_row)
-            for i in range(0, len(content), _TOKEN_CHUNK_CHARS):
-                yield {
-                    "event": EVENT_TOKEN,
-                    "data": {"text": content[i : i + _TOKEN_CHUNK_CHARS]},
-                }
             await _maintain_rolling_summary(db_session, conversation)
             await db_session.commit()
+            if final_usage is not None:
+                prompt_tokens = final_usage.get("prompt_tokens") or 0
+                max_tokens = settings.agent_context_max_tokens
+                yield {
+                    "event": EVENT_USAGE,
+                    "data": {
+                        "prompt_tokens": final_usage.get("prompt_tokens"),
+                        "completion_tokens": final_usage.get("completion_tokens"),
+                        "context_max_tokens": max_tokens,
+                        "context_ratio": (prompt_tokens / max_tokens) if max_tokens > 0 else None,
+                    },
+                }
             yield {"event": EVENT_DONE, "data": {"message_id": assistant_row.id}}
         except Exception as exc:  # noqa: BLE001 — 对话轮错误统一转 error 事件
             await db_session.rollback()
@@ -556,9 +607,13 @@ async def stream_chat(
 async def create_doc(db_session: AsyncSession, project_id: str, kind: str) -> MemoryDocRead:
     """按模板创建记忆文档（初始段生成，updated_by=user 语义的空白起点）。
 
+    作用: F13 起指导类（GUIDE_KINDS）文档项目内唯一——同 kind 已存在即 409
+        拒绝（每项目仅一份定位/风格文件），不覆盖既有文档。
     参数: db_session — 数据库会话；project_id — 项目 id（空=默认项目）；
         kind — 模板键（positioning/style）。
-    返回值: MemoryDocRead。异常: ValidationError — 未知模板；NotFoundError — 项目不存在。
+    返回值: MemoryDocRead。
+    异常: ValidationError — 未知模板；NotFoundError — 项目不存在；
+        ConflictError — 指导类文档项目内已存在同 kind。
     依赖: app.agent.repository、app.projects.service。
     """
     template = DOC_TEMPLATES.get(kind)
@@ -571,6 +626,22 @@ async def create_doc(db_session: AsyncSession, project_id: str, kind: str) -> Me
         )
     resolved_project = project_id or projects_service.DEFAULT_PROJECT_ID
     await projects_service.ensure_exists(db_session, resolved_project)
+    if kind in GUIDE_KINDS:
+        existing = await repository.find_doc_by_kind(db_session, resolved_project, kind)
+        if existing is not None:
+            raise ConflictError(
+                problem=f"「{template['label']}」指导文档已存在（每项目仅一份）",
+                cause=(
+                    f"项目 '{resolved_project}' 下已存在同 kind（{kind}）的文档 "
+                    f"'{existing.id}'，指导类文档项目内唯一"
+                ),
+                fix="直接编辑既有文档；确需重写请先删除原文档再新建",
+                detail={
+                    "project_id": resolved_project,
+                    "kind": kind,
+                    "existing_doc_id": existing.id,
+                },
+            )
     doc = MemoryDoc(
         id=generate_memory_doc_id(),
         project_id=resolved_project,

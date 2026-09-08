@@ -93,6 +93,12 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
         store.sections[section.id] = section
         return section
 
+    async def fake_find_doc_by_kind(_s: Any, project_id: str, kind: str) -> Any:
+        return next(
+            (d for d in store.docs.values() if d.project_id == project_id and d.kind == kind),
+            None,
+        )
+
     async def fake_ensure_exists(_s: Any, _project_id: str) -> None:
         return None
 
@@ -103,6 +109,7 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repository, "get_section", fake_get_section)
     monkeypatch.setattr(repository, "list_sections", fake_list_sections)
     monkeypatch.setattr(repository, "save_section", fake_save_section)
+    monkeypatch.setattr(repository, "find_doc_by_kind", fake_find_doc_by_kind)
     monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
 
 
@@ -159,6 +166,40 @@ async def test_create_doc_unknown_kind(store: Store, db_session: CommitStub) -> 
         await agent_service.create_doc(db_session, "proj-1", "story_outline_v99")
     assert excinfo.value.problem and excinfo.value.fix, f"三要素必须齐全: {excinfo.value}"
     assert not store.docs, "失败建档不得留下半成品文档"
+
+
+@pytest.mark.parametrize("kind", ["positioning", "style"], ids=["定位重复", "风格重复"])
+async def test_create_guide_doc_kind_uniqueness_conflicts(
+    store: Store, db_session: CommitStub, kind: str
+) -> None:
+    """F13-U20 参数化: 指导类文档项目内已存在同 kind → ConflictError（每项目仅一份）。
+
+    设计依据: 等价类-无效-重复建档（验收缺陷：指导文档可重复创建）。
+    """
+    first = await agent_service.create_doc(db_session, "proj-1", kind)
+    with pytest.raises(ConflictError) as excinfo:
+        await agent_service.create_doc(db_session, "proj-1", kind)
+    assert excinfo.value.problem and excinfo.value.cause and excinfo.value.fix, (
+        f"三要素必须齐全: {excinfo.value}"
+    )
+    assert excinfo.value.detail.get("existing_doc_id") == first.id, "冲突详情必须指向既有文档"
+    same_kind = [d for d in store.docs.values() if d.kind == kind]
+    assert len(same_kind) == 1, f"重复建档不得产生第二份: {len(same_kind)}"
+
+
+async def test_create_guide_doc_uniqueness_scoped_by_kind_and_project(
+    store: Store, db_session: CommitStub
+) -> None:
+    """F13-U21/U22: kind 间互不影响；唯一性作用域=项目内。
+
+    设计依据: 边界值-同项目异 kind / 异项目同 kind（作用域边界）。
+    """
+    await agent_service.create_doc(db_session, "proj-1", "positioning")
+    other = await agent_service.create_doc(db_session, "proj-1", "style")
+    assert other.kind == "style", "已存 positioning 不得影响 style 建档"
+
+    cross = await agent_service.create_doc(db_session, "proj-2", "positioning")
+    assert cross.kind == "positioning", "他项目同 kind 必须可建档"
 
 
 async def test_update_section_by_user_bumps_versions(store: Store, db_session: CommitStub) -> None:

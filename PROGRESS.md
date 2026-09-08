@@ -27,7 +27,19 @@
 - 2026-09-08: **F10 用户验收反馈会话（DESIGN.md §13 规划产出）**——用户亲自验收（百炼 deepseek-v4-flash-0731 已配置入 backend/.env 并直连/全链路双验证）提出五类问题：①伪流式无思考可视化无 token 观测 ②会话/文档不可删除 ③agent 缺写入工具交互断裂 ④指导文档可重复+编辑框小+长期记忆体系缺失 ⑤多系列共享世界观无从组织。四项分叉经 AskUserQuestion 裁决（轮末统一确认/项目内系列维度/画像自动沉淀+透明可编辑/顺序体验→写入→记忆→系列）登记 DECISIONS 2026-09-08 四条；DESIGN.md 新增 §13（F13–F16 升级设计，OQ-8/9/10 裁决入表）；features.md 增补 F13–F16 四行；原「F13 创作工作流」重组（大纲模板并入 F15、ask_user 并入 F14、plan-step 卡与 harness 清单移第二阶段候选）；技术前提实测：百炼模型原生 reasoning_content + stream + include_usage 可用，真流式方案成立
 
 ## 进行中
-- 无
+
+**F13 Agent 对话体验升级**（2026-09-08 开工；DESIGN.md §13.1；测试文档 docs/tests/F13_agent_experience.md 已先行）：
+- [x] 1. Alembic 迁移：messages 增 reasoning/prompt_tokens/completion_tokens 三列 + ORM/MessageRead 字段 + DDL 架构断言（A1）
+- [x] 2. llm.stream_chat_turn 流式生成器（reasoning/content 逐片、tool_calls 按 index 聚合、usage 透传，U1–U9）
+- [x] 3. service.stream_chat 真流式改造：token 逐片废除伪分块 + reasoning/usage SSE 事件 + 思考与 usage 落库（U10–U16）
+- [x] 4. service 会话删除（级联 messages）+ 指导文档 kind 项目内唯一 409（U17–U22）+ router DELETE /sessions
+- [x] 5. 后端 L2 集成（I1–I6）+ L3 e2e 流式桩适配（E1）+ openapi.json 重新生成
+- [x] 6. 前端 api client（deleteSession）+ agentStore：SSE reasoning/usage 消费、deleteSession/deleteDoc、usage 轮次状态（FI1–FI3）
+- [x] 7. 前端组件：ThinkingBlock（自动展开→折叠「已思考 N 秒」）+ UsageBar（琥珀阈值 0.8）+ MessageList 改造（FU2/FI4/FI5）
+- [x] 8. 前端组件：SessionList 删除确认流 + MemoryDocsArea 删除/指导类置灰 + DocEditor 大弹窗三栏（max-w-5xl，段列表+编辑+实时预览全转义，Esc 脏确认）+ AgentDock 会话下拉/＋新会话/Esc 收起（FU1/FI6–FI9）
+- [x] 9. 前端 vitest 全绿 + 既有 Playwright e2e 回归适配（FI10）
+- [ ] 10. make check + mutmut agent 模块（≥85%，判杀桩有界 E17）+ 测试文档状态回填
+- [ ] 11. 验收审查子代理（§10）→ triage → verify F13 → 文档同步（agent ARCHITECTURE/CONSTRAINTS、frontend CONSTRAINTS、DECISIONS、data_struct_define、PROGRESS 收口）→ 提交推送
 
 ## 已知问题
 - 无

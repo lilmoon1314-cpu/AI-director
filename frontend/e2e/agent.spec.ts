@@ -9,12 +9,14 @@ import { expect, test, type Route } from "@playwright/test";
 
 import { openWorkbench, resetWorld, shoot } from "./helpers";
 
-/** 以 mock SSE 帧应答 chat 请求（真实后端参与握手与落库）。 */
+/** 以 mock SSE 帧应答 chat 请求（真实后端参与握手与落库；F13 增 reasoning/usage 帧）。 */
 async function mockChat(route: Route): Promise<void> {
   const body = [
     'event: message_start\ndata: {"conversation_id":"mock"}\n\n',
+    'event: reasoning\ndata: {"text":"思考：主角团缺辅助位。"}\n\n',
     'event: token\ndata: {"text":"建议补充一位船医"}\n\n',
     'event: token\ndata: {"text":"角色，名叫周兰。"}\n\n',
+    'event: usage\ndata: {"prompt_tokens":520,"completion_tokens":96,"context_max_tokens":8000,"context_ratio":0.065}\n\n',
     'event: done\ndata: {"message_id":"msg-mock"}\n\n',
   ].join("");
   await route.fulfill({
@@ -26,6 +28,13 @@ async function mockChat(route: Route): Promise<void> {
 
 test("FE1: Agent 对话 → 草案确认写入图谱 → 记忆文档编辑 + Dock 开合", async ({ page }) => {
   await resetWorld(page.request);
+
+  // —— 记忆文档清理前置（F13 唯一性：指导类已存在时「＋」置灰，须在进页面前
+  // 清空，保证挂载后 docs 为空、「新建即 v1」的确定性）——
+  // e2e 库跨运行持久（data/e2e_test.db）；不做 page.reload——浏览器层 mock 的
+  // SSE 消息只存在于客户端 store，刷新即丢
+  const existingDocs = (await page.request.get("/api/agent/memory-docs?project_id=project-default").then((r) => r.json())) as { id: string }[];
+  for (const doc of existingDocs) await page.request.delete(`/api/agent/memory-docs/${doc.id}`);
 
   // —— 拦截 LLM 环节（chat SSE / propose）——
   await page.route("**/api/agent/chat", mockChat);
@@ -64,6 +73,11 @@ test("FE1: Agent 对话 → 草案确认写入图谱 → 记忆文档编辑 + Do
   });
   await shoot(page, "AG-02-对话回复渲染");
 
+  // —— F13 UsageBar：usage 事件写入轮次状态（done 回读不清空 usageBySession）——
+  await expect(page.getByTestId("agent-usage-context")).toContainText("520/8.0k");
+  await expect(page.getByTestId("agent-usage-turn")).toContainText("520+96");
+  await expect(page.getByTestId("agent-usage-ratio")).toContainText("7%");
+
   // —— 产出草案（mock propose）→ 确认写入（真实落库）——
   await page.getByTestId("agent-input").fill("就加周兰吧");
   await page.getByTestId("agent-propose").click();
@@ -78,12 +92,9 @@ test("FE1: Agent 对话 → 草案确认写入图谱 → 记忆文档编辑 + Do
   await expect(page.getByTestId("graph-stats")).toHaveText(/1 节点/);
   await shoot(page, "AG-04-确认后图谱出现新实体");
 
-  // —— 记忆文档：清理残留 → 模板新建（真实）→ 段级编辑保存 → 卡片刷新 ——
-  // e2e 库跨运行持久（data/e2e_test.db），先删本项目文档保证「新建即 v1」的确定性；
-  // 不做 page.reload——浏览器层 mock 的 SSE 消息只存在于客户端 store，刷新即丢
+  // —— 记忆文档：模板新建（真实）→ 段级编辑保存 → 卡片刷新 ——
+  // （清理已前置到 resetWorld 之后；F13 唯一性下挂载时 docs 为空，按钮可用）
   await page.getByTestId("tab-agent").click();
-  const existingDocs = (await page.request.get("/api/agent/memory-docs?project_id=project-default").then((r) => r.json())) as { id: string }[];
-  for (const doc of existingDocs) await page.request.delete(`/api/agent/memory-docs/${doc.id}`);
 
   await page.getByTestId("memory-doc-create-style").click();
   await expect(page.getByTestId("memory-doc-card").first()).toContainText("风格约定");

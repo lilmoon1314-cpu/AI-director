@@ -34,6 +34,8 @@ export function AgentHome() {
   const createSession = useAgentStore((s) => s.createSession);
   const loadDocs = useAgentStore((s) => s.loadDocs);
   const createDoc = useAgentStore((s) => s.createDoc);
+  const deleteSession = useAgentStore((s) => s.deleteSession);
+  const deleteDoc = useAgentStore((s) => s.deleteDoc);
   const resetProjectScoped = useAgentStore((s) => s.resetProjectScoped);
   const sendMessage = useAgentStore((s) => s.sendMessage);
   const [creatingSession, setCreatingSession] = useState(false);
@@ -79,6 +81,11 @@ export function AgentHome() {
           activeId={sessionId ?? null}
           creating={creatingSession}
           onCreate={() => void createAndOpen()}
+          onDelete={(id) => {
+            void deleteSession(id);
+            // 删除的是当前打开的会话 → 退回 Agent 主页（URL 即状态）
+            if (sessionId === id) navigate(`/projects/${projectId}/agent`);
+          }}
         />
         {sessionsError ? (
           <ErrorStrip
@@ -97,6 +104,7 @@ export function AgentHome() {
             setCreatingDoc(true);
             void createDoc(kind, projectId).finally(() => setCreatingDoc(false));
           }}
+          onDeleteDoc={(docId) => void deleteDoc(docId, projectId)}
           creating={creatingDoc}
           projectId={projectId}
         />

@@ -70,6 +70,11 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # assistant 行的思考过程（真流式 reasoning_content 聚合；user/tool 行为 NULL）
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # 本轮 LLM usage（UsageBar 容量窗口数据源；端点不返回 usage 时为 NULL）
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
 
 

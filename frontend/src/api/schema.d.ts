@@ -601,6 +601,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/sessions/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Session
+         * @description 删除会话（消息经级联清理；204；会话不存在 404）。
+         */
+        delete: operations["delete_session_api_agent_sessions__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/chat": {
         parameters: {
             query?: never;
@@ -1301,6 +1321,9 @@ export interface components {
         /**
          * MessageRead
          * @description 消息响应。
+         *
+         *     参数: reasoning — assistant 消息的思考过程（None=无思考或非 assistant 行）；
+         *         prompt_tokens/completion_tokens — 本轮 LLM usage（None=端点未返回）。
          */
         MessageRead: {
             /** Id */
@@ -1314,6 +1337,12 @@ export interface components {
             role: "user" | "assistant" | "summary" | "tool";
             /** Content */
             content: string;
+            /** Reasoning */
+            reasoning?: string | null;
+            /** Prompt Tokens */
+            prompt_tokens?: number | null;
+            /** Completion Tokens */
+            completion_tokens?: number | null;
             /**
              * Created At
              * Format: date-time
@@ -2670,6 +2699,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MessageRead"][];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_api_agent_sessions__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

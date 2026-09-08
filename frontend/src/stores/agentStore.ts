@@ -1,12 +1,14 @@
 /**
- * agentStore：Agent 对话与记忆文档全局状态（F10，DESIGN.md §5.4/§5.5/§7）。
+ * agentStore：Agent 对话与记忆文档全局状态（F10/F13，DESIGN.md §5.4/§5.5/§13.1）。
  * - 按项目的会话池（sessions + messagesBySession）；草案两段式（draftsBySession）；
  * - **SSE 生命周期挂会话级**：AbortController 由 store 持有——切会话、AgentDock
  *   收起、组件卸载均不断流；中断仅发生于显式停止与项目切换。全局同一时刻
  *   至多一轮流式（他会议流式中时输入层禁用，sendMessage 守卫兜底拒绝）；
  * - confirm 成功后广播图谱失效（graphStore.loadGraph 重载）。
- * 事件协议（agent/ARCHITECTURE.md）：message_start/token/tool/done/error；
- * draft/doc_patch/ask_user 为 F13 预留类型——本 store 忽略不渲染（前向兼容）。
+ * 事件协议（agent/ARCHITECTURE.md）：message_start/token/reasoning/usage/tool/
+ * done/error；draft/doc_patch/ask_user 为 F14 预留类型——本 store 忽略不渲染
+ * （前向兼容）。reasoning 增量累积进 assistant 消息（ThinkingBlock 数据源），
+ * usage 写入 usageBySession（UsageBar 本轮用量与容量窗口）。
  * 约束：全部 async action 必须有 catch 并落三要素错误态（E16，frontend/CONSTRAINTS.md）。
  */
 
@@ -33,8 +35,23 @@ export interface AgentMessage {
   id: string;
   role: "user" | "assistant" | "summary" | "tool";
   content: string;
+  /** 思考过程（真流式 reasoning 增量累积 / 历史回读；user 行为 null）。 */
+  reasoning?: string | null;
+  /** 思考耗时秒数（本轮实测：首条 reasoning 至首个 token 的墙钟差；历史消息缺省）。 */
+  reasoningSeconds?: number;
+  /** 本轮 LLM usage（历史回读；null=端点未返回）。 */
+  promptTokens?: number | null;
+  completionTokens?: number | null;
   /** SSE 流式进行中的消息（光标动画渲染依据）。 */
   streaming?: boolean;
+}
+
+/** 本轮 usage 事件载荷（usageBySession 值；UsageBar 容量窗口数据源）。 */
+export interface TurnUsage {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  contextMaxTokens: number | null;
+  contextRatio: number | null;
 }
 
 export type PerspectiveValue = "author" | "character" | "audience";
@@ -93,6 +110,8 @@ interface AgentState {
   toolActivity: { name: string; phase: "start" | "done" } | null;
   /** SSE error 事件 / 请求失败的三要素错误（按会话隔离）。 */
   sessionErrors: Record<string, AgentErrorState | null>;
+  /** 本轮 usage（usage 事件写入，done 后保留至下一轮覆盖；UsageBar 数据源）。 */
+  usageBySession: Record<string, TurnUsage>;
   draftsBySession: Record<string, DraftItem[]>;
   confirming: boolean;
   docs: MemoryDocBrief[];
@@ -104,6 +123,8 @@ interface AgentState {
   closeDock: () => void;
   loadSessions: (projectId: string, force?: boolean) => Promise<void>;
   createSession: (projectId: string) => Promise<SessionRead>;
+  /** 删除会话（消息经后端级联清理；本地缓存一并移除）。 */
+  deleteSession: (conversationId: string) => Promise<void>;
   loadMessages: (conversationId: string, force?: boolean) => Promise<void>;
   /** 发送一条消息并消费 SSE 事件流（会话级生命周期，可 stopStreaming 中断）。 */
   sendMessage: (
@@ -124,6 +145,8 @@ interface AgentState {
   discardDrafts: (conversationId: string) => void;
   loadDocs: (projectId: string, force?: boolean) => Promise<void>;
   createDoc: (kind: string, projectId: string) => Promise<void>;
+  /** 删除记忆文档（段经后端级联清理；成功后刷新列表）。 */
+  deleteDoc: (docId: string, projectId: string) => Promise<void>;
   updateDocSection: (
     docId: string,
     sectionId: string,
@@ -149,6 +172,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   streamingSessionId: null,
   toolActivity: null,
   sessionErrors: {},
+  usageBySession: {},
   draftsBySession: {},
   confirming: false,
   docs: [],
@@ -177,6 +201,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     return session;
   },
 
+  deleteSession: async (conversationId) => {
+    try {
+      await api.deleteSession(conversationId);
+      const messagesBySession = { ...get().messagesBySession };
+      delete messagesBySession[conversationId];
+      const usageBySession = { ...get().usageBySession };
+      delete usageBySession[conversationId];
+      set({
+        sessions: get().sessions.filter((s) => s.id !== conversationId),
+        messagesBySession,
+        usageBySession,
+        sessionErrors: { ...get().sessionErrors, [conversationId]: null },
+      });
+    } catch (cause) {
+      set({ sessionsError: toErrorState(cause, "会话删除失败") });
+    }
+  },
+
   loadMessages: async (conversationId, force = false) => {
     if (!force && (get().messagesBySession[conversationId]?.length ?? 0) > 0) return;
     // 流式进行中禁止回读覆盖（挂载效应与乐观更新的竞态会把缓冲冲掉）——
@@ -188,7 +230,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       set({
         messagesBySession: {
           ...get().messagesBySession,
-          [conversationId]: rows.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+          [conversationId]: rows.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            reasoning: m.reasoning ?? null,
+            promptTokens: m.prompt_tokens ?? null,
+            completionTokens: m.completion_tokens ?? null,
+          })),
         },
       });
     } finally {
@@ -217,17 +266,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       },
     });
 
-    const patchAssistant = (content: string) => {
+    const patchAssistant = (patch: Partial<AgentMessage>) => {
       const list = get().messagesBySession[conversationId] ?? [];
       set({
         messagesBySession: {
           ...get().messagesBySession,
-          [conversationId]: list.map((m) => (m.id === assistantLocalId ? { ...m, content } : m)),
+          [conversationId]: list.map((m) => (m.id === assistantLocalId ? { ...m, ...patch } : m)),
         },
       });
     };
 
     let streamed = "";
+    let reasoningBuf = "";
+    // 思考耗时：首条 reasoning 至首个 token 的墙钟差（「已思考 N 秒」数据源）
+    let reasoningStartedAt: number | null = null;
+    let reasoningSeconds: number | undefined;
     try {
       const resp = await fetch(agentChatPath(), {
         method: "POST",
@@ -251,8 +304,31 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
       for await (const { event, data } of parseSse(resp)) {
         if (event === "token") {
+          if (reasoningStartedAt !== null && reasoningSeconds === undefined) {
+            reasoningSeconds = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000));
+          }
           streamed += String(data.text ?? "");
-          patchAssistant(streamed);
+          patchAssistant({
+            content: streamed,
+            reasoning: reasoningBuf || null,
+            reasoningSeconds,
+          });
+        } else if (event === "reasoning") {
+          if (reasoningStartedAt === null) reasoningStartedAt = Date.now();
+          reasoningBuf += String(data.text ?? "");
+          patchAssistant({ reasoning: reasoningBuf });
+        } else if (event === "usage") {
+          set({
+            usageBySession: {
+              ...get().usageBySession,
+              [conversationId]: {
+                promptTokens: (data.prompt_tokens as number | null | undefined) ?? null,
+                completionTokens: (data.completion_tokens as number | null | undefined) ?? null,
+                contextMaxTokens: (data.context_max_tokens as number | null | undefined) ?? null,
+                contextRatio: (data.context_ratio as number | null | undefined) ?? null,
+              },
+            },
+          });
         } else if (event === "tool") {
           set({ toolActivity: { name: String(data.name ?? ""), phase: "start" } });
         } else if (event === "error") {
@@ -269,7 +345,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           // 以服务端落库结果为准回读（标题/消息 id 对齐）
           await get().loadMessages(conversationId, true);
         }
-        // draft / doc_patch / ask_user：F13 预留事件——忽略（前向兼容）
+        // draft / doc_patch / ask_user：F14 预留事件——忽略（前向兼容）
       }
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
@@ -402,6 +478,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
   },
 
+  deleteDoc: async (docId, projectId) => {
+    try {
+      await api.deleteMemoryDoc(docId);
+      await get().loadDocs(projectId, true);
+    } catch (cause) {
+      set({ docsError: toErrorState(cause, "记忆文档删除失败") });
+    }
+  },
+
   updateDocSection: async (docId, sectionId, content, expectedVersion) => {
     await api.updateMemoryDocSection(docId, sectionId, { content, expected_version: expectedVersion });
     await get().loadDocs(useProjectStore.getState().currentProjectId ?? "", true);
@@ -421,6 +506,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       streamingSessionId: null,
       toolActivity: null,
       sessionErrors: {},
+      usageBySession: {},
       draftsBySession: {},
       confirming: false,
       docs: [],

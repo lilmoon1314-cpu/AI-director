@@ -196,6 +196,9 @@ export const api = {
     ),
   listMessages: (conversationId: string) =>
     apiFetch<MessageRead[]>(`/agent/sessions/${conversationId}/messages`),
+  /** 删除会话（消息经后端级联清理；204；会话不存在 404）。 */
+  deleteSession: (conversationId: string) =>
+    apiFetch<void>(`/agent/sessions/${conversationId}`, { method: "DELETE" }),
   propose: (body: { session_id: string; message: string; perspective: string; character_id?: string }) =>
     apiFetch<ProposeResponse>("/agent/propose", { method: "POST", body: JSON.stringify(body) }),
   confirmDrafts: (body: {

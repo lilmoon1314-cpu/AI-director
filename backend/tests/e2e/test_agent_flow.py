@@ -19,17 +19,21 @@ pytestmark = pytest.mark.e2e
 
 
 class ChatCapture:
-    """chat_turn 捕获桩（与集成测试同型；e2e 内独立定义避免跨层 import）。"""
+    """stream_chat_turn 捕获桩（与集成测试同型；e2e 内独立定义避免跨层 import）。
+
+    脚本项 AssistantTurn 自动展开为 content_delta + turn 事件（F13 流式协议）。
+    """
 
     def __init__(self, script: list[AssistantTurn]) -> None:
         self.script = list(script)
         self.calls: list[dict[str, Any]] = []
 
-    async def __call__(
-        self, system: str, messages: list[dict[str, str]], **kwargs: Any
-    ) -> AssistantTurn:
+    async def __call__(self, system: str, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         self.calls.append({"system": system, "messages": messages, **kwargs})
-        return self.script.pop(0)
+        turn = self.script.pop(0)
+        if turn.content:
+            yield ("content_delta", turn.content)
+        yield ("turn", turn)
 
     def prompt_text(self, call_index: int = 0) -> str:
         """拼接某次调用的完整 prompt 文本。"""
@@ -61,11 +65,12 @@ def test_e1_chat_propose_confirm_graph_flow(
     pid = project["id"]
     session = client.post("/api/agent/sessions", params={"project_id": pid}, json={}).json()
 
-    # ① 对话：LLM 直接回答
-    async def fake_chat(*_a: Any, **_k: Any) -> AssistantTurn:
-        return AssistantTurn(content="建议补充一位船医角色。")
+    # ① 对话：LLM 直接回答（流式桩）
+    async def fake_chat(*_a: Any, **_k: Any) -> Any:
+        yield ("content_delta", "建议补充一位船医角色。")
+        yield ("turn", AssistantTurn(content="建议补充一位船医角色。"))
 
-    monkeypatch.setattr(agent_llm, "chat_turn", fake_chat)
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", fake_chat)
     chat = client.post(
         "/api/agent/chat",
         json={
@@ -145,7 +150,7 @@ def test_e2_user_edit_then_agent_reads_fresh_and_stale_patch_rejected(
     # ② agent 下一轮对话：prompt 必须以新内容为准
     session = client.post("/api/agent/sessions", params={"project_id": pid}, json={}).json()
     capture = ChatCapture([AssistantTurn(content="明白，冷色调。")])
-    monkeypatch.setattr(agent_llm, "chat_turn", capture)
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", capture)
     chat = client.post(
         "/api/agent/chat",
         json={

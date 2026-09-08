@@ -70,6 +70,16 @@ async def list_session_messages(
     return await service.get_messages(session, conversation_id)
 
 
+@router.delete("/sessions/{conversation_id}", status_code=204)
+async def delete_session(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """删除会话（消息经级联清理；204；会话不存在 404）。"""
+    await service.delete_conversation(session, conversation_id)
+    return Response(status_code=204)
+
+
 @router.post("/chat")
 async def chat(
     schema: ChatRequest,
