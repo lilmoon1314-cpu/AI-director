@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { GlassPanel } from "../ui/GlassPanel";
 import { SessionView } from "./SessionView";
+import { ApiError } from "../../api/client";
 import { useAgentStore } from "../../stores/agentStore";
 
 export function AgentDock({ projectId }: { projectId: string }) {
@@ -59,6 +60,15 @@ export function AgentDock({ projectId }: { projectId: string }) {
     try {
       const created = await createSession(projectId);
       setSelectedId(created.id);
+    } catch (cause) {
+      // E16：async action 必须 catch 落三要素错误态（审查 P2-5）
+      const err = cause instanceof ApiError ? cause : null;
+      useAgentStore.setState({
+        sessionsError: {
+          problem: err?.problem ?? "会话创建失败",
+          fix: err?.fix ?? "确认后端服务已启动后重试",
+        },
+      });
     } finally {
       setCreating(false);
     }

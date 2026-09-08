@@ -55,7 +55,7 @@
 | U13 | 工具轮 reasoning 透传 + 最终轮思考落库 | 有效：第一轮流式产 reasoning+tool_calls，第二轮流式产 reasoning+content | 两轮 reasoning 均以 reasoning 事件透传；落库 reasoning = **最终轮**思考文本 | 中间思考可观测、落库取答案前思考 | pass |
 | U14 | 空回复防御保留 | 无效：流结束 content 为空且无 tool_calls | error 事件（LLM 返回了空回复，三要素） | 既有语义回归 | pass |
 | U15 | 历史回读带 reasoning | 有效：完成一轮后 get_messages | MessageRead 含 `reasoning`（=落库思考）、`prompt_tokens`/`completion_tokens`（数值或 None） | 前端刷新后思考可展开 | pass |
-| U16 | 工具配额回归 | 有效：桩连续 4 轮 tool_calls 后第 5 轮纯文本（有界桩，E17） | 超限后 tools=None 强制作答；全部 tool 事件照发 | 既有语义回归 | pass |
+| U16 | 工具配额回归 | 有效：配额 stub=1（AgentSettingsStub），桩上限 2 次调用（有界桩，E17） | 第 1 轮带 tools 产出工具调用，第 2 轮 tools=None 强制作答；tool 事件 start+done 各一 | 既有语义回归 | pass |
 
 **test_agent_service.py — 会话删除 / 指导文档唯一**
 
@@ -121,14 +121,31 @@
 
 | 指标 | 值 |
 |---|---|
-| 运行时间 | pass |
-| 变异体总数 / 判杀 / 存活 / 等价 / 超时 | pass |
+| 运行时间 | pending |
+| 变异体总数 / 判杀 / 存活 / 等价 / 超时 | pending |
 | kill rate | pending（门槛 ≥85%） |
-| 存活体处置 | pass |
+| 存活体处置 | pending |
 
 ## 验收审查记录（docs/testing.md §10）
 
-> 测试全绿 + 变异达标后、verify F13 前，派发只读子代理按协议独立审查本功能 diff。pending。
+> 2026-09-08 第 1 轮（只读子代理，审查对象 37a4616 + 00d1c1e）：**P0×4 / P1×2 / P2×6**，无核心逻辑返工项。triage 决议：
+
+| 编号 | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| P0-1 | P0 | agent/ARCHITECTURE.md 未随 F13 同步（token 仍写伪流式、事件表缺 reasoning/usage、API 表缺 DELETE sessions）——E01 同型虚登（A2 曾标 pass） | **修复**：事件表补 reasoning/usage 两行、token 改真流式描述、序列更新、内部机制改 stream_chat_turn、API 表补 DELETE；A2 随本表如实登记 |
+| P0-2 | P0 | 测试文档变异结果表数字行误填 pass（运行未结束） | **修复**：全行回 pending，待运行结束回填真实数字 |
+| P0-3 | P0 | e2e E1 声称「SSE 序列含 usage」但断言不存在（E14 同型） | **修复**：E1 流式桩补 reasoning/usage 帧 + 存在性/顺序/载荷断言（取「补断言」选项） |
+| P0-4 | P0 | mutmut 在审查/triage 完成前启动（时机规程偏离） | **规程遵守**：triage 未触碰 app/agent 与判杀器文件（仅 docs/tests/e2e/前端），运行有效；结束后还原校验 + 全量复跑 |
+| P1-1 | P1 | data_struct_define.md messages 缺三新列；story_outline 归属未随 F15 重组更新 | **修复**：补三列（可空语义）+ 归属改 F15 |
+| P1-2 | P1 | features.md F13 验证命令缺 test_agent_memory_docs.py（唯一性用例所在文件） | **修复**：L1 命令补该文件（命令列为计划文本，状态列不动） |
+| P2-1 | P2 | U16 用例描述与实现不符（4 轮工具 vs 实际配额 stub=1） | **修复**：描述对齐实现 |
+| P2-2 | P2 | deleteSession 不中断命中中的流式会话 | **修复**：命中 streamingSessionId 时先 abort |
+| P2-3 | P2 | ThinkingBlock 思考中手动收起被跟随逻辑重置 | **部分采纳**：注释明示「思考中为自动跟随态，属预期产品选择」 |
+| P2-4 | P2 | Dock Esc 仅头部聚焦生效，与 DESIGN「焦点在 Dock 内」措辞有差距 | **驳回**：打开时头部自动聚焦为 Esc 主落点，收起按钮/Ctrl+J 为等效降级；行为与 F10 偏离清单兑现口径一致 |
+| P2-5 | P2 | createAndShow 无 catch（E16 残留） | **修复**：catch → sessionsError 三要素 |
+| P2-6 | P2 | GUIDE_KINDS 双处定义且按现存模板全集推导（F15 加作品类模板时漏改会静默变唯一） | **驳回但登记**：两侧已有警示注释；F15 必改项入 PROGRESS 下一步 |
+
+新类型问题登记：无（P0-1/P0-3 为 E01/E14 已知模式复发，转化检查已存在——§10 审查协议本身即其自动化转化，F11/F12/F13 连续三轮抓出同类，维持审查清单项）。
 
 ## 验收判定
 

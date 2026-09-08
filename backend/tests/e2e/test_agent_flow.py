@@ -65,9 +65,11 @@ def test_e1_chat_propose_confirm_graph_flow(
     pid = project["id"]
     session = client.post("/api/agent/sessions", params={"project_id": pid}, json={}).json()
 
-    # ① 对话：LLM 直接回答（流式桩）
+    # ① 对话：LLM 直接回答（流式桩，含 reasoning/usage 帧扩展协议）
     async def fake_chat(*_a: Any, **_k: Any) -> Any:
+        yield ("reasoning_delta", "思考：缺辅助位。")
         yield ("content_delta", "建议补充一位船医角色。")
+        yield ("usage", {"prompt_tokens": 120, "completion_tokens": 30})
         yield ("turn", AssistantTurn(content="建议补充一位船医角色。"))
 
     monkeypatch.setattr(agent_llm, "stream_chat_turn", fake_chat)
@@ -82,6 +84,14 @@ def test_e1_chat_propose_confirm_graph_flow(
     assert chat.status_code == 200, f"对话失败: {chat.text[:200]}"
     events = _parse_events(chat.text)
     assert events[-1]["event"] == "done", f"对话必须正常收尾: {events[-1]}"
+    # F13 扩展协议：reasoning/usage 事件端到端可见；usage 在 done 前且载荷齐备
+    names = [e["event"] for e in events]
+    assert "reasoning" in names and "usage" in names, f"扩展事件必须下发: {names}"
+    usage = next(e for e in events if e["event"] == "usage")
+    assert usage["data"]["prompt_tokens"] == 120 and usage["data"]["context_ratio"] > 0, (
+        f"usage 载荷必须齐备: {usage}"
+    )
+    assert names.index("usage") < len(names) - 1, "usage 必须先于 done 下发"
 
     # ② propose：草案生成
     async def fake_complete_json(*_a: Any, **_k: Any) -> dict[str, Any]:

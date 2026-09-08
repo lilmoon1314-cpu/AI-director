@@ -58,6 +58,7 @@ import-linter 契约：外部模块只许 `app.agent.service`；repository/model
 | POST | /api/agent/chat | SSE 流式对话（StreamingResponse，事件协议见下） |
 | POST | /api/agent/propose | 生成写入草案（不落库） |
 | POST | /api/agent/confirm | 确认草案落库（两段式第二段） |
+| DELETE | /api/agent/sessions/{conversation_id} | 删除会话（消息级联清理；204；404 三要素，F13） |
 | POST | /api/agent/memory-docs?kind=positioning&project_id= | 按模板建档（201） |
 | GET | /api/agent/memory-docs?project_id= | 文档卡片列表 |
 | GET | /api/agent/memory-docs/{doc_id} | 文档全文 |
@@ -71,18 +72,20 @@ import-linter 契约：外部模块只许 `app.agent.service`；repository/model
 |------|-----------|------|
 | `message_start` | `{conversation_id}` | 流开始 |
 | `tool` | `{name, phase: start\|done, calls_used?}` | 检索工具轮（每调用两条） |
-| `token` | `{text}` | 回答文本分块（伪流式：上游整体返回后按 24 字符下发） |
-| `done` | `{message_id}` | 正常收尾（assistant 消息已落库） |
+| `reasoning` | `{text}` | 思考过程增量（逐 chunk，F13；端点不产思考则整类缺省） |
+| `token` | `{text}` | 回答文本增量（真流式：stream_chat_turn 逐 chunk 透传，F13 废除伪分块） |
+| `usage` | `{prompt_tokens, completion_tokens, context_max_tokens, context_ratio}` | 本轮 token 用量与容量占比（done 前；端点未返回 usage 则缺省，F13） |
+| `done` | `{message_id}` | 正常收尾（assistant 消息含 reasoning/usage 已落库） |
 | `error` | `{code, problem, cause, fix}` | 轮内失败（LLM/合规拦截），三要素完整 |
-| `draft` / `doc_patch` / `ask_user` / `plan` / `step` | — | **F13 预留**（服务端已定义事件名常量，前端按白名单忽略未知类型） |
+| `draft` / `doc_patch` / `ask_user` / `plan` / `step` | — | **F14 预留**（服务端已定义事件名常量，前端按白名单忽略未知类型） |
 
-正常序列：`message_start → (tool…)* → token… → done`；失败序列以 `error` 收尾（HTTP 仍 200）。
+正常序列：`message_start → (tool…)* → (reasoning… token…)… → usage? → done`；失败序列以 `error` 收尾（HTTP 仍 200）。
 
 ## 对话轮内部机制（stream_chat）
 
 - **用户消息先行提交**：user 行 + 标题回填在进入 LLM 轮之前 commit——LLM 失败（rollback）不丢已发生的用户输入。
 - **受控 ReAct**：每轮工具调用配额 `AGENT_MAX_TOOL_CALLS_PER_TURN`（config）；超限后不再向 LLM 提供工具定义，强制作答（防循环）。
-- **伪流式**：chat_turn 为非流式补全（简化错误处理与 usage 记录），最终回答按 `_TOKEN_CHUNK_CHARS=24` 分块以 token 事件下发。
+- **真流式（F13）**：`llm.stream_chat_turn` 以 `stream=True + include_usage` 调用补全端点，产出四类事件（reasoning_delta / content_delta 逐片透传、流式 tool_calls 按 index 聚合、usage 透传、聚合 AssistantTurn）；`chat_turn`（非流式）保留给摘要 / propose 等结构化路径。思考与 usage 随 assistant 行落库（`messages.reasoning/prompt_tokens/completion_tokens`，F13 迁移 c7d2e9a4b513），回读经 MessageRead 透出。
 - **滚动摘要**：轮末若「摘要游标之后的尾部」超窗（`AGENT_HISTORY_WINDOW_MESSAGES`），溢出部分交轻量模型（`LLM_MODEL_LIGHT`）增量压缩进 `conversation.summary` 并推进 `summary_until_id`；摘要失败或空结果仅发 `agent_summary_skipped` 事件跳过（下轮重试），不阻断对话。
 - **会话自管理**：生成器内经 session factory 自开自释放（连接生命周期与 SSE 流一致，不占请求级会话）；轮内错误统一转 error 事件。
 

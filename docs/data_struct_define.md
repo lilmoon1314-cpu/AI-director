@@ -322,8 +322,8 @@
 | 表 | 关键字段 | 说明 |
 |----|---------|------|
 | `conversations` | `id, project_id(FK), title, summary, summary_until_id, created_at, updated_at` | 会话（按项目隔离；AgentHome 与 AgentDock 同一会话池）；summary/summary_until_id 为滚动摘要与其覆盖游标（超窗历史增量压缩，L2 短期记忆持久层） |
-| `messages` | `id, conversation_id(FK CASCADE), role(user/assistant/summary/tool), content, created_at` | 消息（SSE 完成后落库；历史不删除，窗口裁剪只作用于注入） |
-| `memory_docs` | `id, project_id(FK), kind, title, version, created_at, updated_at` | 记忆文档容器（HTML 分段模板：kind=positioning/style，story_outline 留 F13）；version 为文档级 ETag；**非世界观事实副本**（事实以图谱为准） |
+| `messages` | `id, conversation_id(FK CASCADE), role(user/assistant/summary/tool), content, reasoning(可空), prompt_tokens(可空), completion_tokens(可空), created_at` | 消息（SSE 完成后落库；历史不删除，窗口裁剪只作用于注入）；reasoning/tokens 为 assistant 行思考过程与本轮 usage（F13 迁移 c7d2e9a4b513，端点未返回 usage 时 NULL） |
+| `memory_docs` | `id, project_id(FK), kind, title, version, created_at, updated_at` | 记忆文档容器（HTML 分段模板：kind=positioning/style；story_outline 等作品类模板随 F15 类型学落地，DESIGN §13.3）；version 为文档级 ETag；**非世界观事实副本**（事实以图谱为准） |
 | `memory_doc_sections` | `id, doc_id(FK CASCADE), seq, title, content, updated_by(user/agent), version, updated_at` | 段级存储单元（段级 patch 只改一段）；version 为段级 CAS 令牌（expected_version 不符 409，用户手改优先绝不覆盖） |
 
 #### 11.4 资产库（assets.db）的多项目语义（F11 已落地）

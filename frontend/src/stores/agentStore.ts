@@ -202,6 +202,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   deleteSession: async (conversationId) => {
+    // 删除命中流式中的会话先中断 SSE（会话不复存在，流必须停；审查 P2-2）
+    if (get().streamingSessionId === conversationId) {
+      abortControllers.get(conversationId)?.abort();
+    }
     try {
       await api.deleteSession(conversationId);
       const messagesBySession = { ...get().messagesBySession };
