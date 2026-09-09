@@ -80,10 +80,17 @@
 - E2: 跨组件理由——approve 落库改变图谱与文档数据，须验证 perspectives 图查询/文档读取与 projects 归属联动；走公开 API 全链：对话（写入工具桩）→ done 清单 → approve → /api/graph 含新实体、文档段内容更新。
 - FE1-AG07/AG08: 浏览器端——mock SSE 携带 pending_writes → 确认卡渲染（两项）→ 全部写入 → approve 请求携带全部 ids → 成功后卡片消失。
 
-## 变异测试结果（用例实现完成后填写）
+## 变异测试结果（2026-09-09 定稿）
 
-- scope：`app.agent`（service/tools 定向）
-- kill rate / 实杀数 / 等价登记数 / 存活变异体逐一分析：待填
+- **scope（被测文件缩域，DECISIONS 2026-09-09 成本治理）**: `app/agent/` 内 F14 触碰的 7 文件——tools.py(340)/service.py(608)/models.py(113)/schemas.py(74)/router.py(62)/repository.py(17)/templates.py(22) = **1236 变异体**；未触碰的 llm.py/prompts.py/rendering.py（358 体）由 F13 基线（bb6484d 后未改动）覆盖。**静态契约数据源头豁免**：TOOL_SPECS（工具声明 184 行纯契约数据）抽至零逻辑模块 `tool_specs.py` 排除在变异路径外（§9 等价豁免的源头化，审查 P2-2 后置生效）。
+- **判杀器（E19 修订后口径）**: 默认模块 L1 单测全集 `tests/unit/test_agent_{llm,memory_docs,prompts,service,tools}.py` + L2 `tests/integration/test_agent_api.py` + L3 `tests/e2e/test_agent_flow.py` + 架构测试 `tests/architecture/test_architecture.py`。
+- **结果**: kill rate **100%**（1236/1236 实杀，存活 0 / 等价登记 0 / 超时 0 / 可疑 0），远超 85% 门槛；运行后 `git status` 零残留、无 .bak，后端 391 绿 + make check 通过（T-20260907-01 规程）。
+
+### 过程记录（E19 事故与成本治理，2026-09-09）
+
+1. 首轮缩域跑（判杀器误只带 5 件单测中的 2 件 + 集成 + e2e）：1236 体 kill rate 仅 51%（tools.py 49%/service.py 54%），604 存活集中在窗口压缩/工具配额/SSE 事件常量/三要素文案——均为 prompts/llm/memory_docs/架构测试覆盖的逻辑，属 **E19 判杀器子集化**（E04 层级覆盖的文件级同型），非测试或代码缺陷。
+2. 整改：error.jsonl 登记 E19 并转化为自动守卫（`task.py mutate` 默认判杀器 = 模块 L1 单测全集 glob，单测恒为基线、显式路径只可叠加不可排除）；同轮落地 mutmut 成本治理（`--files` 文件级缩域 + 基线指纹续跑，DECISIONS 2026-09-09）。
+3. 复跑（E19 修订后完整判杀器）：1236 体全部实杀，约 55 分钟（对比全模块口径 ~3 小时，缩域 + 缩域后判杀器仍全的口径下成本与判杀力兼得）。
 
 ## 验收审查记录（§10 协议第 5 轮；verify 前完成）
 
