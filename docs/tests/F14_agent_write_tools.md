@@ -18,13 +18,13 @@
 
 | 层级 | 用例 | 测试文件 | 必须 | 状态 |
 |------|------|----------|------|------|
-| L1 单元 | U1-U9: 写入工具登记行为 | backend/tests/unit/test_agent_tools.py | 必须 | pending |
-| L1 单元 | U10-U20: 轮末清单/approve/reject/段 CAS | backend/tests/unit/test_agent_service.py | 必须 | pending |
-| L1 单元 | FU10: agentStore pending 状态机 | frontend/tests/unit/stores/agentStore.test.ts | 必须 | pending |
-| L2 集成 | I1-I7: SSE 携带清单/approve 落库/CAS 冲突/级联 | backend/tests/integration/test_agent_api.py | 必须 | pending |
-| L2 集成 | FI10: PendingWritesCard 交互 | frontend/tests/integration/AgentExperience.test.tsx | 必须 | pending |
-| L3 E2E | E2: 写入工具→确认→图谱刷新（跨组件：agent+entities+perspectives） | backend/tests/e2e/test_agent_flow.py | 必须 | pending |
-| L3 E2E | FE1-AG07/AG08: 浏览器端确认卡流 | frontend/e2e/agent.spec.ts | 必须 | pending |
+| L1 单元 | U1-U9: 写入工具登记行为 | backend/tests/unit/test_agent_tools.py | 必须 | pass |
+| L1 单元 | U10-U20: 轮末清单/approve/reject/段 CAS | backend/tests/unit/test_agent_service.py | 必须 | pass |
+| L1 单元 | FU10: agentStore pending 状态机 | frontend/tests/unit/stores/agentStore.test.ts | 必须 | pass |
+| L2 集成 | I1-I7: SSE 携带清单/approve 落库/CAS 冲突/级联 | backend/tests/integration/test_agent_api.py | 必须 | pass |
+| L2 集成 | FI10: PendingWritesCard 交互 | frontend/tests/integration/AgentExperience.test.tsx | 必须 | pass |
+| L3 E2E | E2: 写入工具→确认→图谱刷新（跨组件：agent+entities+perspectives） | backend/tests/e2e/test_agent_flow.py | 必须 | pass |
+| L3 E2E | FE1-AG07/AG08: 浏览器端确认卡流 | frontend/e2e/agent.spec.ts | 必须 | pass |
 
 ## 用例说明
 
@@ -85,9 +85,21 @@
 - scope：`app.agent`（service/tools 定向）
 - kill rate / 实杀数 / 等价登记数 / 存活变异体逐一分析：待填
 
-## 验收审查记录（§10 协议；verify 前填写）
+## 验收审查记录（§10 协议第 5 轮；verify 前完成）
 
-待填
+独立只读子代理审查（2026-09-09），发现 P0×0 / P1×3 / P2×6，triage 决议：
+
+| 编号 | 级别 | 发现 | 决议 |
+|------|------|------|------|
+| P1-1 | P1 | create_relation 的 known_by 成员名称未解析为 id，approve 落库时 relations service 校验 id 恒失败（工具契约断裂；U5/U13 未覆盖） | **修复**：登记时经 `_resolve_entity_by_name` 与 source/target 同路径解析（未命中三要素错误）；补 U5 known_by 解析/未命中两用例 + U13 known_by id 透传断言 |
+| P1-2 | P1 | 写入工具目标读取绕过 perspectives（名称解析与 update 目标快照直接进 LLM 上下文），违反 agent/CONSTRAINTS 视角过滤约束 | **修复**：`_resolve_entity_by_name` 三态化（miss/invisible/ok，invisible 由 filter_entities_for_agent 判定）；update_entity 目标叠加 filter 放行；补视角守卫参数化用例（可见/不可见/不存在） |
+| P1-3 | P1 | agentStore.approvePendingWrites 过滤条件把未提交勾选的 pending 项误删（UI 上永久不可操作）；FI10 断言锁死该错误行为（E14 同型） | **修复**：过滤条件改 `!ids.includes(p.id) \|\| failedIds.has(p.id)`（未提交保留、失败保留）；FI10 断言改为保留 pw-2 |
+| P2-1 | P2 | 测试文档与实现双态不符（U10 两项/实际一项、U5「不含 source_name」/实际携带快照、FI10 成功态措辞、AG-03 编号） | **修复**：文档措辞对齐实现（E01 同型整改） |
+| P2-2 | P2 | tools.py docstring「不抛异常」过度声明（仅折叠 Pydantic 校验） | **修复**：docstring 收窄表述 |
+| P2-3 | P2 | GET /pending-writes 前端零调用（刷新后服务端 pending 行 UI 不可见） | **登记为已知限制**：会话内 done 为主路径；回读接线留待后续增强（避免本功能范围膨胀） |
+| P2-4 | P2 | 审查时变异门禁未完成、状态列未回填、PROGRESS 任务未勾 | 流程性发现：mutmut 随后运行、状态列与 PROGRESS 随收尾回填（本表即为整改记录） |
+| P2-5 | P2 | agent/ARCHITECTURE.md 与 data_struct_define.md 未同步 F14 | **修复**：提交前完成同步（ARCHITECTURE 职责/分层/接口/事件表/写入工具链节；CONSTRAINTS 写入安全与视角过滤；data_struct §11.3 补表） |
+| P2-6 | P2 | ①summary 括号格式不一致 ②update_entity except Exception 过宽 ③e2e ChatCapture 无显式有界守卫 | **修复**：①统一 `-[type]-> ` ②只捕 NotFoundError ③补显式守卫（对齐集成侧 T-20260907-02 模式） |
 
 ## 验收判定
 

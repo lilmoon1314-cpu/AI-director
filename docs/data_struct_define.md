@@ -325,6 +325,7 @@
 | `messages` | `id, conversation_id(FK CASCADE), role(user/assistant/summary/tool), content, reasoning(可空), prompt_tokens(可空), completion_tokens(可空), created_at` | 消息（SSE 完成后落库；历史不删除，窗口裁剪只作用于注入）；reasoning/tokens 为 assistant 行思考过程与本轮 usage（F13 迁移 c7d2e9a4b513，端点未返回 usage 时 NULL） |
 | `memory_docs` | `id, project_id(FK), kind, title, version, created_at, updated_at` | 记忆文档容器（HTML 分段模板：kind=positioning/style；story_outline 等作品类模板随 F15 类型学落地，DESIGN §13.3）；version 为文档级 ETag；**非世界观事实副本**（事实以图谱为准） |
 | `memory_doc_sections` | `id, doc_id(FK CASCADE), seq, title, content, updated_by(user/agent), version, updated_at` | 段级存储单元（段级 patch 只改一段）；version 为段级 CAS 令牌（expected_version 不符 409，用户手改优先绝不覆盖） |
+| `agent_pending_writes` | `id, conversation_id(FK CASCADE), project_id(FK), kind, payload_json, baseline_json(可空), status(pending/approved/rejected), created_at` | 待写入登记（F14 迁移 a8f3c1d6e2b4，OQ-8 轮末统一确认）：写入类工具执行仅登记本行不落库；done 事件携带清单 → 前端确认卡 → approve 服务端白名单重建 DTO 逐项二次校验落库（成功 approved，失败保持 pending）；reject 置 rejected。baseline_json 承载 write_doc_section 段 CAS 基线（section_id+expected_version，approve 时复核，用户手改优先）；登记行随对话轮事务提交/回滚，会话删除经 CASCADE 级联清理 |
 
 #### 11.4 资产库（assets.db）的多项目语义（F11 已落地）
 
