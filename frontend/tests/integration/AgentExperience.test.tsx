@@ -358,3 +358,133 @@ describe("F13 FI9: AgentDock", () => {
     expect(useAgentStore.getState().dockOpen).toBe(false);
   });
 });
+
+// ---- F14 FI10: PendingWritesCard 轮末统一确认 ----
+
+const PENDING_TWO = [
+  {
+    id: "pw-1",
+    conversation_id: "conv-1",
+    kind: "create_entity" as const,
+    payload: { type: "character", name: "周兰" },
+    baseline: null,
+    status: "pending" as const,
+    summary: "新增实体「周兰」（character）",
+    created_at: "2026-09-08T00:00:00Z",
+  },
+  {
+    id: "pw-2",
+    conversation_id: "conv-1",
+    kind: "write_doc_section" as const,
+    payload: { doc_id: "mdoc-1", seq: 1, content: "新内容" },
+    baseline: { section_id: "msec-1", expected_version: 1 },
+    status: "pending" as const,
+    summary: "写入《风格约定》第 1 段「叙事视角」",
+    created_at: "2026-09-08T00:00:01Z",
+  },
+];
+
+describe("F14 FI10: PendingWritesCard", () => {
+  beforeEach(() => {
+    // 补 F14 新状态键（文件级 beforeEach 无键 → setState 合并保留旧值）
+    useAgentStore.setState({ pendingBySession: {}, approving: false });
+  });
+
+  it("渲染清单 + 默认全选 + 写入所选提交勾选 ids；成功项移除（等价类-全部有效）", async () => {
+    const approved: string[][] = [];
+    server.use(
+      http.post("*/api/agent/pending-writes/approve", async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        approved.push(body.ids);
+        return HttpResponse.json({
+          created: body.ids.map((id) => ({ id, kind: "create_entity", target_id: "ent-9", name: "周兰" })),
+          failed: [],
+        });
+      }),
+      http.get("*/api/agent/memory-docs", () => HttpResponse.json([])),
+    );
+    const { PendingWritesCard } = await import("../../src/components/agent-panel/PendingWritesCard");
+    useAgentStore.setState({ pendingBySession: { "conv-1": PENDING_TWO } });
+    const user = await renderView(
+      <PendingWritesCard
+        items={useAgentStore.getState().pendingBySession["conv-1"]!}
+        approving={false}
+        onApprove={(ids) => void useAgentStore.getState().approvePendingWrites("conv-1", ids)}
+        onReject={(ids) => void useAgentStore.getState().rejectPendingWrites("conv-1", ids)}
+      />,
+    );
+
+    const checks = screen.getAllByTestId("agent-pending-check") as HTMLInputElement[];
+    expect(checks).toHaveLength(2);
+    expect(checks.every((c) => c.checked)).toBe(true);
+    expect(screen.getByTestId("agent-pending-approve")).toHaveTextContent("写入所选（2）");
+
+    // 取消勾选第二项 → 只提交第一项
+    await user.click(checks[1]);
+    expect(screen.getByTestId("agent-pending-approve")).toHaveTextContent("写入所选（1）");
+    await user.click(screen.getByTestId("agent-pending-approve"));
+
+    await waitFor(() => expect(approved).toEqual([["pw-1"]]));
+    // 成功提交的 pw-1 移除；未提交勾选的 pw-2 保留（仍服务端 pending，可再操作）
+    await waitFor(() =>
+      expect(useAgentStore.getState().pendingBySession["conv-1"]!.map((p) => p.id)).toEqual(["pw-2"]),
+    );
+  });
+
+  it("部分失败 → 失败项保留并挂三要素错误（无效类-服务端拒绝）", async () => {
+    server.use(
+      http.post("*/api/agent/pending-writes/approve", async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        return HttpResponse.json({
+          created: [],
+          failed: [{ id: body.ids[0], reason: "登记行状态为 approved，仅 pending 可确认" }],
+        });
+      }),
+    );
+    const { PendingWritesCard } = await import("../../src/components/agent-panel/PendingWritesCard");
+    useAgentStore.setState({ pendingBySession: { "conv-1": [PENDING_TWO[0]] } });
+    const user = await renderView(
+      <PendingWritesCard
+        items={useAgentStore.getState().pendingBySession["conv-1"]!}
+        approving={false}
+        onApprove={(ids) => void useAgentStore.getState().approvePendingWrites("conv-1", ids)}
+        onReject={(ids) => void useAgentStore.getState().rejectPendingWrites("conv-1", ids)}
+      />,
+    );
+
+    await user.click(screen.getByTestId("agent-pending-approve"));
+
+    await waitFor(() =>
+      expect(useAgentStore.getState().sessionErrors["conv-1"]?.fix).toContain("仅 pending 可确认"),
+    );
+    // 失败项保留（可重试或放弃）
+    expect(useAgentStore.getState().pendingBySession["conv-1"]).toHaveLength(1);
+    expect(useAgentStore.getState().approving).toBe(false);
+  });
+
+  it("放弃所选 → reject 调用且本地项移除（等价类-放弃路径）", async () => {
+    const rejected: string[][] = [];
+    server.use(
+      http.post("*/api/agent/pending-writes/reject", async ({ request }) => {
+        const body = (await request.json()) as { ids: string[] };
+        rejected.push(body.ids);
+        return HttpResponse.json({ rejected: body.ids });
+      }),
+    );
+    const { PendingWritesCard } = await import("../../src/components/agent-panel/PendingWritesCard");
+    useAgentStore.setState({ pendingBySession: { "conv-1": [PENDING_TWO[0]] } });
+    const user = await renderView(
+      <PendingWritesCard
+        items={useAgentStore.getState().pendingBySession["conv-1"]!}
+        approving={false}
+        onApprove={(ids) => void useAgentStore.getState().approvePendingWrites("conv-1", ids)}
+        onReject={(ids) => void useAgentStore.getState().rejectPendingWrites("conv-1", ids)}
+      />,
+    );
+
+    await user.click(screen.getByTestId("agent-pending-reject"));
+
+    await waitFor(() => expect(rejected).toEqual([["pw-1"]]));
+    await waitFor(() => expect(useAgentStore.getState().pendingBySession["conv-1"]).toHaveLength(0));
+  });
+});

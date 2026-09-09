@@ -29,12 +29,13 @@ async function mockChat(route: Route): Promise<void> {
 test("FE1: Agent 对话 → 草案确认写入图谱 → 记忆文档编辑 + Dock 开合", async ({ page }) => {
   await resetWorld(page.request);
 
-  // —— 记忆文档清理前置（F13 唯一性：指导类已存在时「＋」置灰，须在进页面前
-  // 清空，保证挂载后 docs 为空、「新建即 v1」的确定性）——
-  // e2e 库跨运行持久（data/e2e_test.db）；不做 page.reload——浏览器层 mock 的
-  // SSE 消息只存在于客户端 store，刷新即丢
+  // —— 记忆文档与会话清理前置（F13 唯一性：指导类已存在时「＋」置灰，须在进页面前
+  // 清空，保证挂载后 docs 为空、「新建即 v1」的确定性；会话跨运行堆积会把
+  // 记忆文档区挤出视口，点击被滚动边缘拦截——e2e 库持久不重建）——
   const existingDocs = (await page.request.get("/api/agent/memory-docs?project_id=project-default").then((r) => r.json())) as { id: string }[];
   for (const doc of existingDocs) await page.request.delete(`/api/agent/memory-docs/${doc.id}`);
+  const existingSessions = (await page.request.get("/api/agent/sessions?project_id=project-default").then((r => r.json()))) as { id: string }[];
+  for (const session of existingSessions) await page.request.delete(`/api/agent/sessions/${session.id}`);
 
   // —— 拦截 LLM 环节（chat SSE / propose）——
   await page.route("**/api/agent/chat", mockChat);
@@ -125,4 +126,59 @@ test("FE1: Agent 对话 → 草案确认写入图谱 → 记忆文档编辑 + Do
   await page.getByTestId("agent-dock-close").click();
   await expect(page.getByTestId("agent-dock")).toHaveCount(0);
   await shoot(page, "AG-06-Dock侧边栏复用会话");
+});
+
+test("AG-07: F14 写入工具登记 → 确认卡 → 全部写入 → 图谱与文档刷新", async ({ page }) => {
+  await resetWorld(page.request);
+
+  // —— 拦截 LLM chat：done 携带 pending_writes 清单（浏览器层 mock，登记经真实后端语义渲染）——
+  await page.route("**/api/agent/chat", (route) => {
+    const body = [
+      'event: message_start\ndata: {"conversation_id":"mock"}\n\n',
+      'event: token\ndata: {"text":"我登记了两项写入，请确认。"}\n\n',
+      `event: done\ndata: {"message_id":"msg-mock","pending_writes":[{"id":"pw-mock-1","conversation_id":"mock","kind":"create_entity","payload":{"type":"character","name":"船医周兰"},"baseline":null,"status":"pending","summary":"新增实体「船医周兰」（character）","created_at":"2026-09-08T00:00:00Z"},{"id":"pw-mock-2","conversation_id":"mock","kind":"write_doc_section","payload":{"doc_id":"mdoc-mock","seq":1,"content":"海难求生。"},"baseline":null,"status":"pending","summary":"写入《世界观定位》第 1 段","created_at":"2026-09-08T00:00:01Z"}]}\n\n`,
+    ].join("");
+    return route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+      body,
+    });
+  });
+  // approve 走真实后端（登记行不存在会失败）→ 改拦截为 mock 成功 + 真实失效刷新可观察
+  let approvedIds: string[] = [];
+  await page.route("**/api/agent/pending-writes/approve", async (route) => {
+    const req = route.request();
+    const body = (await req.postDataJSON()) as { ids: string[] };
+    approvedIds = body.ids;
+    return route.fulfill({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        created: body.ids.map((id) => ({ id, kind: "create_entity", target_id: "ent-e2e", name: "船医周兰" })),
+        failed: [],
+      }),
+    });
+  });
+
+  await openWorkbench(page);
+  await page.getByTestId("tab-agent").click();
+  await expect(page.getByTestId("agent-input")).toBeVisible();
+
+  await page.getByTestId("agent-input").fill("登记一个船医");
+  await page.getByTestId("agent-input-send").click();
+
+  // —— 确认卡渲染：两项 + 默认全选 ——
+  await expect(page.getByTestId("agent-pending-card")).toBeVisible({ timeout: 10_000 });
+  const pendingItems = page.getByTestId("agent-pending-item");
+  await expect(pendingItems).toHaveCount(2);
+  await expect(pendingItems.nth(0)).toHaveText(/船医周兰/);
+  await expect(pendingItems.nth(1)).toHaveText(/世界观定位/);
+  await expect(page.getByTestId("agent-pending-approve")).toContainText("写入所选（2）");
+  await shoot(page, "AG-07-待写入确认卡");
+
+  // —— 全部写入 → 成功后卡片消失 ——
+  await page.getByTestId("agent-pending-approve").click();
+  await expect(page.getByTestId("agent-pending-card")).toHaveCount(0, { timeout: 10_000 });
+  expect(approvedIds.sort()).toEqual(["pw-mock-1", "pw-mock-2"]);
+  await shoot(page, "AG-08-确认后卡片消失");
 });

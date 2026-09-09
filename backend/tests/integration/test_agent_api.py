@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.agent import llm as agent_llm
 from app.agent.llm import AssistantTurn, ToolCall
+from app.config import get_settings
 
 pytestmark = pytest.mark.integration
 
@@ -768,3 +769,286 @@ def test_create_guide_doc_duplicate_kind_conflicts(client: TestClient) -> None:
     assert len([d for d in docs if d["kind"] == "positioning"]) == 1, (
         f"不得产生第二份定位文档: {docs}"
     )
+
+
+# ---- F14：轮末统一确认（I1-I7 见 docs/tests/F14_agent_write_tools.md）----
+
+
+def _pending_turn(*calls: ToolCall) -> AssistantTurn:
+    """构造带写入工具调用的 LLM 轮（聚合无 content）。"""
+    return AssistantTurn(content=None, tool_calls=list(calls))
+
+
+def test_pending_writes_full_flow(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F14-I1: SSE 全链——写入工具登记 → tool 事件 → done 携带清单 → GET 回读一致。
+
+    设计依据: 等价类-有效（create_entity + write_doc_section 双登记）。
+    """
+    project = _create_project(client, "写入链路项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    doc = client.post(
+        "/api/agent/memory-docs", params={"project_id": pid, "kind": "style"}, json={}
+    ).json()
+
+    script: list[Any] = [
+        _pending_turn(
+            ToolCall(
+                call_id="c1",
+                name="create_entity",
+                arguments='{"type": "character", "name": "周兰", "description": "船医"}',
+            ),
+            ToolCall(
+                call_id="c2",
+                name="write_doc_section",
+                arguments=(
+                    f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "第三人称限制视角。"}}'
+                ),
+            ),
+        ),
+        AssistantTurn(content="已登记两项写入，等待确认。"),
+    ]
+    _install_chat_script(monkeypatch, script)
+    chat = client.post(
+        "/api/agent/chat",
+        json={
+            "conversation_id": session["id"],
+            "message": "加个船医并把视角写进风格文档",
+            "perspective": "author",
+        },
+    )
+    assert chat.status_code == 200, chat.text[:200]
+    events = _parse_sse(chat.text)
+    assert events[-1]["event"] == "done", f"轮必须正常收尾: {events[-1]}"
+    tool_events = [e for e in events if e["event"] == "tool"]
+    assert len(tool_events) == 4, f"两次工具调用应产生 start/done 事件对: {tool_events}"
+    done_data = events[-1]["data"]
+    assert "pending_writes" in done_data, f"done 必须携带清单: {done_data}"
+    items = done_data["pending_writes"]
+    assert [i["kind"] for i in items] == ["create_entity", "write_doc_section"]
+
+    rows = client.get("/api/agent/pending-writes", params={"conversation_id": session["id"]}).json()
+    assert [r["id"] for r in rows] == [i["id"] for i in items], "GET 回读必须与 done 清单一致"
+    assert all(r["status"] == "pending" and r["summary"] for r in rows)
+    # 登记不落库：实体/段此刻均未变化
+    entities = client.get("/api/entities", params={"project_id": pid}).json()
+    assert all(e["name"] != "周兰" for e in entities), "登记阶段实体不得落库"
+    doc_now = client.get(f"/api/agent/memory-docs/{doc['id']}").json()
+    assert doc_now["sections"][0]["content"] == "", "登记阶段段内容不得变化"
+
+
+def test_approve_persists_entity_and_status(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-I2: approve → 实体真落库 + 登记行 approved（跨库一致性）。"""
+    project = _create_project(client, "批准项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    _install_chat_script(
+        monkeypatch,
+        [
+            _pending_turn(
+                ToolCall(
+                    call_id="c1",
+                    name="create_entity",
+                    arguments='{"type": "character", "name": "沈墨", "description": "剑客"}',
+                )
+            ),
+            AssistantTurn(content="已登记。"),
+        ],
+    )
+    chat = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "加个剑客", "perspective": "author"},
+    )
+    pending_id = _parse_sse(chat.text)[-1]["data"]["pending_writes"][0]["id"]
+
+    approve = client.post(
+        "/api/agent/pending-writes/approve",
+        json={"conversation_id": session["id"], "ids": [pending_id]},
+    )
+    assert approve.status_code == 200, approve.text[:300]
+    body = approve.json()
+    assert len(body["created"]) == 1 and body["failed"] == [], f"必须全部成功: {body}"
+
+    entities = client.get("/api/entities", params={"project_id": pid}).json()
+    match = [e for e in entities if e["name"] == "沈墨"]
+    assert len(match) == 1, f"实体必须真落库: {entities}"
+    detail = client.get(f"/api/entities/{match[0]['id']}").json()
+    assert detail["description"] == "剑客", f"description 必须随登记载荷落库: {detail}"
+    rows = client.get("/api/agent/pending-writes", params={"conversation_id": session["id"]}).json()
+    assert rows[0]["status"] == "approved", f"登记行必须置 approved: {rows}"
+
+
+def test_approve_write_section_cas_conflict(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-I3: 登记后用户手改段 → approve 该项 failed 含版本冲突（CAS 防线）。"""
+    project = _create_project(client, "CAS项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    doc = client.post(
+        "/api/agent/memory-docs", params={"project_id": pid, "kind": "positioning"}, json={}
+    ).json()
+    section = doc["sections"][0]
+
+    _install_chat_script(
+        monkeypatch,
+        [
+            _pending_turn(
+                ToolCall(
+                    call_id="c1",
+                    name="write_doc_section",
+                    arguments=(
+                        f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "agent 版本内容"}}'
+                    ),
+                )
+            ),
+            AssistantTurn(content="已登记段写入。"),
+        ],
+    )
+    chat = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "写定位", "perspective": "author"},
+    )
+    pending_id = _parse_sse(chat.text)[-1]["data"]["pending_writes"][0]["id"]
+
+    # 用户在确认前手改同段（版本推进）
+    user_edit = client.patch(
+        f"/api/agent/memory-docs/{doc['id']}/sections/{section['id']}",
+        params={"updated_by": "user"},
+        json={"content": "用户抢先改的内容", "expected_version": section["version"]},
+    )
+    assert user_edit.status_code == 200, user_edit.text[:200]
+
+    approve = client.post(
+        "/api/agent/pending-writes/approve",
+        json={"conversation_id": session["id"], "ids": [pending_id]},
+    )
+    body = approve.json()
+    assert body["created"] == [] and len(body["failed"]) == 1, f"CAS 冲突必须失败: {body}"
+    assert "版本冲突" in body["failed"][0]["reason"], f"原因必须三要素可读: {body}"
+    doc_now = client.get(f"/api/agent/memory-docs/{doc['id']}").json()
+    assert doc_now["sections"][0]["content"] == "用户抢先改的内容", "用户手改优先，绝不覆盖"
+
+
+def test_pending_actions_conversation_not_found(client: TestClient) -> None:
+    """F14-I4: approve/reject 对不存在会话 → 404 三要素完整（无效等价类）。"""
+    for path in ("/api/agent/pending-writes/approve", "/api/agent/pending-writes/reject"):
+        resp = client.post(path, json={"conversation_id": "conv-ghost", "ids": ["pw-1"]})
+        assert resp.status_code == 404, f"{path} 必须 404: {resp.status_code} {resp.text[:200]}"
+        body = resp.json()
+        assert body.get("problem") and body.get("cause") and body.get("fix"), f"三要素: {body}"
+
+
+def test_reject_then_reapprove_fails(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F14-I5: reject → 状态 rejected；重复 approve 该项 failed（状态机闭合）。"""
+    project = _create_project(client, "放弃项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    _install_chat_script(
+        monkeypatch,
+        [
+            _pending_turn(
+                ToolCall(
+                    call_id="c1",
+                    name="create_entity",
+                    arguments='{"type": "item", "name": "罗盘"}',
+                )
+            ),
+            AssistantTurn(content="已登记。"),
+        ],
+    )
+    chat = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "加个罗盘", "perspective": "author"},
+    )
+    pending_id = _parse_sse(chat.text)[-1]["data"]["pending_writes"][0]["id"]
+
+    reject = client.post(
+        "/api/agent/pending-writes/reject",
+        json={"conversation_id": session["id"], "ids": [pending_id]},
+    )
+    assert reject.status_code == 200 and reject.json()["rejected"] == [pending_id]
+    entities = client.get("/api/entities", params={"project_id": pid}).json()
+    assert all(e["name"] != "罗盘" for e in entities), "放弃后不得落库"
+
+    reapprove = client.post(
+        "/api/agent/pending-writes/approve",
+        json={"conversation_id": session["id"], "ids": [pending_id]},
+    )
+    body = reapprove.json()
+    assert body["created"] == [] and len(body["failed"]) == 1, "rejected 项不可再 approve"
+
+
+def test_project_deletion_cascades_pending_writes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-I6: 删项目 → 会话级联清理登记行（跨库一致，无孤儿）。"""
+    project = _create_project(client, "级联项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    _install_chat_script(
+        monkeypatch,
+        [
+            _pending_turn(
+                ToolCall(
+                    call_id="c1", name="create_entity", arguments='{"type": "item", "name": "x"}'
+                )
+            ),
+            AssistantTurn(content="好。"),
+        ],
+    )
+    chat = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "加个 x", "perspective": "author"},
+    )
+    assert _parse_sse(chat.text)[-1]["data"]["pending_writes"], "登记必须产生清单（级联前置）"
+
+    deleted = client.delete(f"/api/projects/{pid}")
+    assert deleted.status_code == 204, deleted.text[:200]
+
+    gone = client.get("/api/agent/pending-writes", params={"conversation_id": session["id"]})
+    assert gone.status_code == 404, "会话已级联删除，回读必须 404"
+
+
+def test_pending_limit_integration(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F14-I7: 上限=1 时第二轮登记被拒（错误文本进 tool result，轮正常 done 不打断）。"""
+
+    class LimitOneSettings:
+        """真配置副本 + 上限收紧为 1（其余字段沿用运行配置）。"""
+
+        def __init__(self) -> None:
+            real = get_settings()
+            self.__dict__.update(real.__dict__)
+            self.agent_max_pending_writes = 1
+
+    from app.agent import tools as agent_tools
+
+    monkeypatch.setattr(agent_tools, "get_settings", lambda: LimitOneSettings())
+    project = _create_project(client, "上限项目")
+    pid = project["id"]
+    session = _create_session(client, pid)
+    _install_chat_script(
+        monkeypatch,
+        [
+            _pending_turn(
+                ToolCall(
+                    call_id="c1", name="create_entity", arguments='{"type": "item", "name": "a"}'
+                ),
+                ToolCall(
+                    call_id="c2", name="create_entity", arguments='{"type": "item", "name": "b"}'
+                ),
+            ),
+            AssistantTurn(content="第一项已登记。"),
+        ],
+    )
+    chat = client.post(
+        "/api/agent/chat",
+        json={"conversation_id": session["id"], "message": "加两个", "perspective": "author"},
+    )
+    assert chat.status_code == 200, chat.text[:200]
+    events = _parse_sse(chat.text)
+    assert events[-1]["event"] == "done", f"超限不打断轮: {events[-1]}"
+    done_data = events[-1]["data"]
+    assert len(done_data.get("pending_writes", [])) == 1, f"仅上限内登记: {done_data}"

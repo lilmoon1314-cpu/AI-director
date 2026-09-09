@@ -64,6 +64,16 @@ def generate_draft_id() -> str:
     return f"draft-{_short_uuid()}"
 
 
+def generate_pending_write_id() -> str:
+    """生成待写入登记 id（F14 轮末统一确认的确认单位）。
+
+    作用: 写入工具登记行 id（agent_pending_writes 主键），done 事件清单
+        与 approve/reject 请求以其寻址。参数: 无。
+    返回值: str 形如 pw-...。异常: 无。依赖: uuid。
+    """
+    return f"pw-{_short_uuid()}"
+
+
 # ---- 会话与消息 ----
 
 
@@ -160,11 +170,13 @@ class SectionUpdate(BaseModel):
     """段内容更新请求（用户编辑与 agent patch 确认共用；乐观锁）。
 
     参数: content — 新内容；expected_version — 调用方读取时的段版本，
-        与当前不一致即 409 冲突（用户手改优先，绝不静默覆盖）。
+        与当前不一致即 409 冲突（用户手改优先，绝不覆盖）；
+        title — 可选新段标题（None=不改；F14 write_doc_section 透传）。
     """
 
     content: str = Field(min_length=0)
     expected_version: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 # ---- 草案（propose / confirm 两段式）----
@@ -232,3 +244,69 @@ class ConfirmResponse(BaseModel):
 
     created: list[ConfirmResultItem] = Field(default_factory=list)
     failed: list[ConfirmFailedItem] = Field(default_factory=list)
+
+
+# ---- 待写入登记（F14 轮末统一确认；写入工具主路径，propose/confirm 为 legacy）----
+
+
+class PendingWriteRead(BaseModel):
+    """待写入登记响应（确认卡数据源；done 事件清单同形）。
+
+    参数: payload — 白名单化后的工具参数（含人读名称快照字段）；
+        baseline — write_doc_section 的段 CAS 基线（其余 kind 为 None）。
+    """
+
+    id: str
+    conversation_id: str
+    kind: Literal[
+        "create_entity",
+        "update_entity",
+        "create_relation",
+        "create_memory_doc",
+        "write_doc_section",
+    ]
+    payload: dict[str, Any]
+    baseline: dict[str, Any] | None = None
+    status: Literal["pending", "approved", "rejected"]
+    summary: str = Field(description="给作者看的一句话摘要（服务端派生）")
+    created_at: datetime
+
+
+class PendingWriteActionRequest(BaseModel):
+    """approve / reject 请求体（以登记行 id 寻址；服务端复核归属与状态）。
+
+    参数: conversation_id — 会话 id（404 校验 + 归属复核）；
+        ids — 待处理登记行 id 列表（至少一项）。
+    """
+
+    conversation_id: str = Field(min_length=1)
+    ids: list[str] = Field(min_length=1)
+
+
+class ApproveResultItem(BaseModel):
+    """approve 成功项（落库后的目标 id 与名称）。"""
+
+    id: str
+    kind: str
+    target_id: str
+    name: str
+
+
+class ApproveFailedItem(BaseModel):
+    """approve 失败项（三要素 reason；登记行保持 pending 可重试或放弃）。"""
+
+    id: str
+    reason: str
+
+
+class ApproveResponse(BaseModel):
+    """approve 响应（成功→approved；失败项保持 pending 进 failed 列表）。"""
+
+    created: list[ApproveResultItem] = Field(default_factory=list)
+    failed: list[ApproveFailedItem] = Field(default_factory=list)
+
+
+class RejectResponse(BaseModel):
+    """reject 响应（置 rejected 的登记行 id；非 pending 项跳过）。"""
+
+    rejected: list[str] = Field(default_factory=list)

@@ -346,6 +346,48 @@ def test_message_reasoning_usage_columns_declared() -> None:
         )
 
 
+def test_agent_pending_writes_table_declared() -> None:
+    """agent_pending_writes 表的 ORM DDL 契约（F14 轮末统一确认）。
+
+    失败含义:
+        【问题】待写入登记表的级联删除 / 状态列 / 基线列声明不符，
+            或迁移未建表
+        【原因】conversation_id 缺 CASCADE 会在会话删除后留下孤儿登记行
+            （确认卡指向不存在会话）；baseline 缺失使段级 CAS 失去落库
+            校验载体；缺索引拖慢会话过滤
+        【修复】对照 app/agent/models.py 与 F14 迁移修正声明并同步迁移
+    """
+    from app.agent.models import Conversation, PendingWrite
+
+    col = PendingWrite.__table__.c["conversation_id"]
+    fk = next(fk for fk in col.foreign_keys if fk.column.table is Conversation.__table__)
+    assert fk.ondelete == "CASCADE", (
+        "agent_pending_writes.conversation_id 必须声明 ON DELETE CASCADE（会话删除级联清理）"
+    )
+    assert any(
+        "conversation_id" in {c.name for c in idx.columns} for idx in PendingWrite.__table__.indexes
+    ), "agent_pending_writes.conversation_id 必须建索引（会话过滤高频路径）"
+
+    status_col = PendingWrite.__table__.c["status"]
+    assert status_col.default.arg == "pending", "status 默认必须为 pending（登记即待确认）"
+    assert PendingWrite.__table__.c["baseline_json"].nullable, (
+        "baseline_json 必须可空（仅 write_doc_section 类别携带 CAS 基线）"
+    )
+    for col_name in ("id", "project_id", "kind", "payload_json", "status"):
+        assert not PendingWrite.__table__.c[col_name].nullable, (
+            f"agent_pending_writes.{col_name} 必须非空（登记行完整性）"
+        )
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert "agent_pending_writes" in migration_sql, (
+        "【问题】迁移未包含 agent_pending_writes 建表\n"
+        "【原因】ORM 声明与迁移 DDL 漂移，新库缺表导致登记失败\n"
+        "【修复】F14 迁移 create_table agent_pending_writes（含 CASCADE/索引）"
+    )
+
+
 def test_no_bak_residue_in_app() -> None:
     """app/ 下禁止 .bak 残留文件（error.jsonl T-20260905-02：mutmut 中断残留变异体被误提交）。
 

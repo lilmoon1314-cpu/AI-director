@@ -1,14 +1,16 @@
 /**
- * agentStore：Agent 对话与记忆文档全局状态（F10/F13，DESIGN.md §5.4/§5.5/§13.1）。
- * - 按项目的会话池（sessions + messagesBySession）；草案两段式（draftsBySession）；
+ * agentStore：Agent 对话与记忆文档全局状态（F10/F13/F14，DESIGN.md §5.4/§5.5/§13.1/§13.2）。
+ * - 按项目的会话池（sessions + messagesBySession）；草案两段式（draftsBySession，legacy）；
  * - **SSE 生命周期挂会话级**：AbortController 由 store 持有——切会话、AgentDock
  *   收起、组件卸载均不断流；中断仅发生于显式停止与项目切换。全局同一时刻
  *   至多一轮流式（他会议流式中时输入层禁用，sendMessage 守卫兜底拒绝）；
- * - confirm 成功后广播图谱失效（graphStore.loadGraph 重载）。
+ * - F14 轮末统一确认：done 事件携带 pending_writes 清单 → pendingBySession
+ *   （确认卡数据源）→ approve 服务端二次校验落库 → 图谱/文档失效刷新；
+ * - confirm（legacy）成功后同样广播图谱失效（graphStore.loadGraph 重载）。
  * 事件协议（agent/ARCHITECTURE.md）：message_start/token/reasoning/usage/tool/
- * done/error；draft/doc_patch/ask_user 为 F14 预留类型——本 store 忽略不渲染
- * （前向兼容）。reasoning 增量累积进 assistant 消息（ThinkingBlock 数据源），
- * usage 写入 usageBySession（UsageBar 本轮用量与容量窗口）。
+ * done(含 pending_writes?)/error；draft/doc_patch/ask_user 为预留类型——本
+ * store 忽略不渲染（前向兼容）。reasoning 增量累积进 assistant 消息
+ * （ThinkingBlock 数据源），usage 写入 usageBySession（UsageBar 容量窗口）。
  * 约束：全部 async action 必须有 catch 并落三要素错误态（E16，frontend/CONSTRAINTS.md）。
  */
 
@@ -20,6 +22,7 @@ import {
   ApiError,
   type DraftItem,
   type MemoryDocBrief,
+  type PendingWriteRead,
   type SessionRead,
 } from "../api/client";
 import { useGraphStore } from "./graphStore";
@@ -114,6 +117,10 @@ interface AgentState {
   usageBySession: Record<string, TurnUsage>;
   draftsBySession: Record<string, DraftItem[]>;
   confirming: boolean;
+  /** F14 待写入确认：done 事件清单按会话累积（确认卡数据源）。 */
+  pendingBySession: Record<string, PendingWriteRead[]>;
+  /** approve 请求进行中（按钮防重复提交）。 */
+  approving: boolean;
   docs: MemoryDocBrief[];
   docsLoading: boolean;
   docsError: AgentErrorState | null;
@@ -143,6 +150,10 @@ interface AgentState {
   ) => Promise<void>;
   confirmDrafts: (conversationId: string) => Promise<void>;
   discardDrafts: (conversationId: string) => void;
+  /** F14：批量批准待写入（只提交勾选 ids；图谱/文档失效刷新）。 */
+  approvePendingWrites: (conversationId: string, ids: string[]) => Promise<void>;
+  /** F14：放弃待写入（置 rejected；本地移除）。 */
+  rejectPendingWrites: (conversationId: string, ids: string[]) => Promise<void>;
   loadDocs: (projectId: string, force?: boolean) => Promise<void>;
   createDoc: (kind: string, projectId: string) => Promise<void>;
   /** 删除记忆文档（段经后端级联清理；成功后刷新列表）。 */
@@ -175,6 +186,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   usageBySession: {},
   draftsBySession: {},
   confirming: false,
+  pendingBySession: {},
+  approving: false,
   docs: [],
   docsLoading: false,
   docsError: null,
@@ -346,6 +359,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             },
           });
         } else if (event === "done") {
+          // F14：done 携带本轮待写入清单（无写入时无该键）——累积进确认卡
+          const pending = data.pending_writes as PendingWriteRead[] | undefined;
+          if (pending && pending.length > 0) {
+            set({
+              pendingBySession: {
+                ...get().pendingBySession,
+                [conversationId]: [...(get().pendingBySession[conversationId] ?? []), ...pending],
+              },
+            });
+          }
           // 以服务端落库结果为准回读（标题/消息 id 对齐）
           await get().loadMessages(conversationId, true);
         }
@@ -460,6 +483,71 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ draftsBySession: { ...get().draftsBySession, [conversationId]: [] } });
   },
 
+  approvePendingWrites: async (conversationId, ids) => {
+    if (ids.length === 0) return;
+    set({ approving: true });
+    try {
+      const result = await api.approvePendingWrites({ conversation_id: conversationId, ids });
+      const failedIds = new Set((result.failed ?? []).map((f) => f.id));
+      // 成功提交且成功的项移除；失败项与未提交勾选的项保留（仍在服务端
+      // pending，作者可重试/放弃——误删会让登记行在 UI 上永久不可操作）
+      const remaining = (get().pendingBySession[conversationId] ?? []).filter(
+        (p) => !ids.includes(p.id) || failedIds.has(p.id),
+      );
+      set({
+        pendingBySession: { ...get().pendingBySession, [conversationId]: remaining },
+        sessionErrors: { ...get().sessionErrors, [conversationId]: null },
+      });
+      // 失败项三要素可读（挂在会话错误态，确认卡旁可见）
+      if (failedIds.size > 0) {
+        const reasons = (result.failed ?? []).map((f) => f.reason).join("；");
+        set({
+          sessionErrors: {
+            ...get().sessionErrors,
+            [conversationId]: { problem: "部分待写入未能落库", fix: reasons },
+          },
+        });
+      }
+      // 广播失效：图谱（新实体/关系）与文档列表（新文档/段写入）双刷新
+      const projectId = useProjectStore.getState().currentProjectId;
+      if (projectId) {
+        void useGraphStore.getState().loadGraph(projectId);
+        void get().loadDocs(projectId, true);
+      }
+    } catch (cause) {
+      set({
+        sessionErrors: {
+          ...get().sessionErrors,
+          [conversationId]: toErrorState(cause, "待写入确认失败"),
+        },
+      });
+    } finally {
+      set({ approving: false });
+    }
+  },
+
+  rejectPendingWrites: async (conversationId, ids) => {
+    if (ids.length === 0) return;
+    try {
+      await api.rejectPendingWrites({ conversation_id: conversationId, ids });
+      set({
+        pendingBySession: {
+          ...get().pendingBySession,
+          [conversationId]: (get().pendingBySession[conversationId] ?? []).filter(
+            (p) => !ids.includes(p.id),
+          ),
+        },
+      });
+    } catch (cause) {
+      set({
+        sessionErrors: {
+          ...get().sessionErrors,
+          [conversationId]: toErrorState(cause, "放弃待写入失败"),
+        },
+      });
+    }
+  },
+
   loadDocs: async (projectId, force = false) => {
     if (!force && get().docs.length > 0 && get().sessionsProjectId === projectId) return;
     set({ docsLoading: true, docsError: null });
@@ -513,6 +601,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       usageBySession: {},
       draftsBySession: {},
       confirming: false,
+      pendingBySession: {},
+      approving: false,
       docs: [],
       docsLoading: false,
       docsError: null,

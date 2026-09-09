@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import service
 from app.agent.schemas import (
+    ApproveResponse,
     ChatRequest,
     ConfirmRequest,
     ConfirmResponse,
@@ -21,8 +22,11 @@ from app.agent.schemas import (
     MemoryDocRead,
     MemoryDocSectionRead,
     MessageRead,
+    PendingWriteActionRequest,
+    PendingWriteRead,
     ProposeRequest,
     ProposeResponse,
+    RejectResponse,
     SectionUpdate,
     SessionCreate,
     SessionRead,
@@ -105,7 +109,7 @@ async def propose(
     schema: ProposeRequest,
     session: AsyncSession = Depends(get_session),
 ) -> ProposeResponse:
-    """生成实体/关系写入草案（LLM JSON mode；不落库）。"""
+    """生成实体/关系写入草案（legacy：F14 起写入工具链为主路径；不落库）。"""
     return await service.propose_drafts(session, schema)
 
 
@@ -114,8 +118,35 @@ async def confirm(
     schema: ConfirmRequest,
     session: AsyncSession = Depends(get_session),
 ) -> ConfirmResponse:
-    """确认草案并落库（两段式第二段；服务端复核全部 payload）。"""
+    """确认草案并落库（legacy 两段式第二段；服务端复核全部 payload）。"""
     return await service.confirm_write(session, schema)
+
+
+@router.get("/pending-writes", response_model=list[PendingWriteRead])
+async def list_pending_writes(
+    conversation_id: str = Query(min_length=1),
+    session: AsyncSession = Depends(get_session),
+) -> list[PendingWriteRead]:
+    """列出会话全部待写入登记（确认卡回读；含全部状态，时间升序）。"""
+    return await service.list_pending_writes(session, conversation_id)
+
+
+@router.post("/pending-writes/approve", response_model=ApproveResponse)
+async def approve_pending_writes(
+    schema: PendingWriteActionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> ApproveResponse:
+    """批准待写入登记（服务端逐项二次校验落库；成功置 approved）。"""
+    return await service.approve_pending_writes(session, schema)
+
+
+@router.post("/pending-writes/reject", response_model=RejectResponse)
+async def reject_pending_writes(
+    schema: PendingWriteActionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> RejectResponse:
+    """放弃待写入登记（置 rejected；非 pending 项跳过）。"""
+    return await service.reject_pending_writes(session, schema)
 
 
 @router.post("/memory-docs", response_model=MemoryDocRead, status_code=201)

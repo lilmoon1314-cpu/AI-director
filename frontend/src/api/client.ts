@@ -30,6 +30,9 @@ export type ConfirmResponse = components["schemas"]["ConfirmResponse"];
 export type MemoryDocBrief = components["schemas"]["MemoryDocBrief"];
 export type MemoryDocRead = components["schemas"]["MemoryDocRead"];
 export type MemoryDocSectionRead = components["schemas"]["MemoryDocSectionRead"];
+export type PendingWriteRead = components["schemas"]["PendingWriteRead"];
+export type ApproveResponse = components["schemas"]["ApproveResponse"];
+export type RejectResponse = components["schemas"]["RejectResponse"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -229,6 +232,24 @@ export const api = {
     ),
   /** 记忆文档 HTML 页地址（iframe 预览用，不 fetch——后端返回 text/html）。 */
   memoryDocPageUrl: (id: string) => joinUrl(API_BASE, `/agent/memory-docs/${id}/page`),
+  // ---- 待写入确认（F14 轮末统一确认，OQ-8）----
+  /** 会话全部待写入登记（确认卡回读；含全部状态，时间升序）。 */
+  listPendingWrites: (conversationId: string) =>
+    apiFetch<PendingWriteRead[]>(
+      `/agent/pending-writes?${new URLSearchParams({ conversation_id: conversationId }).toString()}`,
+    ),
+  /** 批准待写入（服务端逐项二次校验落库；失败项保持 pending 进 failed）。 */
+  approvePendingWrites: (body: { conversation_id: string; ids: string[] }) =>
+    apiFetch<ApproveResponse>("/agent/pending-writes/approve", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** 放弃待写入（置 rejected；非 pending 项跳过）。 */
+  rejectPendingWrites: (body: { conversation_id: string; ids: string[] }) =>
+    apiFetch<RejectResponse>("/agent/pending-writes/reject", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 /** Agent 对话 SSE 端点路径（fetch 流式读取用；POST + body 不适用 EventSource）。 */

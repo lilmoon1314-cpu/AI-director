@@ -1,20 +1,23 @@
 /**
- * 会话视图（F10）：消息流 + 草案确认卡 + 输入框的组合——AgentHome 会话路由
- * 与 AgentDock 复用（同一会话池，DESIGN.md 决策②）。视角随 perspectiveStore
- * 当前值透传（上下文经视角过滤）。
+ * 会话视图（F10/F14）：消息流 + 待写入确认卡 + 草案确认卡（legacy）+ 输入框
+ * 的组合——AgentHome 会话路由与 AgentDock 复用（同一会话池，DESIGN.md 决策②）。
+ * 视角随 perspectiveStore 当前值透传（上下文经视角过滤）。
  */
 
 import { useEffect } from "react";
 
+import type { PendingWriteRead } from "../../api/client";
 import { useAgentStore, type PerspectiveValue } from "../../stores/agentStore";
 import { usePerspectiveStore } from "../../stores/perspectiveStore";
 import { ChatInput } from "./ChatInput";
 import { DraftConfirmCard } from "./DraftConfirmCard";
 import { MessageList } from "./MessageList";
+import { PendingWritesCard } from "./PendingWritesCard";
 import { UsageBar } from "./UsageBar";
 
 /** 稳定空数组（selector 返回新引用会触发 useSyncExternalStore 无限循环警告）。 */
 const EMPTY_DRAFTS: never[] = [];
+const EMPTY_PENDING: PendingWriteRead[] = [];
 
 export function SessionView({ conversationId, testId = "agent-input" }: { conversationId: string; testId?: string }) {
   const messages = useAgentStore((s) => s.messagesBySession[conversationId]);
@@ -27,12 +30,16 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
   const error = useAgentStore((s) => s.sessionErrors[conversationId] ?? null);
   const drafts = useAgentStore((s) => s.draftsBySession[conversationId] ?? EMPTY_DRAFTS);
   const confirming = useAgentStore((s) => s.confirming);
+  const pendingItems = useAgentStore((s) => s.pendingBySession[conversationId] ?? EMPTY_PENDING);
+  const approving = useAgentStore((s) => s.approving);
   const loadMessages = useAgentStore((s) => s.loadMessages);
   const sendMessage = useAgentStore((s) => s.sendMessage);
   const stopStreaming = useAgentStore((s) => s.stopStreaming);
   const proposeDrafts = useAgentStore((s) => s.proposeDrafts);
   const confirmDrafts = useAgentStore((s) => s.confirmDrafts);
   const discardDrafts = useAgentStore((s) => s.discardDrafts);
+  const approvePendingWrites = useAgentStore((s) => s.approvePendingWrites);
+  const rejectPendingWrites = useAgentStore((s) => s.rejectPendingWrites);
 
   useEffect(() => {
     void loadMessages(conversationId);
@@ -56,6 +63,12 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
         onErrorRetry={() => void loadMessages(conversationId, true)}
       />
       <UsageBar usage={usage} messages={messages ?? []} />
+      <PendingWritesCard
+        items={pendingItems}
+        approving={approving}
+        onApprove={(ids) => void approvePendingWrites(conversationId, ids)}
+        onReject={(ids) => void rejectPendingWrites(conversationId, ids)}
+      />
       <DraftConfirmCard
         drafts={drafts}
         confirming={confirming}

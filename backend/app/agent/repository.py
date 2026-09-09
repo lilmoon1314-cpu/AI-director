@@ -7,7 +7,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.models import Conversation, MemoryDoc, MemoryDocSection, Message
+from app.agent.models import Conversation, MemoryDoc, MemoryDocSection, Message, PendingWrite
 
 # ---- 会话 ----
 
@@ -194,6 +194,55 @@ async def save_section(session: AsyncSession, section: MemoryDocSection) -> Memo
     """
     await session.flush()
     return section
+
+
+# ---- 待写入登记（F14 轮末统一确认）----
+
+
+async def add_pending(session: AsyncSession, pending: PendingWrite) -> PendingWrite:
+    """插入一条待写入登记（不提交事务；随对话轮事务提交/回滚）。
+
+    参数: session — 数据库会话；pending — 已填充字段的 ORM 实例。
+    返回值: PendingWrite。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    session.add(pending)
+    await session.flush()
+    return pending
+
+
+async def get_pending(session: AsyncSession, pending_id: str) -> PendingWrite | None:
+    """按 id 查询待写入登记。
+
+    参数: session — 数据库会话；pending_id — 登记行 id。
+    返回值: PendingWrite 或 None。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    return await session.get(PendingWrite, pending_id)
+
+
+async def list_pending_by_conversation(
+    session: AsyncSession, conversation_id: str
+) -> list[PendingWrite]:
+    """按会话列出全部待写入登记（created_at 升序；含全部状态）。
+
+    参数: session — 数据库会话；conversation_id — 会话 id。
+    返回值: list[PendingWrite]。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    stmt = (
+        select(PendingWrite)
+        .where(PendingWrite.conversation_id == conversation_id)
+        .order_by(PendingWrite.created_at.asc(), PendingWrite.id)
+    )
+    return list(await session.scalars(stmt))
+
+
+async def save_pending(session: AsyncSession, pending: PendingWrite) -> PendingWrite:
+    """保存已修改的登记行（status 状态流转；不提交事务）。
+
+    参数: session — 数据库会话；pending — 已在内存修改的 ORM 实例。
+    返回值: PendingWrite。异常: 无。依赖: SQLAlchemy ORM。
+    """
+    await session.flush()
+    return pending
 
 
 # ---- 项目级联 ----

@@ -1,4 +1,4 @@
-"""agent 模块 ORM 模型：会话 / 消息 / 记忆文档 / 记忆文档段。
+"""agent 模块 ORM 模型：会话 / 消息 / 记忆文档 / 记忆文档段 / 待写入登记。
 
 表结构蓝图: docs/data_struct_define.md §11.3（规划随 F10 落地主库）。
 唯一允许 import 本文件的是本模块 repository。
@@ -102,6 +102,41 @@ class MemoryDoc(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+
+
+class PendingWrite(Base):
+    """待写入登记 ORM 模型：写入工具的轮末统一确认主体（F14，OQ-8）。
+
+    作用:
+        写入类工具执行 ≠ 落库——仅登记本行（status=pending），本轮 done
+        事件携带清单，作者经确认卡批准后由 approve 逐项二次校验落库
+        （成功置 approved）；放弃置 rejected。baseline_json 承载
+        write_doc_section 的段 CAS 基线（section_id + expected_version），
+        落库时校验（用户手改优先，绝不覆盖）。登记行属对话轮事务——
+        轮失败回滚则 pending 一并消失。
+    参数:
+        无（ORM 模型，字段见下）。
+    返回值: 无（模型类）。异常: 无。
+    依赖: SQLAlchemy 2.0、app.core.db.Base。
+    """
+
+    __tablename__ = "agent_pending_writes"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # 归属项目快照（approve 服务端复核与会话归属一致性；随会话级联清理）
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    # 写入类别（create_entity/update_entity/create_relation/create_memory_doc/write_doc_section）
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    # 白名单化后的工具参数（approve 按类别重建输入 DTO，不信任前端回传）
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    # 段级 CAS 基线（write_doc_section: section_id/expected_version；其余 kind 为 NULL）
+    baseline_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # pending（待确认）/ approved（已落库）/ rejected（已放弃）
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
 
 
 class MemoryDocSection(Base):

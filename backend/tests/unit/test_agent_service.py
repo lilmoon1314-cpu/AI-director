@@ -29,6 +29,7 @@ class AgentSettingsStub:
     agent_context_max_tokens = 100000
     agent_history_window_messages = 2
     agent_max_tool_calls_per_turn = 1
+    agent_max_pending_writes = 8
     agent_tool_output_max_chars = 50
     agent_content_review_enabled = False
     agent_content_review_words = ""
@@ -53,6 +54,8 @@ class Store:
         self.conversations: dict[str, Any] = {}
         self.messages: dict[str, list[Any]] = {}
         self.docs_by_project: dict[str, list[Any]] = {}
+        self.sections_by_doc: dict[str, list[Any]] = {}
+        self.pendings: dict[str, Any] = {}
         self._n = 0
 
     def next_id(self, prefix: str) -> str:
@@ -106,6 +109,77 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     async def fake_list_docs(_s: Any, project_id: str) -> list[Any]:
         return list(store.docs_by_project.get(project_id, []))
 
+    async def fake_find_doc_by_kind(_s: Any, project_id: str, kind: str) -> Any:
+        for doc in store.docs_by_project.get(project_id, []):
+            if doc.kind == kind:
+                return doc
+        return None
+
+    async def fake_add_doc(_s: Any, doc: Any) -> Any:
+        # ORM 实例未 flush 时未设列不挂实例属性——getattr 判空后再补默认
+        if getattr(doc, "version", None) is None:
+            doc.version = 1
+        if getattr(doc, "created_at", None) is None:
+            doc.created_at = datetime.now(UTC)
+        if getattr(doc, "updated_at", None) is None:
+            doc.updated_at = datetime.now(UTC)
+        store.docs_by_project.setdefault(doc.project_id, []).append(doc)
+        return doc
+
+    async def fake_get_doc(_s: Any, doc_id: str) -> Any:
+        for docs in store.docs_by_project.values():
+            for doc in docs:
+                if doc.id == doc_id:
+                    return doc
+        return None
+
+    async def fake_add_section(_s: Any, section: Any) -> Any:
+        if getattr(section, "version", None) is None:
+            section.version = 1
+        if getattr(section, "updated_by", None) is None:
+            section.updated_by = "user"
+        if getattr(section, "content", None) is None:
+            section.content = ""
+        if getattr(section, "created_at", None) is None:
+            section.created_at = datetime.now(UTC)
+        if getattr(section, "updated_at", None) is None:
+            section.updated_at = datetime.now(UTC)
+        store.sections_by_doc.setdefault(section.doc_id, []).append(section)
+        return section
+
+    async def fake_get_section(_s: Any, section_id: str) -> Any:
+        for sections in store.sections_by_doc.values():
+            for sec in sections:
+                if sec.id == section_id:
+                    return sec
+        return None
+
+    async def fake_save_section(_s: Any, section: Any) -> Any:
+        section.updated_at = datetime.now(UTC)
+        return section
+
+    async def fake_list_sections(_s: Any, doc_id: str) -> list[Any]:
+        return sorted(store.sections_by_doc.get(doc_id, []), key=lambda s: s.seq)
+
+    async def fake_add_pending(_s: Any, pending: Any) -> Any:
+        if pending.status is None:
+            pending.status = "pending"
+        if pending.created_at is None:
+            pending.created_at = datetime.now(UTC)
+        store.pendings[pending.id] = pending
+        return pending
+
+    async def fake_get_pending(_s: Any, pending_id: str) -> Any:
+        return store.pendings.get(pending_id)
+
+    async def fake_save_pending(_s: Any, pending: Any) -> Any:
+        store.pendings[pending.id] = pending
+        return pending
+
+    async def fake_list_pending_by_conversation(_s: Any, conversation_id: str) -> list[Any]:
+        rows = [p for p in store.pendings.values() if p.conversation_id == conversation_id]
+        return sorted(rows, key=lambda p: (p.created_at, p.id))
+
     async def fake_get_graph(_s: Any, **_: Any) -> GraphData:
         return GraphData()
 
@@ -122,6 +196,19 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     monkeypatch.setattr(repository, "add_message", fake_add_message)
     monkeypatch.setattr(repository, "list_messages", fake_list_messages)
     monkeypatch.setattr(repository, "list_docs", fake_list_docs)
+    monkeypatch.setattr(repository, "find_doc_by_kind", fake_find_doc_by_kind)
+    monkeypatch.setattr(repository, "add_doc", fake_add_doc)
+    monkeypatch.setattr(repository, "get_doc", fake_get_doc)
+    monkeypatch.setattr(repository, "add_section", fake_add_section)
+    monkeypatch.setattr(repository, "get_section", fake_get_section)
+    monkeypatch.setattr(repository, "save_section", fake_save_section)
+    monkeypatch.setattr(repository, "list_sections", fake_list_sections)
+    monkeypatch.setattr(repository, "add_pending", fake_add_pending)
+    monkeypatch.setattr(repository, "get_pending", fake_get_pending)
+    monkeypatch.setattr(repository, "save_pending", fake_save_pending)
+    monkeypatch.setattr(
+        repository, "list_pending_by_conversation", fake_list_pending_by_conversation
+    )
     monkeypatch.setattr(perspectives_service, "get_graph", fake_get_graph)
     monkeypatch.setattr(projects_service, "get", fake_project_get)
     monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
@@ -870,3 +957,374 @@ async def test_delete_conversation_isolated_per_project(store: Store) -> None:
     assert "conv-a" not in store.conversations and "conv-b" in store.conversations, (
         "他项目会话必须完好"
     )
+
+
+# ---- F14：轮末统一确认（done 携带清单 / approve / reject / list；U10-U20）----
+
+
+def _seed_pending(
+    store: Store,
+    kind: str,
+    payload: dict[str, Any],
+    *,
+    pending_id: str,
+    conversation_id: str = "conv-1",
+    baseline: dict[str, Any] | None = None,
+) -> Any:
+    """预置一条待写入登记行（SimpleNamespace 形同 ORM 字段）。"""
+    import json as _json
+
+    row = SimpleNamespace(
+        id=pending_id,
+        conversation_id=conversation_id,
+        project_id="proj-1",
+        kind=kind,
+        payload_json=_json.dumps(payload, ensure_ascii=False),
+        baseline_json=_json.dumps(baseline, ensure_ascii=False) if baseline is not None else None,
+        status="pending",
+        created_at=datetime.now(UTC),
+    )
+    store.pendings[pending_id] = row
+    return row
+
+
+def _seed_doc_with_sections(store: Store, *, doc_id: str = "mdoc-1", kind: str = "style") -> Any:
+    """预置一份文档与两段（版本 1，CAS 基线数据源）。"""
+    doc = SimpleNamespace(
+        id=doc_id,
+        project_id="proj-1",
+        kind=kind,
+        title="风格约定",
+        version=1,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    store.docs_by_project.setdefault("proj-1", []).append(doc)
+    for seq, title in ((1, "叙事视角"), (2, "影像风格")):
+        store.sections_by_doc.setdefault(doc_id, []).append(
+            SimpleNamespace(
+                id=f"msec-{doc_id}-{seq}",
+                doc_id=doc_id,
+                seq=seq,
+                title=title,
+                content="旧内容",
+                version=1,
+                updated_by="user",
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        )
+    return doc
+
+
+async def test_done_carries_pending_writes(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F14-U10: 写入工具轮 → done 携带本轮登记清单；纯对话轮 done 不带该键。
+
+    设计依据: 等价类-有效（写入工具登记）与有效（无写入）两分支对比。
+    """
+    _seed_conversation(store)
+
+    # 第二轮（对照）后消息超窗——必须 mock 摘要，防止真实 LLM 客户端绑定
+    # 当前事件循环（循环关闭后 GC 回调炸到后续测试，T-20260908-01）
+    async def fake_summarize(_text: str, _instruction: str) -> str:
+        return "摘要。"
+
+    monkeypatch.setattr(llm, "summarize", fake_summarize)
+    tool_turn = AssistantTurn(
+        content=None,
+        tool_calls=[
+            ToolCall(
+                call_id="call-1",
+                name="create_entity",
+                arguments='{"type": "character", "name": "周兰", "description": "船医"}',
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        llm, "stream_chat_turn", _scripted_stream(tool_turn, AssistantTurn(content="已登记。"))
+    )
+    events = [evt async for evt in service.stream_chat("conv-1", "加个船医", perspective="author")]
+
+    done = events[-1]
+    assert done["event"] == "done" and "pending_writes" in done["data"], (
+        f"写入轮 done 必须携带清单: {done}"
+    )
+    items = done["data"]["pending_writes"]
+    assert len(items) == 1 and items[0]["kind"] == "create_entity"
+    assert items[0]["payload"]["name"] == "周兰" and items[0]["summary"], (
+        "清单项须带 payload 与摘要"
+    )
+    assert store.pendings[items[0]["id"]].status == "pending", "登记行必须已入库"
+
+    # 对照分支：纯文本轮 done 不携带 pending_writes 键
+    monkeypatch.setattr(llm, "stream_chat_turn", _scripted_stream(AssistantTurn(content="好。")))
+    events2 = [evt async for evt in service.stream_chat("conv-1", "继续", perspective="author")]
+    assert events2[-1]["event"] == "done" and "pending_writes" not in events2[-1]["data"], (
+        f"无写入轮不得携带清单键: {events2[-1]}"
+    )
+
+
+async def test_approve_create_entity_overrides_project(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-U11: approve create_entity 落库成功；payload 携带的异项目 project_id 被会话归属覆盖。"""
+    _seed_conversation(store)
+    _seed_pending(
+        store,
+        "create_entity",
+        {"type": "character", "name": "周兰", "description": "船医", "project_id": "proj-hack"},
+        pending_id="pw-1",
+    )
+    seen: dict[str, Any] = {}
+
+    async def fake_create(_s: Any, schema: Any) -> Any:
+        seen["schema"] = schema
+        return SimpleNamespace(id="ent-9", name=schema.name)
+
+    monkeypatch.setattr(service.entities_service, "create", fake_create)
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert len(response.created) == 1 and response.created[0].target_id == "ent-9"
+    assert seen["schema"].project_id == "proj-1", "project_id 必须以会话归属覆盖（不信任登记载荷）"
+    assert store.pendings["pw-1"].status == "approved", "成功项必须置 approved"
+
+
+async def test_approve_update_entity_merges_properties(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-U12: approve update_entity 的 properties_patch 走 entities.update 浅合并语义。"""
+    _seed_conversation(store)
+    _seed_pending(
+        store,
+        "update_entity",
+        {"entity_id": "ent-1", "entity_name": "阿诚", "properties_patch": {"age": 30}},
+        pending_id="pw-1",
+    )
+    seen: dict[str, Any] = {}
+
+    async def fake_get(_s: Any, _entity_id: str) -> Any:
+        return SimpleNamespace(id="ent-1", project_id="proj-1", name="阿诚")
+
+    async def fake_update(_s: Any, _entity_id: str, schema: Any) -> Any:
+        seen["schema"] = schema
+        return SimpleNamespace(id="ent-1", name="阿诚")
+
+    monkeypatch.setattr(service.entities_service, "get", fake_get)
+    monkeypatch.setattr(service.entities_service, "update", fake_update)
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert len(response.created) == 1 and response.failed == []
+    assert seen["schema"].properties == {"age": 30}, "properties_patch 必须映射为 properties"
+    assert seen["schema"].name is None, "未提供的字段必须保持 None（局部更新语义）"
+
+
+async def test_approve_create_relation(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
+    """F14-U13: approve create_relation 端点 id 落库（可选标量透传）。"""
+    _seed_conversation(store)
+    _seed_pending(
+        store,
+        "create_relation",
+        {
+            "source": "ent-a",
+            "target": "ent-b",
+            "type": "师徒",
+            "trust": 0.9,
+            "known_by": ["ent-a"],
+            "source_name": "阿诚",
+            "target_name": "老周",
+        },
+        pending_id="pw-1",
+    )
+    seen: dict[str, Any] = {}
+
+    async def fake_create(_s: Any, schema: Any) -> Any:
+        seen["schema"] = schema
+        return SimpleNamespace(
+            id="rel-1", type=schema.type, source=schema.source, target=schema.target
+        )
+
+    monkeypatch.setattr(service.relations_service, "create", fake_create)
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert len(response.created) == 1 and response.created[0].target_id == "rel-1"
+    assert seen["schema"].trust == 0.9
+    assert seen["schema"].known_by == ["ent-a"], "known_by 必须以登记行中的 id 列表透传"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected", "label"),
+    [("自定义标题", "自定义标题", "title 显式覆盖"), (None, "世界观定位", "title 缺省模板标题")],
+    ids=["显式title", "缺省title"],
+)
+async def test_approve_create_memory_doc_and_title(
+    store: Store, title: str | None, expected: str, label: str
+) -> None:
+    """F14-U14/U20 参数化: approve create_memory_doc 走真建档（title 覆盖/缺省）。
+
+    设计依据: 等价类-有效建档；边界值-title 显式/缺省。
+    """
+    assert label
+    _seed_conversation(store)
+    payload: dict[str, Any] = {"kind": "positioning"}
+    if title is not None:
+        payload["title"] = title
+    _seed_pending(store, "create_memory_doc", payload, pending_id="pw-1")
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert len(response.created) == 1 and response.created[0].name == expected, (
+        f"建档标题必须为 {expected}: {response}"
+    )
+    assert store.pendings["pw-1"].status == "approved"
+
+
+async def test_approve_create_memory_doc_conflict_fails_open(
+    store: Store,
+) -> None:
+    """F14-U14 参数化: 同 kind 指导文档已存在 → failed 三要素且状态保持 pending（不阻断）。"""
+    _seed_conversation(store)
+    _seed_doc_with_sections(store, doc_id="mdoc-old", kind="positioning")
+    _seed_pending(
+        store, "create_memory_doc", {"kind": "positioning", "title": "再来一份"}, pending_id="pw-1"
+    )
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert response.created == [] and len(response.failed) == 1, f"冲突必须失败: {response}"
+    assert "每项目仅一份" in response.failed[0].reason, "失败原因必须可读"
+    assert store.pendings["pw-1"].status == "pending", "失败项必须保持 pending 可放弃"
+
+
+@pytest.mark.parametrize(
+    ("section_touched", "expect_ok", "label"),
+    [(False, True, "有效-基线未变"), (True, False, "无效-登记后段被改")],
+    ids=["基线未变", "CAS冲突"],
+)
+async def test_approve_write_doc_section_cas(
+    store: Store, section_touched: bool, expect_ok: bool, label: str
+) -> None:
+    """F14-U15 参数化: 段 CAS 基线复核——用户手改后登记作废（绝不覆盖）。"""
+    assert label
+    _seed_conversation(store)
+    doc = _seed_doc_with_sections(store)
+    _seed_pending(
+        store,
+        "write_doc_section",
+        {"doc_id": doc.id, "seq": 1, "content": "agent 新内容", "doc_title": doc.title},
+        pending_id="pw-1",
+        baseline={"section_id": "msec-mdoc-1-1", "expected_version": 1},
+    )
+    if section_touched:
+        # 登记后用户手改该段（版本推进到 2）
+        store.sections_by_doc[doc.id][0].version = 2
+        store.sections_by_doc[doc.id][0].updated_by = "user"
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    if expect_ok:
+        assert len(response.created) == 1 and response.failed == []
+        section = store.sections_by_doc[doc.id][0]
+        assert section.content == "agent 新内容" and section.updated_by == "agent"
+        assert section.version == 2, "段版本必须递增"
+        assert store.pendings["pw-1"].status == "approved"
+    else:
+        assert response.created == [] and len(response.failed) == 1
+        assert "版本冲突" in response.failed[0].reason, f"冲突原因必须三要素: {response.failed}"
+        section = store.sections_by_doc[doc.id][0]
+        assert section.content == "旧内容", "CAS 失败绝不覆盖用户手改"
+        assert store.pendings["pw-1"].status == "pending", "冲突项保持 pending 由作者裁决"
+
+
+async def test_approve_single_failure_does_not_block(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-U16: approve 单项失败不阻断其他项（坏 payload 折叠 failed）。"""
+    _seed_conversation(store)
+    _seed_pending(store, "create_entity", {"type": "character", "name": "周兰"}, pending_id="pw-1")
+    _seed_pending(store, "create_entity", {"name": "缺类型"}, pending_id="pw-2")
+
+    async def fake_create(_s: Any, schema: Any) -> Any:
+        return SimpleNamespace(id="ent-ok", name=schema.name)
+
+    monkeypatch.setattr(service.entities_service, "create", fake_create)
+    response = await service.approve_pending_writes(
+        SessionStub(),
+        service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1", "pw-2"]),
+    )
+    assert [c.id for c in response.created] == ["pw-1"], f"好项必须落库: {response}"
+    assert [f.id for f in response.failed] == ["pw-2"] and "校验" in response.failed[0].reason
+    assert store.pendings["pw-1"].status == "approved"
+    assert store.pendings["pw-2"].status == "pending", "坏项保持 pending"
+
+
+@pytest.mark.parametrize(
+    ("row_status", "exists", "label"),
+    [
+        ("approved", True, "无效-已确认"),
+        ("rejected", True, "无效-已放弃"),
+        ("pending", False, "无效-id 不存在"),
+    ],
+    ids=["已approved", "已rejected", "id不存在"],
+)
+async def test_approve_rejects_non_pending_or_missing(
+    store: Store, row_status: str, exists: bool, label: str
+) -> None:
+    """F14-U17 参数化: 非 pending 状态/不存在 id → 该项 failed 三要素（fail closed）。"""
+    assert label
+    _seed_conversation(store)
+    if exists:
+        _seed_pending(store, "create_entity", {"type": "item", "name": "x"}, pending_id="pw-1")
+        store.pendings["pw-1"].status = row_status
+    response = await service.approve_pending_writes(
+        SessionStub(), service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1"])
+    )
+    assert response.created == [] and len(response.failed) == 1, f"必须 fail closed: {response}"
+    assert response.failed[0].reason
+
+
+async def test_reject_pending_writes(store: Store) -> None:
+    """F14-U18: reject——pending → rejected（响应含 id）；非 pending 跳过；不存在 id 404。"""
+    _seed_conversation(store)
+    _seed_pending(store, "create_entity", {"type": "item", "name": "a"}, pending_id="pw-1")
+    _seed_pending(store, "create_entity", {"type": "item", "name": "b"}, pending_id="pw-2")
+    store.pendings["pw-2"].status = "approved"
+
+    response = await service.reject_pending_writes(
+        SessionStub(),
+        service.PendingWriteActionRequest(conversation_id="conv-1", ids=["pw-1", "pw-2"]),
+    )
+    assert response.rejected == ["pw-1"], f"仅 pending 项被置 rejected: {response}"
+    assert store.pendings["pw-1"].status == "rejected"
+    assert store.pendings["pw-2"].status == "approved", "已确认项不可被放弃改写"
+
+    with pytest.raises(NotFoundError):
+        await service.reject_pending_writes(
+            SessionStub(),
+            service.PendingWriteActionRequest(conversation_id="conv-1", ids=["ghost"]),
+        )
+
+
+async def test_list_pending_writes(store: Store) -> None:
+    """F14-U19: list——按会话过滤、created_at 升序、含全部状态。"""
+    _seed_conversation(store, "conv-1")
+    _seed_conversation(store, "conv-2")
+    first = _seed_pending(store, "create_entity", {"type": "item", "name": "a"}, pending_id="pw-1")
+    _seed_pending(
+        store,
+        "create_relation",
+        {"source": "x", "target": "y", "type": "t"},
+        pending_id="pw-2",
+        conversation_id="conv-2",
+    )
+    second = _seed_pending(store, "create_entity", {"type": "item", "name": "b"}, pending_id="pw-3")
+    first.created_at = datetime(2099, 1, 1, tzinfo=UTC)
+    second.created_at = datetime(2100, 1, 1, tzinfo=UTC)  # 保证排序晚于 pw-1
+    store.pendings["pw-3"].status = "approved"
+
+    rows = await service.list_pending_writes(SessionStub(), "conv-1")
+    assert [r.id for r in rows] == ["pw-1", "pw-3"], f"会话过滤 + 时间升序: {[r.id for r in rows]}"
+    assert {r.status for r in rows} == {"pending", "approved"}, "列表须含全部状态"
+    assert rows[0].summary and rows[0].payload["name"] == "a"

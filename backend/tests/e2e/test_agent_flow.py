@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.agent import llm as agent_llm
-from app.agent.llm import AssistantTurn
+from app.agent.llm import AssistantTurn, ToolCall
 
 pytestmark = pytest.mark.e2e
 
@@ -30,6 +30,10 @@ class ChatCapture:
 
     async def __call__(self, system: str, messages: list[dict[str, str]], **kwargs: Any) -> Any:
         self.calls.append({"system": system, "messages": messages, **kwargs})
+        if not self.script:
+            # 有界判杀（T-20260907-02 同型）：脚本耗尽即抛，无限循环变异体
+            # 快速转为断言失败而非挂死 mutmut 运行
+            raise RuntimeError("ChatCapture 脚本耗尽仍被调用（疑似无限循环变异体）")
         turn = self.script.pop(0)
         if turn.content:
             yield ("content_delta", turn.content)
@@ -186,3 +190,86 @@ def test_e2_user_edit_then_agent_reads_fresh_and_stale_patch_rejected(
     fresh = client.get(f"/api/agent/memory-docs/{doc['id']}").json()
     assert fresh["sections"][0]["content"] == new_content, "用户手改必须原样保留"
     assert fresh["sections"][0]["updated_by"] == "user", "更新者必须仍是 user"
+
+
+def test_e3_write_tool_pending_then_approve_graph_refresh(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F14-E2: 写入工具登记 → done 携带清单 → approve → 图谱与文档刷新。
+
+    跨组件理由: approve 落库改变图谱与文档数据，须验证 perspectives 图查询/
+    文档读取与 projects 归属联动（agent+entities+perspectives+projects）。
+    """
+    project = client.post("/api/projects", json={"name": "写入工具项目"}).json()
+    pid = project["id"]
+    session = client.post("/api/agent/sessions", params={"project_id": pid}, json={}).json()
+    doc = client.post(
+        "/api/agent/memory-docs", params={"project_id": pid, "kind": "positioning"}, json={}
+    ).json()
+
+    # ① 对话轮：LLM 调 create_entity + write_doc_section（登记不落库）；
+    # 捕获桩按调用分轮（service 工具循环协议：每轮一次调用产出 ("turn", …)）
+    capture = ChatCapture(
+        [
+            AssistantTurn(
+                content=None,
+                tool_calls=[
+                    ToolCall(
+                        call_id="c1",
+                        name="create_entity",
+                        arguments=(
+                            '{"type": "character", "name": "船医周兰", "description": "随船医生"}'
+                        ),
+                    ),
+                    ToolCall(
+                        call_id="c2",
+                        name="write_doc_section",
+                        arguments=(
+                            f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "海难求生题材。"}}'
+                        ),
+                    ),
+                ],
+            ),
+            AssistantTurn(content="已登记两项写入。"),
+        ]
+    )
+    monkeypatch.setattr(agent_llm, "stream_chat_turn", capture)
+    chat = client.post(
+        "/api/agent/chat",
+        json={
+            "conversation_id": session["id"],
+            "message": "登记一个船医并写一句话定位",
+            "perspective": "author",
+        },
+    )
+    assert chat.status_code == 200, chat.text[:300]
+    events = _parse_events(chat.text)
+    done = events[-1]
+    assert done["event"] == "done" and "pending_writes" in done["data"], f"done 须携带清单: {done}"
+    items = done["data"]["pending_writes"]
+    assert [i["kind"] for i in items] == ["create_entity", "write_doc_section"]
+
+    # ② 登记阶段不落库（图谱/文档不变）
+    graph_before = client.get(
+        "/api/graph", params={"perspective": "author", "project_id": pid}
+    ).json()
+    assert all(n["name"] != "船医周兰" for n in graph_before["nodes"]), "登记阶段图谱不得变化"
+
+    # ③ approve 批量落库
+    approve = client.post(
+        "/api/agent/pending-writes/approve",
+        json={"conversation_id": session["id"], "ids": [i["id"] for i in items]},
+    )
+    assert approve.status_code == 200, approve.text[:300]
+    body = approve.json()
+    assert len(body["created"]) == 2 and body["failed"] == [], f"两项必须全部落库: {body}"
+
+    # ④ 图谱与文档反映写入（跨组件联动）
+    graph = client.get("/api/graph", params={"perspective": "author", "project_id": pid}).json()
+    assert "船医周兰" in [n["name"] for n in graph["nodes"]], "approve 后实体必须进图谱"
+    doc_now = client.get(f"/api/agent/memory-docs/{doc['id']}").json()
+    assert doc_now["sections"][0]["content"] == "海难求生题材。", "approve 后段内容必须更新"
+    assert doc_now["sections"][0]["updated_by"] == "agent", "段更新者必须是 agent"
+
+    rows = client.get("/api/agent/pending-writes", params={"conversation_id": session["id"]}).json()
+    assert all(r["status"] == "approved" for r in rows), "登记行全部置 approved"

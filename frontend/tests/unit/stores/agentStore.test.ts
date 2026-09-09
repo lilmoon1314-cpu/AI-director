@@ -1,6 +1,7 @@
 /**
- * F10 L1：agentStore 单元测试（FU1）。fetch 全 mock，不触网络。
- * 用例设计（等价类/边界值标注）见 docs/tests/F10_agent_chat.md。
+ * F10/F13/F14 L1：agentStore 单元测试（FU1/FI1-FI3/FU10）。fetch 全 mock，不触网络。
+ * 用例设计（等价类/边界值标注）见 docs/tests/F10_agent_chat.md 与
+ * docs/tests/F14_agent_write_tools.md。
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +58,8 @@ describe("agentStore（FU1）", () => {
       usageBySession: {},
       draftsBySession: {},
       confirming: false,
+      pendingBySession: {},
+      approving: false,
       docs: [],
       docsLoading: false,
       docsError: null,
@@ -343,5 +346,106 @@ describe("agentStore（FU1）", () => {
     expect(docDeleted).toBe(true);
     expect(useAgentStore.getState().docs).toHaveLength(0);
     expect(useAgentStore.getState().docsError).toBeNull();
+  });
+
+  // ---- F14（FU10）：轮末统一确认状态机 ----
+
+  const PENDING_ITEM = {
+    id: "pw-1",
+    conversation_id: "conv-1",
+    kind: "create_entity",
+    payload: { type: "character", name: "周兰" },
+    baseline: null,
+    status: "pending",
+    summary: "新增实体「周兰」（character）",
+    created_at: "2026-09-08T00:00:00Z",
+  };
+
+  it("FU10a: done 事件携带 pending_writes → 累积进 pendingBySession（确认卡数据源）；无写入不带键不产生项", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/chat")) {
+        return sseResponse([
+          { event: "message_start", data: {} },
+          { event: "done", data: { message_id: "msg-2", pending_writes: [PENDING_ITEM] } },
+        ]);
+      }
+      if (url.includes("/messages")) return jsonResponse([]);
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await useAgentStore.getState().sendMessage("conv-1", "hi", "author");
+
+    const pending = useAgentStore.getState().pendingBySession["conv-1"];
+    expect(pending).toHaveLength(1);
+    expect(pending![0].id).toBe("pw-1");
+    expect(pending![0].summary).toContain("周兰");
+  });
+
+  it("FU10b: approvePendingWrites 成功 → 成功项移除、图谱与文档失效刷新（loadGraph/loadDocs）；失败项保留并挂错误态", async () => {
+    const graphReloads: string[] = [];
+    const graphStore = await import("../../../src/stores/graphStore");
+    const originalLoadGraph = graphStore.useGraphStore.getState().loadGraph;
+    graphStore.useGraphStore.setState({
+      loadGraph: (pid: string) => {
+        graphReloads.push(pid);
+        return Promise.resolve();
+      },
+    });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetchMock = routeFetch((url, init) => {
+      calls.push({ url, init });
+      if (url.includes("/pending-writes/approve")) {
+        return jsonResponse({
+          created: [{ id: "pw-1", kind: "create_entity", target_id: "ent-9", name: "周兰" }],
+          failed: [{ id: "pw-2", reason: "登记行状态为 approved，仅 pending 可确认" }],
+        });
+      }
+      if (url.includes("/memory-docs")) return jsonResponse([]);
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({
+      pendingBySession: {
+        "conv-1": [
+          PENDING_ITEM,
+          { ...PENDING_ITEM, id: "pw-2", summary: "第二项" },
+        ],
+      },
+      docs: [DOC],
+    });
+
+    await useAgentStore.getState().approvePendingWrites("conv-1", ["pw-1", "pw-2"]);
+
+    // 成功项移除、失败项保留
+    const remaining = useAgentStore.getState().pendingBySession["conv-1"]!;
+    expect(remaining.map((p) => p.id)).toEqual(["pw-2"]);
+    // 失败项三要素可见
+    expect(useAgentStore.getState().sessionErrors["conv-1"]?.problem).toContain("未能落库");
+    expect(useAgentStore.getState().sessionErrors["conv-1"]?.fix).toContain("仅 pending 可确认");
+    // 图谱 + 文档失效
+    expect(graphReloads).toEqual(["project-x"]);
+    expect(calls.some((c) => c.url.includes("/memory-docs") && c.init?.method !== "POST")).toBe(true);
+    expect(useAgentStore.getState().approving).toBe(false);
+    graphStore.useGraphStore.setState({ loadGraph: originalLoadGraph });
+  });
+
+  it("FU10c: rejectPendingWrites → 本地移除；API 失败 → 三要素错误态（E16）", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/pending-writes/reject")) {
+        return jsonResponse({ rejected: ["pw-1"] });
+      }
+      return jsonResponse([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({ pendingBySession: { "conv-1": [PENDING_ITEM] } });
+
+    await useAgentStore.getState().rejectPendingWrites("conv-1", ["pw-1"]);
+    expect(useAgentStore.getState().pendingBySession["conv-1"]).toHaveLength(0);
+
+    const failing = routeFetch(() => jsonResponse({ problem: "会话不存在", fix: "刷新" }, 404));
+    vi.stubGlobal("fetch", failing);
+    await useAgentStore.getState().rejectPendingWrites("conv-1", ["pw-9"]);
+    expect(useAgentStore.getState().sessionErrors["conv-1"]?.problem).toBe("会话不存在");
   });
 });

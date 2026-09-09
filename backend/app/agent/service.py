@@ -1,14 +1,18 @@
-"""agent 模块 service 层：对话主链路、记忆文档段级模型与草案两段式写入。
+"""agent 模块 service 层：对话主链路、记忆文档段级模型与写入确认。
 
 职责:
     - 会话 CRUD 与消息读取（按项目隔离，projects.service 归属校验）；
-    - stream_chat：SSE 事件流（受控 ReAct 工具循环 + 预算裁剪 + 滚动摘要）；
+    - stream_chat：SSE 事件流（受控 ReAct 工具循环 + 预算裁剪 + 滚动摘要，
+      done 携带本轮待写入清单——F14 轮末统一确认）；
     - 记忆文档：模板建档、段级读写（CAS 乐观锁）、自包含 HTML 渲染；
-    - propose / confirm_write：草案生成与确认落库（服务端复核 payload）。
+    - 待写入登记：approve_pending_writes / reject_pending_writes（写入工具
+      主路径的确认段，服务端二次校验批量落库）；
+    - propose / confirm_write：草案两段式（F14 起标注 legacy，保留兼容）。
 事务约定: 常规函数接收 AsyncSession 并在内部 commit；stream_chat 因流式
     生命周期自管理会话（连接于生成器内开启/释放）。
 """
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -16,7 +20,14 @@ from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import llm, repository, tools
-from app.agent.models import Conversation, MemoryDoc, MemoryDocSection, Message, _utcnow
+from app.agent.models import (
+    Conversation,
+    MemoryDoc,
+    MemoryDocSection,
+    Message,
+    PendingWrite,
+    _utcnow,
+)
 from app.agent.prompts import (
     DocSectionRef,
     GraphDirectoryNode,
@@ -30,6 +41,9 @@ from app.agent.prompts import (
 )
 from app.agent.rendering import render_doc_page
 from app.agent.schemas import (
+    ApproveFailedItem,
+    ApproveResponse,
+    ApproveResultItem,
     ConfirmFailedItem,
     ConfirmRequest,
     ConfirmResponse,
@@ -39,9 +53,12 @@ from app.agent.schemas import (
     MemoryDocRead,
     MemoryDocSectionRead,
     MessageRead,
+    PendingWriteActionRequest,
+    PendingWriteRead,
     Perspective,
     ProposeRequest,
     ProposeResponse,
+    RejectResponse,
     SectionUpdate,
     SessionCreate,
     SessionRead,
@@ -51,6 +68,7 @@ from app.agent.schemas import (
     generate_memory_section_id,
     generate_message_id,
 )
+from app.agent.templates import DOC_TEMPLATES, GUIDE_KINDS
 from app.config import get_settings
 from app.core import db
 from app.core.exceptions import AgentError, ConflictError, NotFoundError, ValidationError
@@ -71,24 +89,6 @@ EVENT_DOC_PATCH = "doc_patch"
 EVENT_ASK_USER = "ask_user"
 EVENT_DONE = "done"
 EVENT_ERROR = "error"
-
-# 记忆文档模板（F10 内置两种；作品类模板（outline/screenplay/…）随 F15 落地）
-DOC_TEMPLATES: dict[str, dict[str, Any]] = {
-    "positioning": {
-        "label": "世界观定位",
-        "title": "世界观定位",
-        "sections": ["一句话定位", "核心冲突", "基调与题材", "目标观众与体量"],
-    },
-    "style": {
-        "label": "风格约定",
-        "title": "风格约定",
-        "sections": ["叙事视角", "影像与语言风格", "节奏与时长约定", "禁忌与红线"],
-    },
-}
-
-# 指导类 kind（项目内唯一——每项目仅一份定位/风格文件；F13 验收缺陷修复，
-# 作品类多实例 kind 随 F15 扩展时在此登记分类学）
-GUIDE_KINDS = frozenset(DOC_TEMPLATES)
 
 # ---- 内部助手 ----
 
@@ -490,6 +490,7 @@ async def stream_chat(
                 project_id=conversation.project_id,
                 perspective=perspective,
                 character_id=character_id,
+                conversation_id=conversation_id,
             )
             used = 0
             final_usage: dict[str, int | None] | None = None
@@ -562,6 +563,16 @@ async def stream_chat(
             )
             await repository.add_message(db_session, assistant_row)
             await _maintain_rolling_summary(db_session, conversation)
+            # 本轮待写入清单在 commit 前解析为纯 dict（登记行随本事务提交；
+            # done 事件携带清单驱动前端确认卡——F14 轮末统一确认）
+            pending_payload: dict[str, Any] | None = None
+            if tool_ctx.pending_writes:
+                pending_payload = {
+                    # mode="json"：datetime 等转 ISO 串（SSE 帧手工 json.dumps 可序列化）
+                    "pending_writes": [
+                        _pending_read(r).model_dump(mode="json") for r in tool_ctx.pending_writes
+                    ]
+                }
             await db_session.commit()
             if final_usage is not None:
                 prompt_tokens = final_usage.get("prompt_tokens") or 0
@@ -575,7 +586,10 @@ async def stream_chat(
                         "context_ratio": (prompt_tokens / max_tokens) if max_tokens > 0 else None,
                     },
                 }
-            yield {"event": EVENT_DONE, "data": {"message_id": assistant_row.id}}
+            done_data: dict[str, Any] = {"message_id": assistant_row.id}
+            if pending_payload is not None:
+                done_data.update(pending_payload)
+            yield {"event": EVENT_DONE, "data": done_data}
         except Exception as exc:  # noqa: BLE001 — 对话轮错误统一转 error 事件
             await db_session.rollback()
             if isinstance(exc, llm.AgentError):
@@ -604,13 +618,20 @@ async def stream_chat(
 
 
 @checkpoint
-async def create_doc(db_session: AsyncSession, project_id: str, kind: str) -> MemoryDocRead:
+async def create_doc(
+    db_session: AsyncSession,
+    project_id: str,
+    kind: str,
+    *,
+    title: str | None = None,
+) -> MemoryDocRead:
     """按模板创建记忆文档（初始段生成，updated_by=user 语义的空白起点）。
 
     作用: F13 起指导类（GUIDE_KINDS）文档项目内唯一——同 kind 已存在即 409
-        拒绝（每项目仅一份定位/风格文件），不覆盖既有文档。
+        拒绝（每项目仅一份定位/风格文件），不覆盖既有文档；title 显式提供
+        时覆盖模板默认标题（F14 写入工具 create_memory_doc 透传）。
     参数: db_session — 数据库会话；project_id — 项目 id（空=默认项目）；
-        kind — 模板键（positioning/style）。
+        kind — 模板键（positioning/style）；title — 可选标题覆盖。
     返回值: MemoryDocRead。
     异常: ValidationError — 未知模板；NotFoundError — 项目不存在；
         ConflictError — 指导类文档项目内已存在同 kind。
@@ -646,7 +667,7 @@ async def create_doc(db_session: AsyncSession, project_id: str, kind: str) -> Me
         id=generate_memory_doc_id(),
         project_id=resolved_project,
         kind=kind,
-        title=str(template["title"]),
+        title=title or str(template["title"]),
     )
     doc = await repository.add_doc(db_session, doc)
     for seq, sec_title in enumerate(template["sections"], start=1):
@@ -763,6 +784,8 @@ async def update_section(
             detail={"doc_id": doc_id, "section_id": section_id, "current_version": section.version},
         )
     section.content = payload.content
+    if payload.title is not None:
+        section.title = payload.title
     section.version += 1
     section.updated_by = updated_by
     section.updated_at = _utcnow()
@@ -812,6 +835,9 @@ _PROPOSE_RULES = (
 @checkpoint
 async def propose_drafts(db_session: AsyncSession, schema: ProposeRequest) -> ProposeResponse:
     """生成实体/关系写入草案（LLM JSON mode；服务端基础校验）。
+
+    作用: 【legacy】F14 起对话内写入工具（登记 pending + 轮末统一确认）
+        为主路径；本端点保留兼容既有草案卡交互，不再扩展能力。
 
     参数: db_session — 数据库会话；schema — 请求（会话/输入/视角）。
     返回值: ProposeResponse（draft_id 系统生成；payload 保持宽松 dict，
@@ -887,6 +913,8 @@ async def confirm_write(db_session: AsyncSession, schema: ConfirmRequest) -> Con
     """确认草案并落库（无状态回传；服务端重新校验全部 payload，不信任前端）。
 
     作用:
+        【legacy】F14 起写入主路径为待写入登记（approve_pending_writes）；
+        本端点保留兼容既有草案卡。
         confirmed=True 的项经 entities/relations service 严格校验后落库
         （两段式第二段）；单项失败不阻断其他项（failed 列表携带三要素）。
         归属注入：session_id 可解析时，payload 的 project_id 一律以会话
@@ -934,6 +962,277 @@ async def confirm_write(db_session: AsyncSession, schema: ConfirmRequest) -> Con
         except Exception as exc:  # noqa: BLE001 — 单项失败折叠，其余项继续
             failed.append(ConfirmFailedItem(draft_id=item.draft_id, reason=_format_failure(exc)))
     return ConfirmResponse(created=created, failed=failed)
+
+
+# ---- 待写入登记（F14 轮末统一确认；写入工具主路径）----
+
+
+def _pending_summary(kind: str, payload: dict[str, Any]) -> str:
+    """从登记 payload 派生给作者看的一句话摘要。
+
+    参数: kind — 写入类别；payload — 白名单化工具参数（含人读名称快照）。
+    返回值: str。异常: 无。依赖: 无。
+    """
+    if kind == "create_entity":
+        return f"新增实体「{payload.get('name', '?')}」（{payload.get('type', '?')}）"
+    if kind == "update_entity":
+        return f"更新实体「{payload.get('entity_name', payload.get('entity_id', '?'))}」"
+    if kind == "create_relation":
+        return (
+            f"新增关系：{payload.get('source_name', '?')}"
+            f" -[{payload.get('type', '?')}]-> {payload.get('target_name', '?')}"
+        )
+    if kind == "create_memory_doc":
+        return f"新建文档「{payload.get('title', '?')}」（{payload.get('kind', '?')}）"
+    doc_title = payload.get("doc_title", payload.get("doc_id", "?"))
+    return f"写入《{doc_title}》第 {payload.get('seq', '?')} 段"
+
+
+def _pending_read(row: PendingWrite) -> PendingWriteRead:
+    """PendingWrite ORM → PendingWriteRead DTO（payload/baseline 反序列化）。
+
+    参数: row — 登记行。返回值: PendingWriteRead。异常: 无。依赖: 无。
+    """
+    payload = json.loads(row.payload_json)
+    baseline = json.loads(row.baseline_json) if row.baseline_json else None
+    # kind/status 的 Literal 字面量由登记路径（写入工具白名单）保证
+    return PendingWriteRead(
+        id=row.id,
+        conversation_id=row.conversation_id,
+        kind=row.kind,
+        payload=payload,
+        baseline=baseline,
+        status=row.status,
+        summary=_pending_summary(row.kind, payload),
+        created_at=row.created_at,
+    )
+
+
+async def _apply_pending_write(
+    db_session: AsyncSession, row: PendingWrite, project_id: str
+) -> ApproveResultItem:
+    """按类别把单条登记落库（服务端二次校验；白名单重建输入 DTO）。
+
+    作用:
+        approve 的单项执行器——payload 虽来自登记行（模型产物），落库前
+        仍按类别显式键重建 entities/relations/agent service 输入 DTO
+        （不信任任何持久化载荷），project_id 一律以会话归属覆盖。
+        write_doc_section 经 update_section 的 CAS 复核（baseline 版本）。
+    参数: db_session — 数据库会话；row — 登记行；project_id — 会话归属项目。
+    返回值: ApproveResultItem（目标 id 与名称）。
+    异常: 落库异常由调用方折叠进 failed（本函数不吞异常）。
+    依赖: entities/relations/agent service、agent.repository。
+    """
+    payload = json.loads(row.payload_json)
+    if row.kind == "create_entity":
+        entity = await entities_service.create(
+            db_session,
+            entities_service.EntityCreate(
+                # 必填键以 .get 取值：缺失时交由 EntityCreate 校验捕获
+                # （三要素可读），而非 KeyError 透传
+                type=payload.get("type", ""),
+                name=payload.get("name", ""),
+                description=payload.get("description", ""),
+                aliases=list(payload.get("aliases", [])),
+                audience_known=bool(payload.get("audience_known", False)),
+                properties=dict(payload.get("properties", {})),
+                project_id=project_id,
+            ),
+        )
+        return ApproveResultItem(id=row.id, kind=row.kind, target_id=entity.id, name=entity.name)
+    if row.kind == "update_entity":
+        entity_id = str(payload.get("entity_id", ""))
+        if not entity_id:
+            raise ValidationError(
+                problem="登记载荷缺少 entity_id",
+                cause="写入工具登记时的必填键在载荷中缺失（载荷损坏或被篡改）",
+                fix="放弃该项登记，由 agent 重新发起",
+                detail={"payload": str(payload)[:120]},
+            )
+        entity = await entities_service.get(db_session, entity_id)
+        if entity.project_id != project_id:
+            raise ValidationError(
+                problem="待更新实体不在会话所属项目",
+                cause=f"实体 {entity_id} 归属 {entity.project_id}，会话归属 {project_id}",
+                fix="放弃该项登记，在正确的项目会话中重新发起",
+                detail={"entity_id": entity_id},
+            )
+        patch: dict[str, Any] = {}
+        for key in ("name", "description", "aliases", "audience_known"):
+            if key in payload:
+                patch[key] = payload[key]
+        if "properties_patch" in payload:
+            patch["properties"] = payload["properties_patch"]
+        updated = await entities_service.update(
+            db_session, entity_id, entities_service.EntityUpdate(**patch)
+        )
+        return ApproveResultItem(id=row.id, kind=row.kind, target_id=updated.id, name=updated.name)
+    if row.kind == "create_relation":
+        relation = await relations_service.create(
+            db_session,
+            relations_service.RelationCreate(
+                source=payload.get("source", ""),
+                target=payload.get("target", ""),
+                type=payload.get("type", ""),
+                known_by=list(payload.get("known_by", [])),
+                project_id=project_id,
+                **{
+                    key: payload[key]
+                    for key in ("trust", "intimacy", "dependency", "resentment")
+                    if key in payload
+                },
+            ),
+        )
+        return ApproveResultItem(
+            id=row.id,
+            kind=row.kind,
+            target_id=relation.id,
+            name=f"{relation.type}({relation.source}->{relation.target})",
+        )
+    if row.kind == "create_memory_doc":
+        doc_read = await create_doc(
+            db_session,
+            project_id=project_id,
+            kind=str(payload.get("kind", "")),
+            title=payload.get("title"),
+        )
+        return ApproveResultItem(
+            id=row.id, kind=row.kind, target_id=doc_read.id, name=doc_read.title
+        )
+    # write_doc_section：CAS 基线复核（用户手改优先，登记自动失效）
+    baseline = json.loads(row.baseline_json or "{}")
+    doc_id = str(payload.get("doc_id", ""))
+    doc_row = await repository.get_doc(db_session, doc_id)
+    if doc_row is None or doc_row.project_id != project_id:
+        raise NotFoundError(
+            problem=f"记忆文档 {doc_id} 不存在或不在会话项目",
+            cause="文档已删除，或登记后项目归属变化",
+            fix="放弃该项登记，重新确认文档状态后由 agent 再次发起",
+            detail={"doc_id": doc_id},
+        )
+    section = await repository.get_section(db_session, baseline.get("section_id", ""))
+    if section is None or section.doc_id != doc_row.id:
+        raise NotFoundError(
+            problem=f"记忆文档《{doc_row.title}》的登记段已不存在",
+            cause="段在登记后被删除（文档结构变更）",
+            fix="放弃该项登记，由 agent 按新文档目录重新发起",
+            detail={"doc_id": doc_row.id, "section_id": baseline.get("section_id")},
+        )
+    updated_section = await update_section(
+        db_session,
+        doc_row.id,
+        section.id,
+        SectionUpdate(
+            content=payload.get("content", ""),
+            expected_version=int(baseline.get("expected_version", 0)),
+            title=payload.get("title"),
+        ),
+        updated_by="agent",
+    )
+    return ApproveResultItem(
+        id=row.id,
+        kind=row.kind,
+        target_id=updated_section.id,
+        name=f"《{doc_row.title}》第 {updated_section.seq} 段",
+    )
+
+
+@checkpoint
+async def approve_pending_writes(
+    db_session: AsyncSession, schema: PendingWriteActionRequest
+) -> ApproveResponse:
+    """批准待写入登记并批量落库（服务端逐项二次校验，OQ-8 确认段）。
+
+    作用:
+        成功项经既有 service 严格校验后落库并置 approved；失败项保持
+        pending（确认卡可重试或放弃），原因折叠进 failed（三要素可读）；
+        单项失败不阻断其他项。归属复核：登记行 conversation_id 必须与请求
+        一致；落库 project_id 一律以会话归属覆盖。
+    参数: db_session — 数据库会话；schema — 请求（会话 + 登记行 id 列表）。
+    返回值: ApproveResponse（created/failed 列表）。
+    异常: NotFoundError — 会话不存在。
+    依赖: agent.repository、_apply_pending_write。
+    """
+    conversation = await _load_conversation(db_session, schema.conversation_id)
+    created: list[ApproveResultItem] = []
+    failed: list[ApproveFailedItem] = []
+    for pending_id in schema.ids:
+        row = await repository.get_pending(db_session, pending_id)
+        if row is None or row.conversation_id != conversation.id:
+            failed.append(
+                ApproveFailedItem(
+                    id=pending_id,
+                    reason="登记行不存在或不属于该会话（已被清理或归属不符）",
+                )
+            )
+            continue
+        if row.status != "pending":
+            failed.append(
+                ApproveFailedItem(
+                    id=pending_id, reason=f"登记行状态为 {row.status}，仅 pending 可确认"
+                )
+            )
+            continue
+        try:
+            result = await _apply_pending_write(db_session, row, conversation.project_id)
+            row.status = "approved"
+            await repository.save_pending(db_session, row)
+            await db_session.commit()
+            created.append(result)
+        except Exception as exc:  # noqa: BLE001 — 单项失败折叠，其余项继续
+            await db_session.rollback()
+            failed.append(ApproveFailedItem(id=pending_id, reason=_format_failure(exc)))
+    return ApproveResponse(created=created, failed=failed)
+
+
+@checkpoint
+async def reject_pending_writes(
+    db_session: AsyncSession, schema: PendingWriteActionRequest
+) -> RejectResponse:
+    """放弃待写入登记（置 rejected；非 pending 项跳过）。
+
+    参数: db_session — 数据库会话；schema — 请求（会话 + 登记行 id 列表）。
+    返回值: RejectResponse（置 rejected 的 id 列表）。
+    异常: NotFoundError — 会话或任一登记行不存在（显式 404，语义幂等可测）。
+    依赖: agent.repository。
+    """
+    conversation = await _load_conversation(db_session, schema.conversation_id)
+    rejected: list[str] = []
+    for pending_id in schema.ids:
+        row = await repository.get_pending(db_session, pending_id)
+        if row is None or row.conversation_id != conversation.id:
+            raise _pending_not_found(pending_id)
+        if row.status == "pending":
+            row.status = "rejected"
+            await repository.save_pending(db_session, row)
+            rejected.append(pending_id)
+    await db_session.commit()
+    return RejectResponse(rejected=rejected)
+
+
+@checkpoint
+async def list_pending_writes(
+    db_session: AsyncSession, conversation_id: str
+) -> list[PendingWriteRead]:
+    """列出会话全部待写入登记（created_at 升序；含全部状态，前端回读）。
+
+    参数: db_session — 数据库会话；conversation_id — 会话 id。
+    返回值: list[PendingWriteRead]。异常: NotFoundError — 会话不存在。
+    依赖: agent.repository。
+    """
+    await _load_conversation(db_session, conversation_id)
+    rows = await repository.list_pending_by_conversation(db_session, conversation_id)
+    return [_pending_read(r) for r in rows]
+
+
+def _pending_not_found(pending_id: str) -> NotFoundError:
+    """构造登记行不存在的三要素异常。"""
+    return NotFoundError(
+        problem="待写入登记不存在",
+        cause=f"登记行 '{pending_id}' 未在库中，或不属于该会话",
+        fix="以 done 事件清单 / GET /api/agent/pending-writes 中的 id 重试",
+        detail={"pending_id": pending_id},
+    )
 
 
 # ---- 项目级联 ----

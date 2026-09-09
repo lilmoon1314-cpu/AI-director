@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     agent_history_window_messages: int = 20
     # 受控 ReAct：每条用户消息允许的工具调用配额
     agent_max_tool_calls_per_turn: int = 4
+    # 单轮对话允许登记的待写入（pending write）数量上限；超限后写入工具返回
+    # 错误文本（模型可收敛），已登记项不受影响（F14 轮末统一确认）
+    agent_max_pending_writes: int = 8
     # 单次工具输出注入上下文的截断上限（字符）
     agent_tool_output_max_chars: int = 2000
     # 内容合规 hook 开关（MVP 本地敏感词表实现，预留外部审核 API 位）

@@ -652,7 +652,7 @@ export interface paths {
         put?: never;
         /**
          * Propose
-         * @description 生成实体/关系写入草案（LLM JSON mode；不落库）。
+         * @description 生成实体/关系写入草案（legacy：F14 起写入工具链为主路径；不落库）。
          */
         post: operations["propose_api_agent_propose_post"];
         delete?: never;
@@ -672,9 +672,69 @@ export interface paths {
         put?: never;
         /**
          * Confirm
-         * @description 确认草案并落库（两段式第二段；服务端复核全部 payload）。
+         * @description 确认草案并落库（legacy 两段式第二段；服务端复核全部 payload）。
          */
         post: operations["confirm_api_agent_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/pending-writes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pending Writes
+         * @description 列出会话全部待写入登记（确认卡回读；含全部状态，时间升序）。
+         */
+        get: operations["list_pending_writes_api_agent_pending_writes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/pending-writes/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Pending Writes
+         * @description 批准待写入登记（服务端逐项二次校验落库；成功置 approved）。
+         */
+        post: operations["approve_pending_writes_api_agent_pending_writes_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/pending-writes/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Pending Writes
+         * @description 放弃待写入登记（置 rejected；非 pending 项跳过）。
+         */
+        post: operations["reject_pending_writes_api_agent_pending_writes_reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -773,6 +833,40 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ApproveFailedItem
+         * @description approve 失败项（三要素 reason；登记行保持 pending 可重试或放弃）。
+         */
+        ApproveFailedItem: {
+            /** Id */
+            id: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * ApproveResponse
+         * @description approve 响应（成功→approved；失败项保持 pending 进 failed 列表）。
+         */
+        ApproveResponse: {
+            /** Created */
+            created?: components["schemas"]["ApproveResultItem"][];
+            /** Failed */
+            failed?: components["schemas"]["ApproveFailedItem"][];
+        };
+        /**
+         * ApproveResultItem
+         * @description approve 成功项（落库后的目标 id 与名称）。
+         */
+        ApproveResultItem: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Target Id */
+            target_id: string;
+            /** Name */
+            name: string;
+        };
         /**
          * AssetCard
          * @description 通用资产卡片（列表项：缩略图 + 摘要，不含 html 全文与图片明细）。
@@ -1350,6 +1444,60 @@ export interface components {
             created_at: string;
         };
         /**
+         * PendingWriteActionRequest
+         * @description approve / reject 请求体（以登记行 id 寻址；服务端复核归属与状态）。
+         *
+         *     参数: conversation_id — 会话 id（404 校验 + 归属复核）；
+         *         ids — 待处理登记行 id 列表（至少一项）。
+         */
+        PendingWriteActionRequest: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Ids */
+            ids: string[];
+        };
+        /**
+         * PendingWriteRead
+         * @description 待写入登记响应（确认卡数据源；done 事件清单同形）。
+         *
+         *     参数: payload — 白名单化后的工具参数（含人读名称快照字段）；
+         *         baseline — write_doc_section 的段 CAS 基线（其余 kind 为 None）。
+         */
+        PendingWriteRead: {
+            /** Id */
+            id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "create_entity" | "update_entity" | "create_relation" | "create_memory_doc" | "write_doc_section";
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Baseline */
+            baseline?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /**
+             * Summary
+             * @description 给作者看的一句话摘要（服务端派生）
+             */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
          * ProjectCreate
          * @description 创建项目请求体（POST /api/projects）。
          *
@@ -1438,6 +1586,14 @@ export interface components {
             session_id: string;
             /** Drafts */
             drafts?: components["schemas"]["DraftItem"][];
+        };
+        /**
+         * RejectResponse
+         * @description reject 响应（置 rejected 的登记行 id；非 pending 项跳过）。
+         */
+        RejectResponse: {
+            /** Rejected */
+            rejected?: string[];
         };
         /**
          * RelationCreate
@@ -1603,13 +1759,16 @@ export interface components {
          * @description 段内容更新请求（用户编辑与 agent patch 确认共用；乐观锁）。
          *
          *     参数: content — 新内容；expected_version — 调用方读取时的段版本，
-         *         与当前不一致即 409 冲突（用户手改优先，绝不静默覆盖）。
+         *         与当前不一致即 409 冲突（用户手改优先，绝不覆盖）；
+         *         title — 可选新段标题（None=不改；F14 write_doc_section 透传）。
          */
         SectionUpdate: {
             /** Content */
             content: string;
             /** Expected Version */
             expected_version: number;
+            /** Title */
+            title?: string | null;
         };
         /**
          * SessionCreate
@@ -2826,6 +2985,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pending_writes_api_agent_pending_writes_get: {
+        parameters: {
+            query: {
+                conversation_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingWriteRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_pending_writes_api_agent_pending_writes_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingWriteActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_pending_writes_api_agent_pending_writes_reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PendingWriteActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RejectResponse"];
                 };
             };
             /** @description Validation Error */
