@@ -326,8 +326,8 @@ def cmd_mutate(module: str, *args: str) -> None:
     参数:
         module — 模块名（app/ 下的目录名，如 perspectives）；
         args — 其余参数：--files=a.py,b.py 缩域文件列表（相对 app/<module>/，
-            可选）；其余视为判杀测试路径（可选，默认 tests/unit/test_<module>_*.py
-            全部文件——E19 守卫：显式传入时缺任一既有单测文件会被拦截）。
+            可选）；其余视为判杀测试路径（可选，叠加在默认判杀器之上：模块 L1
+            单测全集 tests/unit/test_<module>_*.py 恒为基线不可排除——E19）。
     返回值: 无。异常: 模块不存在、缩域文件越界/不存在、缺判杀器、或模块含
         router.py 而判杀器缺 L2 集成测试时经 _fail 终止（docs/testing.md §9）。
     依赖: mutmut / pytest / hashlib / json。
@@ -372,26 +372,17 @@ def cmd_mutate(module: str, *args: str) -> None:
     # 默认判杀器 = 模块全部 L1 单测文件（E19，2026-09-09）：模块 L1 面常跨
     # 多个测试文件（如 agent 有 tools/llm/prompts/service/memory_docs 五件），
     # 缺哪个文件哪片逻辑就是漏杀盲区（E04 层级覆盖原则的文件级同型）。
+    # 单测为恒为基线：显式传入的 L2/L3/架构测试路径做并集叠加，不可替代基线。
     module_unit_tests = sorted(
         f"tests/unit/{p.name}"
         for p in (BACKEND / "tests" / "unit").glob(f"test_{module}_*.py")
     )
-    tests = list(test_paths) or module_unit_tests
+    tests = sorted(set(module_unit_tests) | set(test_paths))
     if not tests:
         _fail(
-            f"模块 {module} 缺少默认判杀测试",
-            f"backend/tests/unit/ 下不存在 test_{module}_*.py",
+            f"模块 {module} 缺少判杀测试",
+            f"backend/tests/unit/ 下不存在 test_{module}_*.py，且未显式传入任何判杀测试路径",
             "显式传入判杀测试路径: python scripts/task.py mutate <module> <test_path...>",
-        )
-    missing_unit = [p for p in module_unit_tests if p not in tests]
-    if missing_unit:
-        _fail(
-            f"判杀器缺少模块既有 L1 单测: {', '.join(missing_unit)}",
-            "单元判杀器必须覆盖模块全部 L1 测试面（docs/testing.md §9 判杀器构成，"
-            "E04/E19）——缺哪个文件，哪片逻辑的变异就是漏杀盲区"
-            "（F14 首轮只带 2/5 个 agent 单测文件，tools.py/service.py kill rate 掉至 49%/61%）",
-            f"判杀器补全缺失文件后重试: python scripts/task.py mutate {module} "
-            f"{' '.join(module_unit_tests)} <L2/L3 路径...>",
         )
     if (BACKEND / "app" / module / "router.py").is_file() and not any(
         p.replace("\\", "/").startswith("tests/integration/") for p in tests
