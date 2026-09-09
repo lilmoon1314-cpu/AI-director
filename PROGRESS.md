@@ -28,7 +28,17 @@
 - 2026-09-08（续）: **F13 Agent 对话体验升级（passing）**——真流式全链：llm.stream_chat_turn（reasoning/content 逐片、tool_calls 按 index 聚合、usage 透传）+ stream_chat 废除伪分块 + SSE 新增 reasoning/usage 事件（usage 含容量占比，done 前下发）；迁移 c7d2e9a4b513（messages 增 reasoning/prompt_tokens/completion_tokens 三列）+ DDL 架构断言；DELETE /api/agent/sessions（级联 messages）+ 指导类文档项目内唯一 409（GUIDE_KINDS）；前端 ThinkingBlock（Z-code 式三态）+ UsageBar（琥珀阈值 >0.8）+ agentStore SSE 消费与删除 action + SessionList 输入标题确认删除 + MemoryDocsArea 指导类置灰/两击删除 + DocEditor 大弹窗 max-w-5xl 三栏（实时预览全转义 + Esc 脏确认）+ AgentDock 会话下拉/＋新会话/Esc 收起。**质量链**：验收审查（§10 第 4 轮）P0×4/P1×2/P2×6 全 triage（P0-1 文档双态 E01 同型、P0-3 e2e 断言虚登 E14 同型——均已修复归档测试文档审查记录表）；变异 1174 体 kill rate 100%（唯一可疑体 687 手工复判 0.85s 实杀，mutmut 计时噪声）；运行后还原校验 + 全量复跑。测试：后端 338、前端 vitest 191、Playwright 14（FE1 扩展 usage 帧）；make check 全链通过。html 替代 md 原则全程遵守（docPreview 全转义 HTML 分段模型）。详见 docs/tests/F13_agent_experience.md 与 git log
 
 ## 进行中
-- 无
+- **F14 Agent 写入工具链**（active，测试文档 docs/tests/F14_agent_write_tools.md 已先行）：
+  1. [x] 后端基建：config AGENT_MAX_PENDING_WRITES + agent/templates.py 抽出 DOC_TEMPLATES/GUIDE_KINDS（tools↔service 解循环）+ Alembic 迁移 agent_pending_writes + models.PendingWrite + DDL 架构断言
+  2. [x] tools.py 五写入工具（create_entity/update_entity/create_relation 名称与 known_by 解析/create_memory_doc/write_doc_section CAS 基线；登记≠落库；名称解析经视角过滤）+ repository pending 读写
+  3. [x] service：done 携带 pending_writes + approve 二次校验白名单落库 + reject + list_pending + create_doc title 扩展 + propose/confirm legacy 标注 + SectionUpdate title
+  4. [x] schemas DTO + router 三端点 + openapi 重生成
+  5. [x] 后端测试：L1 tools 44 + L1 service 43 + L2 I1-I7 + L3 E2（全量 391 绿；事件循环泄漏 T-20260908-01 登记并修复）
+  6. [x] 前端：client 类型 + agentStore（pendingBySession/approve/reject/图谱与文档失效）+ PendingWritesCard + SessionView 挂载
+  7. [x] 前端测试：FU10×3 + FI10×3 + Playwright AG-07/AG-08（197 vitest + 16 e2e 全绿；FE1 会话清理前置修 flake）
+  8. [x] make check 全链（除 schema.d.ts 提交门禁随实现提交通过）+ 验收审查子代理（P0×0/P1×3/P2×6 全 triage：known_by 解析/视角过滤守卫/approve 误删修复，详见测试文档审查记录表）
+  9. [ ] mutmut 定向 agent——成本治理先行落地（TOOL_SPECS 抽 tool_specs.py 纯数据模块 + task.py mutate `--files` 缩域与指纹续跑，DECISIONS 2026-09-09）后按 F14 触碰文件缩域跑 + 测试文档变异小节回填
+  10. [ ] verify F14 + PROGRESS 收口 + 提交推送 + 重启前后端
 
 ## 已知问题
 - 无

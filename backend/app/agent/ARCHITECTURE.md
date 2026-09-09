@@ -19,6 +19,8 @@ repository.py   # 数据访问（唯一允许 import models 的层；不 commit/
 models.py       # ORM：Conversation/Message/MemoryDoc/MemoryDocSection/PendingWrite
 schemas.py      # Pydantic DTO + id 生成器（conv-/msg-/mdoc-/msec-/draft-/pw- 前缀）
 templates.py    # DOC_TEMPLATES/GUIDE_KINDS 共享常量（service 与 tools 同源校验；零逻辑）
+tool_specs.py   # TOOL_SPECS 工具声明（openai function 格式纯契约数据；零逻辑；
+                #   变异测试缩域排除——docs/testing.md §9 等价豁免的源头化）
 llm.py          # OpenAI 兼容客户端封装：进程单例、错误包装、usage 记录、
                 #   JSON 修复重试（上限 1 次）、轻量模型路由（summarize）
 prompts.py      # system 构建、分层上下文组装与预算裁剪、注入防护分隔符、

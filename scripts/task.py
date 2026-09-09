@@ -14,6 +14,8 @@
     python scripts/task.py help       # 查看全部命令
 """
 
+import hashlib
+import json
 import shutil
 import subprocess
 import sys
@@ -42,7 +44,7 @@ COMMANDS: dict[str, str] = {
     "frontend-check": "仅前端验证",
     "check-api-types": "前端 API 类型与后端 OpenAPI schema 同步检查（F05 起）",
     "verify": "功能项验证并自动更新清单状态：verify F01（见 scripts/verify_feature.py）",
-    "mutate": "定向变异测试（docs/testing.md §9）：mutate <module> [test_path...]，如 mutate perspectives",
+    "mutate": "定向变异测试（docs/testing.md §9）：mutate <module> [--files=a.py,b.py] [test_path...]，如 mutate perspectives",
     "clean": "清理构建产物与缓存",
     "help": "显示本帮助",
 }
@@ -282,27 +284,79 @@ def cmd_clean() -> None:
         print("已清理 frontend/dist")
 
 
-def cmd_mutate(module: str, *test_paths: str) -> None:
-    """定向变异测试（docs/testing.md §9）：仅对指定模块运行 mutmut。
+def _mutation_fingerprint(module: str, tests: list[str], files: list[str]) -> str:
+    """计算变异基线指纹（E12 防控：任一输入变化即判缓存失效）。
+
+    作用: 对「变异路径声明 + 被测模块全部 .py 源文件 + 判杀器测试文件」
+        做 sha256，作为 .mutmut-cache 的复用凭据——仅当指纹与上次运行
+        完全一致（同基线中断恢复）才允许续跑缓存。
+    参数:
+        module — 模块名（app/ 下目录名）；
+        tests — 判杀器测试路径（相对 backend）；
+        files — 缩域文件列表（相对 app/<module>/，空表 = 全模块）。
+    返回值: 十六进制指纹串。异常: 判杀器文件缺失抛 OSError（调用前已校验存在）。
+    依赖: hashlib。
+    """
+    h = hashlib.sha256()
+    scope = [f"app/{module}/{f}" for f in files] if files else [f"app/{module}/"]
+    h.update(("paths=" + ",".join(scope)).encode("utf-8"))
+    base = BACKEND / "app" / module
+    for p in sorted(base.rglob("*.py")):
+        h.update(str(p.relative_to(BACKEND)).encode("utf-8"))
+        h.update(p.read_bytes())
+    for t in sorted(tests):
+        h.update(t.encode("utf-8"))
+        h.update((BACKEND / t).read_bytes())
+    return h.hexdigest()
+
+
+def cmd_mutate(module: str, *args: str) -> None:
+    """定向变异测试（docs/testing.md §9）：对指定模块（默认）或指定文件运行 mutmut。
 
     作用:
-        变异测试封装——mutmut 只变异 backend/app/<module>/ 下源码，以
+        变异测试封装——默认变异 backend/app/<module>/ 全部源码，传
+        --files=a.py,b.py 时仅变异列出的文件（功能级缩域：本功能触碰的
+        文件；未触碰文件的判杀力已由既往功能验证，见 §9 范围条目）。以
         「判杀测试命令」的退出码判定变异体存活；结束时打印结果汇总，
         kill rate ≥ 85% 才算达标（存活变异体逐一分析后归档测试文档）。
         不纳入 make check 常规链（成本控制，按功能点手动触发）。
+        缓存按基线指纹（模块源码树 + 判杀器 + 变异路径的 sha256）管理：
+        指纹不变（同基线中断恢复）复用缓存续跑；任一变化清空重跑——比
+        mutmut 自带失效机制更严，E12「旧存活状态残留谎报 kill rate」不复发。
     参数:
         module — 模块名（app/ 下的目录名，如 perspectives）；
-        test_paths — 判杀测试路径（可选，默认 tests/unit/test_<module>_service.py，
-        该文件不存在时必须显式指定）。
-    返回值: 无。异常: 模块不存在、缺判杀器、或模块含 router.py 而判杀器缺
-        L2 集成测试时经 _fail 终止（docs/testing.md §9 判杀器构成）。依赖: mutmut / pytest。
+        args — 其余参数：--files=a.py,b.py 缩域文件列表（相对 app/<module>/，
+            可选）；其余视为判杀测试路径（可选，默认 tests/unit/test_<module>_service.py，
+            该文件不存在时必须显式指定）。
+    返回值: 无。异常: 模块不存在、缩域文件越界/不存在、缺判杀器、或模块含
+        router.py 而判杀器缺 L2 集成测试时经 _fail 终止（docs/testing.md §9）。
+    依赖: mutmut / pytest / hashlib / json。
     """
+    files: list[str] = []
+    test_paths: list[str] = []
+    for a in args:
+        if a.startswith("--files="):
+            files = [f.strip() for f in a[len("--files=") :].split(",") if f.strip()]
+        else:
+            test_paths.append(a)
     if not (BACKEND / "app" / module).is_dir():
         _fail(
             f"未知模块: {module}",
             f"backend/app/{module} 目录不存在",
             "用法: python scripts/task.py mutate <module>（app/ 下的模块名，如 perspectives）",
         )
+    if files:
+        base = BACKEND / "app" / module
+        for f in files:
+            target = (base / f).resolve()
+            if base.resolve() not in target.parents or not target.is_file():
+                _fail(
+                    f"缩域文件不存在或越界: {f}",
+                    f"--files 的条目必须是 backend/app/{module}/ 下的已有源文件"
+                    "（防路径逃逸，也防拼写错误静默缩空判杀范围）",
+                    f"核对文件名后重试: python scripts/task.py mutate {module} "
+                    f"--files=<app/{module}/ 下的 .py 文件> <test_path...>",
+                )
     # 脏工作区守卫（error.jsonl E11）：mutmut 以启动时的文件内容为还原基线，
     # 目标模块存在未提交改动时，变异期间的用户编辑会被静默覆盖且判杀基线失真
     dirty = _run_capture(
@@ -316,7 +370,7 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
             "先提交该模块的全部改动（含新文件），再运行本命令",
         )
     default_test = BACKEND / "tests" / "unit" / f"test_{module}_service.py"
-    tests = list(test_paths) or (
+    tests = test_paths or (
         [f"tests/unit/test_{module}_service.py"] if default_test.exists() else []
     )
     if not tests:
@@ -335,16 +389,43 @@ def cmd_mutate(module: str, *test_paths: str) -> None:
             "判杀器追加该功能集成测试路径，如: python scripts/task.py mutate <module> "
             "tests/unit/test_<module>_service.py tests/integration/test_<feature>.py",
         )
-    # 结果缓存清空（error.jsonl E12）：缓存会跨轮复用旧状态，判杀器增强后
-    # 不清理会让可杀变异体残留 bad_survived，kill rate 与真实判杀能力不符
+    paths_to_mutate = (
+        ",".join(f"app/{module}/{f}" for f in files) if files else f"app/{module}/"
+    )
+    # 结果缓存按基线指纹管理（error.jsonl E12 机制升级，2026-09-09）：指纹 =
+    # 模块源码树 + 判杀器文件 + 变异路径的 sha256。指纹不变（同基线中断恢复）
+    # 才复用缓存续跑；任一变化即清空重跑——旧 bad_survived 不可能跨基线残留。
+    fingerprint = _mutation_fingerprint(module, tests, files)
+    meta_path = BACKEND / ".mutmut-cache.meta"
+    meta: dict[str, object] | None = None
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            meta = None
     cache = BACKEND / ".mutmut-cache"
-    if cache.exists():
-        cache.unlink()
+    if cache.exists() and isinstance(meta, dict) and meta.get("fingerprint") == fingerprint:
+        print("[mutate] 基线指纹一致：复用缓存续跑（中断恢复）")
+    else:
+        if cache.exists():
+            cache.unlink()
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "fingerprint": fingerprint,
+                    "module": module,
+                    "files": files,
+                    "tests": tests,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
     runner = f"python -m pytest -x -q {' '.join(tests)}"
     _backend(
         "mutmut",
         "run",
-        f"--paths-to-mutate=app/{module}/",
+        f"--paths-to-mutate={paths_to_mutate}",
         f"--runner={runner}",
         "--tests-dir=tests/",
     )

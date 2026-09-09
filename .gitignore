@@ -34,6 +34,7 @@ Thumbs.db
 
 # mutmut 变异测试缓存（定向运行产出，不入版本库）
 backend/.mutmut-cache
+backend/.mutmut-cache.meta
 
 # API 类型同步检查的中间产物（task.py check-api-types 导出，不入版本库）
 backend/openapi.json
