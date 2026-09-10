@@ -528,6 +528,56 @@ async def test_stream_chat_injects_current_message_once(
     )
 
 
+async def test_stream_chat_context_uses_summary_cursor_and_recent_tail(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1 characterization: 已摘要历史不再注入，摘要、窗口尾部与本轮输入保留。
+
+    断言仅观察送往 provider 的消息语义，不绑定上下文 helper、模块布局或模板全文。
+    """
+    conversation = _seed_conversation(store)
+    conversation.summary = "SUMMARY-UNIQUE"
+    conversation.summary_until_id = "msg-cursor"
+    for message_id, role, content in (
+        ("msg-covered", "user", "COVERED-UNIQUE"),
+        ("msg-cursor", "assistant", "CURSOR-UNIQUE"),
+        ("msg-tail-1", "user", "TAIL-ONE-UNIQUE"),
+        ("msg-tail-2", "assistant", "TAIL-TWO-UNIQUE"),
+    ):
+        store.add_message(
+            SimpleNamespace(
+                id=message_id,
+                conversation_id="conv-1",
+                role=role,
+                content=content,
+                created_at=datetime.now(UTC),
+            )
+        )
+
+    captured: list[dict[str, Any]] = []
+
+    async def fake_stream(system: str, messages: list[dict], **_kwargs: Any) -> Any:
+        captured.append({"system": system, "messages": messages})
+        yield ("turn", AssistantTurn(content="ok"))
+
+    monkeypatch.setattr(llm, "stream_chat_turn", fake_stream)
+    events = [
+        event
+        async for event in service.stream_chat(
+            "conv-1", "CURRENT-UNIQUE", perspective="author"
+        )
+    ]
+
+    assert events[-1]["event"] == "done"
+    provider_text = captured[0]["system"] + "\n" + "\n".join(
+        str(message.get("content", "")) for message in captured[0]["messages"]
+    )
+    assert "SUMMARY-UNIQUE" in provider_text
+    assert "TAIL-ONE-UNIQUE" in provider_text and "TAIL-TWO-UNIQUE" in provider_text
+    assert "COVERED-UNIQUE" not in provider_text and "CURSOR-UNIQUE" not in provider_text
+    assert provider_text.count("CURRENT-UNIQUE") == 1
+
+
 async def test_rolling_summary_empty_result_keeps_state(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -2,7 +2,7 @@
 
 作用:
     Windows 环境通常没有 make 工具，本脚本用纯 Python 标准库实现 Makefile 的
-    全部命令契约（INIT.md），命令名与行为与 Makefile 一一对应：
+    命令名与行为与 Makefile 一一对应：
     有 make 的机器走 Makefile（内部同样委托本脚本），没有的直接
     `python scripts/task.py <命令>`。
 
@@ -27,24 +27,24 @@ ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend"
 FRONTEND = ROOT / "frontend"
 
-# 命令面板（name -> 描述），help 与 --activate 校验共用
+# 命令面板（name -> 描述），供 help 与命令分派校验共用
 COMMANDS: dict[str, str] = {
     "setup": "初始化：安装前后端依赖 + 生成 .env + 数据库迁移",
     "dev": "同时启动前后端开发服务器（后端 :8000/docs，前端 :5173）",
     "dev-backend": "仅启动后端 http://localhost:8000（API 文档: /docs）",
     "dev-frontend": "仅启动前端 http://localhost:5173",
     "test": "运行全部层级测试（后端 + 前端）",
-    "test-unit": "L1 单元测试（每功能必须通过）",
-    "test-integration": "L2 集成测试（每功能必须通过）",
-    "test-e2e": "L3 端到端测试（跨组件功能必须通过）",
+    "test-unit": "L1 单元测试",
+    "test-integration": "L2 集成测试",
+    "test-e2e": "L3 端到端测试",
     "test-backend": "后端全部测试（pytest）",
     "test-frontend": "前端全部测试（vitest）",
     "check": "完整验证：后端 ruff/format/import-linter/mypy/pytest + 前端 typecheck/lint/build",
     "backend-check": "仅后端验证",
     "frontend-check": "仅前端验证",
     "check-api-types": "前端 API 类型与后端 OpenAPI schema 同步检查（F05 起）",
-    "verify": "功能项验证并自动更新清单状态：verify F01（见 scripts/verify_feature.py）",
-    "mutate": "定向变异测试（docs/testing.md §9）：mutate <module> [--files=a.py,b.py] [test_path...]，如 mutate perspectives",
+    "verify": "验证并更新 feature_list.json；或 verify --list [--status ...] [--category ...]",
+    "mutate": "可选定向变异：mutate <module> [--files=a.py,b.py] [test_path...]",
     "clean": "清理构建产物与缓存",
     "help": "显示本帮助",
 }
@@ -116,7 +116,7 @@ def _fail(problem: str, cause: str, fix: str) -> NoReturn:
     """输出三要素错误消息并终止。
 
     作用:
-        统一错误出口，保证【问题/原因/修复】三要素完整（docs/lessons.md 规范）。
+        统一命令面板的可操作错误出口。
     参数:
         problem — 什么出了问题；cause — 为什么；fix — 怎么修。
     返回值: 无（总是 SystemExit(1)）。
@@ -128,12 +128,18 @@ def _fail(problem: str, cause: str, fix: str) -> NoReturn:
 
 
 def _backend(*args: str) -> None:
-    """在后端目录执行命令（便捷封装）。参数: args — 命令片段。返回值: 无。异常: 同 _run。依赖: _run。"""
+    """在后端目录执行命令（便捷封装）。
+
+    参数: args — 命令片段。返回值: 无。异常: 同 _run。依赖: _run。
+    """
     _run(["uv", "run", *args], BACKEND)
 
 
 def _frontend(*args: str) -> None:
-    """在前端目录执行命令（便捷封装）。参数: args — 命令片段。返回值: 无。异常: 同 _run。依赖: _run。"""
+    """在前端目录执行命令（便捷封装）。
+
+    参数: args — 命令片段。返回值: 无。异常: 同 _run。依赖: _run。
+    """
     _run(["pnpm", *args], FRONTEND)
 
 
@@ -144,7 +150,7 @@ def cmd_setup() -> None:
     """初始化：安装前后端依赖 + 生成 .env + 数据库迁移。
 
     作用:
-        对应 INIT.md 初始化契约第 1 条「可运行的环境」；幂等，可重复执行。
+        建立可运行的本地环境；幂等，可重复执行。
     参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: uv / pnpm / alembic。
     """
     _run(["uv", "sync"], BACKEND)
@@ -161,14 +167,16 @@ def cmd_setup() -> None:
         print(f"==> 已生成 {env_file.relative_to(ROOT)}（如需自定义密钥请编辑该文件）")
     _backend("alembic", "upgrade", "head")
     _frontend("install")
-    print("\n初始化完成：后端 http://localhost:8000/docs，前端 http://localhost:5173（make dev 启动）")
+    print(
+        "\n初始化完成：后端 http://localhost:8000/docs，前端 http://localhost:5173（make dev 启动）"
+    )
 
 
 def cmd_dev() -> None:
     """同时启动前后端开发服务器（并行，任一退出则双双终止）。
 
     作用:
-        对应 INIT.md 契约「启动开发服务器」；Ctrl+C 一次性停止两端。
+        启动开发服务器；Ctrl+C 一次性停止两端。
     参数: 无。返回值: 无。异常: 无（进程信号由用户控制）。依赖: subprocess.Popen。
     """
     procs = [
@@ -189,7 +197,7 @@ def cmd_dev() -> None:
 def cmd_test_unit() -> None:
     """L1 单元测试（后端 -m unit；前端 test:unit 不存在时跳过）。
 
-    作用: 验证层级 L1（docs/testing.md），每功能必须通过。
+    作用: 运行最接近纯函数、类与隔离组件的 L1 反馈。
     参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: pytest / vitest。
     """
     _backend("pytest", "-m", "unit")
@@ -199,7 +207,7 @@ def cmd_test_unit() -> None:
 def cmd_test_integration() -> None:
     """L2 集成测试（后端 -m integration；前端 test:integration 随 F05 引入）。
 
-    作用: 验证层级 L2（docs/testing.md），每功能必须通过。
+    作用: 运行真实模块装配和临时数据库的 L2 反馈。
     参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: pytest / vitest。
     """
     _backend("pytest", "-m", "integration")
@@ -209,18 +217,19 @@ def cmd_test_integration() -> None:
 def cmd_test_e2e() -> None:
     """L3 端到端测试（后端 -m e2e；前端 Playwright 随 F05 引入）。
 
-    作用: 验证层级 L3（docs/testing.md），跨组件功能必须通过。
+    作用: 运行公开接口和浏览器用户路径的 L3 反馈。
     参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: pytest。
     """
     _backend("pytest", "-m", "e2e")
 
 
 def cmd_check() -> None:
-    """完整验证：后端（ruff + format + import-linter + mypy + pytest）与前端（typecheck + lint + build）。
+    """运行后端与前端的完整验证。
 
     作用:
-        对应 INIT.md 契约「完整验证」，即功能完成判定 DoD 的机器部分（docs/testing.md §2）。
-    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: cmd_backend_check / cmd_frontend_check。
+        显式执行全仓质量门禁；普通局部任务应优先运行定向检查。
+    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。
+    依赖: cmd_backend_check / cmd_frontend_check。
     """
     cmd_backend_check()
     cmd_frontend_check()
@@ -230,7 +239,8 @@ def cmd_backend_check() -> None:
     """仅后端验证：ruff check → ruff format --check → lint-imports → mypy → pytest。
 
     作用: 后端质量门禁（静态检查 + 类型 + 架构契约 + 全量测试）。
-    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: ruff / mypy / import-linter / pytest。
+    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。
+    依赖: ruff / mypy / import-linter / pytest。
     """
     _backend("ruff", "check", ".")
     _backend("ruff", "format", "--check", ".")
@@ -243,7 +253,8 @@ def cmd_frontend_check() -> None:
     """仅前端验证：api 类型同步 → typecheck → lint → build。
 
     作用: 前端质量门禁（API 契约 + 类型 + 规范 + 生产构建）。
-    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。依赖: cmd_check_api_types / tsc / eslint / vite。
+    参数: 无。返回值: 无。异常: 命令失败时经 _fail 终止。
+    依赖: cmd_check_api_types / tsc / eslint / vite。
     """
     cmd_check_api_types()
     _frontend("typecheck")
@@ -255,7 +266,7 @@ def cmd_check_api_types() -> None:
     """前端 API 类型同步检查（导出 OpenAPI → openapi-typescript 生成 → git diff 校验）。
 
     作用:
-        保证前端 API 类型与后端 OpenAPI schema 一致（frontend/CONSTRAINTS.md「API 契约」）；
+        保证前端 API 类型与后端 OpenAPI schema 一致；
         已挂入 cmd_check 前端链（F05 起）。
     参数: 无。返回值: 无。异常: 后端无法导入 app 或类型漂移时经 _fail 终止。依赖: uv / pnpm / git。
     """
@@ -285,7 +296,7 @@ def cmd_clean() -> None:
 
 
 def _mutation_fingerprint(module: str, tests: list[str], files: list[str]) -> str:
-    """计算变异基线指纹（E12 防控：任一输入变化即判缓存失效）。
+    """计算变异基线指纹（任一输入变化即判缓存失效）。
 
     作用: 对「变异路径声明 + 被测模块全部 .py 源文件 + 判杀器测试文件」
         做 sha256，作为 .mutmut-cache 的复用凭据——仅当指纹与上次运行
@@ -311,25 +322,22 @@ def _mutation_fingerprint(module: str, tests: list[str], files: list[str]) -> st
 
 
 def cmd_mutate(module: str, *args: str) -> None:
-    """定向变异测试（docs/testing.md §9）：对指定模块（默认）或指定文件运行 mutmut。
+    """可选定向变异测试：对指定模块（默认）或指定文件运行 mutmut。
 
     作用:
         变异测试封装——默认变异 backend/app/<module>/ 全部源码，传
         --files=a.py,b.py 时仅变异列出的文件（功能级缩域：本功能触碰的
         文件；未触碰文件的判杀力已由既往功能验证，见 §9 范围条目）。以
-        「判杀测试命令」的退出码判定变异体存活；结束时打印结果汇总，
-        kill rate ≥ 85% 才算达标（存活变异体逐一分析后归档测试文档）。
-        不纳入 make check 常规链（成本控制，按功能点手动触发）。
-        缓存按基线指纹（模块源码树 + 判杀器 + 变异路径的 sha256）管理：
-        指纹不变（同基线中断恢复）复用缓存续跑；任一变化清空重跑——比
-        mutmut 自带失效机制更严，E12「旧存活状态残留谎报 kill rate」不复发。
+        「判杀测试命令」的退出码判定变异体存活并打印结果汇总。
+        不纳入 make check 常规链；是否使用与接受标准由当前任务的验证计划决定。
+        缓存按模块源码树、判杀器和变异路径的指纹管理；指纹变化时重建。
     参数:
         module — 模块名（app/ 下的目录名，如 perspectives）；
         args — 其余参数：--files=a.py,b.py 缩域文件列表（相对 app/<module>/，
             可选）；其余视为判杀测试路径（可选，叠加在默认判杀器之上：模块 L1
-            单测全集 tests/unit/test_<module>_*.py 恒为基线不可排除——E19）。
+            单测全集 tests/unit/test_<module>_*.py 恒为基线不可排除）。
     返回值: 无。异常: 模块不存在、缩域文件越界/不存在、缺判杀器、或模块含
-        router.py 而判杀器缺 L2 集成测试时经 _fail 终止（docs/testing.md §9）。
+        router.py 而判杀器缺 L2 集成测试时经 _fail 终止。
     依赖: mutmut / pytest / hashlib / json。
     """
     files: list[str] = []
@@ -357,11 +365,9 @@ def cmd_mutate(module: str, *args: str) -> None:
                     f"核对文件名后重试: python scripts/task.py mutate {module} "
                     f"--files=<app/{module}/ 下的 .py 文件> <test_path...>",
                 )
-    # 脏工作区守卫（error.jsonl E11）：mutmut 以启动时的文件内容为还原基线，
+    # 脏工作区守卫：mutmut 以启动时的文件内容为还原基线，
     # 目标模块存在未提交改动时，变异期间的用户编辑会被静默覆盖且判杀基线失真
-    dirty = _run_capture(
-        ["git", "status", "--porcelain", "--", f"backend/app/{module}/"], ROOT
-    )
+    dirty = _run_capture(["git", "status", "--porcelain", "--", f"backend/app/{module}/"], ROOT)
     if dirty.stdout.strip():
         _fail(
             f"模块 {module} 存在未提交改动，拒绝启动变异测试",
@@ -369,13 +375,11 @@ def cmd_mutate(module: str, *args: str) -> None:
             "未提交的编辑会被覆盖丢失，且判杀基线与工作区不一致导致 kill rate 失真",
             "先提交该模块的全部改动（含新文件），再运行本命令",
         )
-    # 默认判杀器 = 模块全部 L1 单测文件（E19，2026-09-09）：模块 L1 面常跨
-    # 多个测试文件（如 agent 有 tools/llm/prompts/service/memory_docs 五件），
-    # 缺哪个文件哪片逻辑就是漏杀盲区（E04 层级覆盖原则的文件级同型）。
+    # 默认判杀器包含模块全部 L1 单测文件。模块 L1 面可能跨多个测试文件，
+    # 缺少任一文件都可能留下判杀盲区。
     # 单测为恒为基线：显式传入的 L2/L3/架构测试路径做并集叠加，不可替代基线。
     module_unit_tests = sorted(
-        f"tests/unit/{p.name}"
-        for p in (BACKEND / "tests" / "unit").glob(f"test_{module}_*.py")
+        f"tests/unit/{p.name}" for p in (BACKEND / "tests" / "unit").glob(f"test_{module}_*.py")
     )
     tests = sorted(set(module_unit_tests) | set(test_paths))
     if not tests:
@@ -388,16 +392,14 @@ def cmd_mutate(module: str, *args: str) -> None:
         p.replace("\\", "/").startswith("tests/integration/") for p in tests
     ):
         _fail(
-            f"模块 {module} 含 router.py 但判杀器缺少 L2 集成测试（docs/testing.md §9 判杀器构成）",
-            "路由注册（prefix/path/装饰器）与参数校验类变异不改变 service 运行时行为，"
-            "仅 L1 单元判杀会在 HTTP 语义层留下漏杀盲区（F04 首轮 kill rate 仅 47%）",
+            f"模块 {module} 含 router.py 但判杀器缺少 L2 集成测试",
+            "路由注册与 HTTP 参数校验不会经过仅调用 service 的单元测试，"
+            "只使用 L1 会在 HTTP 语义层留下判杀盲区",
             "判杀器追加该功能集成测试路径，如: python scripts/task.py mutate <module> "
             "tests/unit/test_<module>_service.py tests/integration/test_<feature>.py",
         )
-    paths_to_mutate = (
-        ",".join(f"app/{module}/{f}" for f in files) if files else f"app/{module}/"
-    )
-    # 结果缓存按基线指纹管理（error.jsonl E12 机制升级，2026-09-09）：指纹 =
+    paths_to_mutate = ",".join(f"app/{module}/{f}" for f in files) if files else f"app/{module}/"
+    # 结果缓存按基线指纹管理：指纹 =
     # 模块源码树 + 判杀器文件 + 变异路径的 sha256。指纹不变（同基线中断恢复）
     # 才复用缓存续跑；任一变化即清空重跑——旧 bad_survived 不可能跨基线残留。
     fingerprint = _mutation_fingerprint(module, tests, files)

@@ -1,65 +1,61 @@
+# AI-director
+
+AI-director is a local workspace for developing film and series worlds. It combines structured entity
+and relationship management, author/character/audience graph views, reusable and project-specific
+assets, multi-project navigation, and a project-scoped creative assistant with user-confirmed writes.
+
+The current application is a FastAPI + SQLite modular monolith with a React, TypeScript, Zustand, and
+AntV G6 frontend. It stores the complete world model once and derives restricted views at read time.
+
+## Requirements
+
+- Python 3.12+
+- Node.js 20+
+- uv
+- pnpm 9+
+- make, or Python on Windows for the equivalent command panel
+
+## Setup and development
+
+```bash
+make setup
+make dev
 ```
-该文档用于记录项目的基本信息、期望功能、实现架构等。
+
+The backend API documentation is available at `http://localhost:8000/docs`; the frontend runs at
+`http://localhost:5173`.
+
+Windows without make:
+
+```powershell
+python scripts/task.py setup
+python scripts/task.py dev
 ```
 
-# 项目名称
-影视多智能体协作平台（MVP 阶段）
+Useful verification commands:
 
-# 项目概述
-本项目是一个面向长期影视项目的前期制作辅助系统，旨在通过结构化的数据管理、可视化实体关系图和视角隔离机制，帮助创作者高效管理世界观、角色、物品、地点等核心资产，并为后续多智能体剧本生成工作流奠定坚实的数据基础。
+```bash
+make test-unit
+make test-integration
+make test-e2e
+make check
+python scripts/task.py verify --list
+```
 
-当前阶段（MVP / 第1批）聚焦于数据管理与可视化前端，不包含图像生成功能，但支持资产上传、查看与保存。系统采用“全知底层 + 视角属性”的设计，确保同一套数据可同时服务于作者（全知）、角色（受限）和观众（仅已知信息）三种视角，为未来多 Agent 协作提供信息隔离能力。
+Use checks proportional to the change. `make check` is the full repository suite, not a required
+session-start or session-end action.
 
+## Repository map
 
-# 项目背景与目标
-## 背景
-在影视项目开发中，前期设定（世界观、人物、关系、物品等）往往分散在文档、表格和头脑中，难以统一维护和查询。尤其对于长篇或系列项目，角色众多、关系复杂、信息释放节奏严格，传统方式容易导致设定冲突、逻辑断裂或信息泄露。
+- `backend/app/` — FastAPI domain modules and core infrastructure.
+- `backend/migrations/` — authoritative primary-database migrations.
+- `frontend/src/` — application views, components, stores, and generated API client.
+- `feature_list.json` — machine-readable product acceptance state.
+- `ARCHITECTURE.md` — current high-level ownership and dependency map.
+- `docs/product-specs/` — observable product behavior.
+- `docs/design-docs/` — durable implementation reasoning.
+- `docs/exec-plans/active/` — state for complex work currently in progress.
+- `scripts/task.py` — cross-platform command implementation.
 
-本项目借鉴多 Agent 架构思想，将“作者（控局者）”、“角色（体验者）”、“观众（审查者）”分离，通过结构化数据与视角管理，实现：
-
-- 单一事实源：所有实体和关系统一存储，避免多份拷贝不一致。
-
-- 视角隔离：不同角色只能看到其“应知”信息，观众只能看到“已展示”信息。
-
-- 高效协作：创作者可通过可视化界面快速查看和编辑实体关系，并通过对话 Agent 辅助创建。
-
-## 目标
-- 第1批（当前）：构建一个可用的图数据库 + 可视化前端，支持实体与关系的 CRUD、视角过滤、资产管理（HTML 形态资产库）、实体选择器和简单的前期 Agent 对话。
-
-- 第2批（规划中）：在第1批基础上实现多 Agent 工作流（作者、角色、观众）、场景生成、剧本审查、状态管理（Ledger）和批量生成控制台。
-
-
-
-# 核心功能（第1批 MVP）
-## 实体管理
-支持创建、编辑、删除以下类型的实体：人物（character）、门派/势力（faction）、地点（location）、物品（item）、技能（skill）、事件（event）、概念/文化元素（concept）。
-每个实体包含通用字段（id, name, aliases, description, audience_known）和类型特有属性（properties JSON），可灵活扩展。
-
-## 关系管理
-支持建立实体间关系（如 BELONGS_TO、KNOWS_ABOUT、TRUSTS 等），关系可携带动态属性（信任度、公开/私下身份、承诺等）以及视角可见性标记（known_by、audience_known）。
-
-## 图可视化
-使用力导向图展示实体和关系，支持缩放、拖拽、节点点击查看详情。
-
-## 视角过滤
-一键切换三种视角：
-
-- 作者视角：显示所有实体和关系，包括秘密。
-
-- 角色视角：选择某个角色，仅显示该角色知晓的实体和关系（根据 known_by 过滤）。
-
-- 观众视角：仅显示 audience_known: true 的实体和关系。
-
-## 实体选择器
-在表单或对话输入框中输入 @ 触发实体搜索，选择后自动插入实体引用，并提示该实体对当前视角是否可见。
-
-## 资产管理
-工作台分「图谱」与「资产管理」两页。资产以 HTML 形态存储于独立资产库（data/assets.db，图片文件存 data/assets/）：通用资产（表情/风格/植被等可复用参考，支持新建/编辑/上传）与项目资产（实体按类型分组卡片：缩略图/名称/概述，点击打开内嵌 HTML 资产页；页面随实体更新惰性再生）。
-
-## 前置 Agent 多轮对话
-提供一个简单的聊天窗口，接入大语言模型，辅助用户快速创建或编辑实体。Agent 可根据用户描述生成实体属性建议，用户确认后写入数据库。
-
-# 设计基线与架构演进（2026-09-06）
-
-- **交互设计基线**见根目录 [DESIGN.md](./DESIGN.md)（规划中，未实施）：多项目工作台——独立项目首屏（图谱 / 项目资产 / 记忆文档 / 对话会话随项目隔离，通用参考库与 Agent harness / skills 全局共享）、资产页两级钻取与搜索、Agent 对话主页 + 各页右侧对话边栏（同一会话池）、路由化导航。
-- **技术架构维持模块化单体**（DECISIONS.md 2026-08-24；2026-09-06 复评确认不引入微服务——单用户本地负载，微服务为负收益，模块边界即未来拆分边界）。多项目底座将新增 `projects` 模块：仅依赖 core，其他领域模块经其 service 层校验项目归属，禁止反向依赖（防循环）。
+Agent operating guidance is in `AGENTS.md`. Historical implementation detail is available through Git
+rather than an always-growing progress or decision log.

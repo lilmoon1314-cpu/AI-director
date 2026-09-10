@@ -64,7 +64,7 @@ exclude = ["tests/", "migrations/"]
 module = ["psutil"]
 ignore_missing_imports = true
 
-# 模块边界契约（映射表见 docs/architecture_checks.md §2）：新领域模块落地时同步登记
+# 模块边界契约的机器事实源：新领域模块落地时在此登记精确依赖边
 # source 须枚举兄弟模块而非整包 app（app 含全部后代，会把模块内部合法引用误判为违规）
 # 内部层私有契约 allow_indirect_imports=true：只拦截「外部模块直接 import 内部层」，
 # 不做传递闭包（否则组合根 main 挂路由、service 间合法调用会经模块自身装配边误报）
@@ -72,48 +72,48 @@ ignore_missing_imports = true
 root_packages = ["app"]
 
 [[tool.importlinter.contracts]]
-name = "core 零业务依赖（core/CONSTRAINTS.md）"
+name = "core 零业务依赖"
 type = "forbidden"
 source_modules = ["app.core"]
 forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent"]
 
 [[tool.importlinter.contracts]]
-name = "projects 业务层零领域依赖（projects/CONSTRAINTS.md，DECISIONS 2026-09-06）"
+name = "projects 业务层零领域依赖"
 type = "forbidden"
 source_modules = ["app.projects.service", "app.projects.repository", "app.projects.models", "app.projects.schemas"]
 forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent"]
 # 例外：projects.router 为请求级组合层，编排跨模块级联删除（业务规则仍在各领域 service）
 
 [[tool.importlinter.contracts]]
-name = "projects 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+name = "projects 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent"]
 forbidden_modules = ["app.projects.repository", "app.projects.models", "app.projects.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "entities 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+name = "entities 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent"]
 forbidden_modules = ["app.entities.repository", "app.entities.models", "app.entities.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "relations 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+name = "relations 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.entities", "app.perspectives", "app.assets", "app.projects", "app.agent"]
 forbidden_modules = ["app.relations.repository", "app.relations.models", "app.relations.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "perspectives 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+name = "perspectives 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.assets", "app.projects", "app.agent"]
 forbidden_modules = ["app.perspectives.schemas"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "assets 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2）"
+name = "assets 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.projects", "app.agent"]
 forbidden_modules = [
@@ -127,7 +127,7 @@ forbidden_modules = [
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
-name = "agent 内部层私有：跨模块仅经 service（根 CONSTRAINTS §2，F10）"
+name = "agent 内部层私有：跨模块仅经 service"
 type = "forbidden"
 source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects"]
 forbidden_modules = [
@@ -138,5 +138,10 @@ forbidden_modules = [
     "app.agent.prompts",
     "app.agent.tools",
     "app.agent.rendering",
+    "app.agent.context",
+    "app.agent.documents",
+    "app.agent.conversations",
+    "app.agent.writes",
+    "app.agent.chat",
 ]
 allow_indirect_imports = true

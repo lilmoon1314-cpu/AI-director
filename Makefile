@@ -1,6 +1,6 @@
 # 影视多智能体协作平台 — 标准化开发命令入口
-# 初始化契约见 docs/INIT.md；测试层级见 docs/testing.md
-# 实现说明：全部命令委托 scripts/task.py（Windows 无 make 时直接 `python scripts/task.py <命令>`）
+# 全部命令委托 scripts/task.py（Windows 无 make 时直接 `python scripts/task.py <命令>`）
+# 验证范围按 AGENTS.md 的风险分级原则选择；check 是显式的全仓验证。
 
 PYTHON ?= python
 
@@ -28,15 +28,15 @@ dev-frontend:
 test:
 	$(PYTHON) scripts/task.py test
 
-## test-unit: L1 单元测试（每功能必须通过）
+## test-unit: L1 单元测试
 test-unit:
 	$(PYTHON) scripts/task.py test-unit
 
-## test-integration: L2 集成测试（每功能必须通过）
+## test-integration: L2 集成测试
 test-integration:
 	$(PYTHON) scripts/task.py test-integration
 
-## test-e2e: L3 端到端测试（跨组件功能必须通过；前端 Playwright 随 F05 引入）
+## test-e2e: L3 端到端测试（前端 Playwright 随 F05 引入）
 test-e2e:
 	$(PYTHON) scripts/task.py test-e2e
 
@@ -58,7 +58,7 @@ check-api-types:
 verify:
 	$(PYTHON) scripts/task.py verify $(filter-out $@,$(MAKECMDGOALS))
 
-## mutate: 定向变异测试（如 make mutate perspectives；docs/testing.md §9，不进 check 链）
+## mutate: 可选的定向变异测试（如 make mutate perspectives；不进 check 链）
 mutate:
 	$(PYTHON) scripts/task.py mutate $(filter-out $@,$(MAKECMDGOALS))
 

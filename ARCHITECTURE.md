@@ -1,100 +1,63 @@
-# ARCHITECTURE.md — 全局模块架构文档
+# AI-director architecture map
 
-> 影视多智能体协作平台（第 1 批 MVP）。本文档描述系统全局架构、模块依赖与核心数据流；各模块的职责/接口/依赖细节见其目录内的 ARCHITECTURE.md（路由见 AGENTS.md「专题文档路由」）。
+This file answers where a concern lives, who owns it, and which direction dependencies flow. Detailed
+behavior and reasoning live in the linked product specifications and design documents.
 
-## 1. 系统上下文
+## System shape
 
-```
-┌────────────────────────────────────────────────────┐
-│  frontend（React 18 + TS + Vite + AntV G6 + Zustand）│
-│  views → stores → api（OpenAPI 自动生成类型）        │
-└───────────────────── REST / SSE ───────────────────┘
-┌────────────────────────────────────────────────────┐
-│  backend（单一 FastAPI 进程，模块化单体）            │
-│  ┌──────────┬───────────┬────────────────┐         │
-│  │ entities │ relations │ perspectives   │         │
-│  ├──────────┼───────────┴────────────────┤         │
-│  │ assets   │ agent     │ projects (规划)│         │
-│  └──────────┴───────────┴────────────────┘         │
-│              core（配置/DB会话/异常/日志）           │
-└──────────────── SQLAlchemy 2.0 (async) ────────────┘
-┌────────────────────────────────────────────────────┐
-│  SQLite（WAL，主库 app.db + 独立资产库 assets.db）   │
-│  + data/assets/ 图片文件存储                        │
-└────────────────────────────────────────────────────┘
+```text
+React + TypeScript + G6
+  views/components → Zustand stores → generated API client
+                         │ REST / SSE
+FastAPI modular monolith
+  projects  entities  relations  perspectives  assets  agent
+                         ↓
+  core: configuration, primary DB session, errors, observability
+                         ↓
+SQLite: app.db                 SQLite: assets.db + asset files
 ```
 
-## 2. 架构风格
+The exact current routes and schemas are owned by FastAPI/OpenAPI, ORM models, migrations, and frontend
+generated types—not by hand-maintained tables in this document.
 
-模块化单体（Modular Monolith）+ 前后端分离（决策记录：DECISIONS.md 2026-08-24）。
+## Ownership map
 
-- 单一 FastAPI 进程承载全部领域模块，模块间仅通过 service 层接口调用。
-- **禁止跨模块 import 其他模块的 ORM 模型 / repository / 内部函数**（根 CONSTRAINTS.md §2「架构总原则」；后端细则见 backend/CONSTRAINTS.md「模块解耦与事务」）。
-- 模块边界即第 2 批微服务拆分边界：将 service 接口升级为 HTTP/gRPC 即可独立部署。
+| Concern | Code owner | Durable design |
+|---|---|---|
+| Runtime configuration, primary DB, errors, observability | `backend/app/core/` | `docs/design-docs/platform-boundaries.md` |
+| Project identity, lifecycle, counters | `backend/app/projects/` | `docs/design-docs/projects-assets-and-workspace.md` |
+| Entity facts and typed properties | `backend/app/entities/` | `docs/design-docs/world-model-and-perspectives.md` |
+| Typed links between entities | `backend/app/relations/` | `docs/design-docs/world-model-and-perspectives.md` |
+| Author/character/audience projections | `backend/app/perspectives/` | `docs/design-docs/world-model-and-perspectives.md` |
+| General assets, entity pages, image storage | `backend/app/assets/` | `docs/design-docs/projects-assets-and-workspace.md` |
+| Conversations, prompts, tools, memory, pending writes | `backend/app/agent/` | `docs/design-docs/agent-system.md` |
+| Navigation, graph, asset, and Agent UI | `frontend/src/` | `docs/design-docs/projects-assets-and-workspace.md`, `docs/design-docs/agent-system.md` |
+| Product acceptance state | `feature_list.json` | product specs referenced by each feature |
+| Development commands and feedback orchestration | `scripts/task.py` | `AGENTS.md` |
 
-## 3. 模块依赖图
+## Dependency direction
 
-```
-core ← entities / relations / perspectives / assets / agent（所有模块依赖 core）
-entities ← relations（端点校验）/ perspectives（图聚合）/ assets（实体存在校验）/ agent（草案落库）
-relations ← perspectives（图聚合）
-perspectives ← agent（上下文视角过滤）
-projects（F11 已落地）← entities / relations / perspectives / assets / agent（项目归属校验，均经 service 层）
-```
+`core` has no domain knowledge. Domain modules may depend on core. Cross-domain calls go through the
+target domain's service API; import-linter in `backend/pyproject.toml` owns the exact enforced matrix.
 
-箭头=依赖方向，跨模块仅经 service 层。assets 仅依赖 entities（单向）；实体删除后的资产清理走读取时孤儿清扫而非删除回调，避免 assets↔entities 循环依赖（DECISIONS 2026-09-05）。
+`projects` business layers depend only on core. The projects router is the composition point for
+project deletion across domains. `perspectives` owns all visibility computation used by graph responses
+and Agent context. `assets` may read entities through their service, while entity writes do not call
+back into assets.
 
-**projects 模块依赖方向（F11 已落地）**：业务层（service/repository/models/schemas）零领域模块依赖；跨模块级联删除在 router 组合层编排（业务规则仍在各领域 service）；领域模块对项目的引用一律经 `projects.service` 归属校验。import-linter 已登记契约与 source 兄弟枚举（DECISIONS 2026-08-27/2026-09-06）。
+## Main flows
 
-## 4. 模块清单
+- World-model write: HTTP router → domain service validation/transaction → repository/ORM → app.db.
+- Perspective read: graph request → perspectives service → entity/relation services → filtered
+  projection; storage remains the complete author model.
+- Asset read/write: asset service coordinates assets.db and contained asset files; entity pages derive
+  from current entity data.
+- Agent turn: persisted user message → visible project context → provider stream/tool loop → persisted
+  response and pending operations → explicit user approval → owning domain service.
+- Project switch: route project ID → project-scoped store reset/reload; global reference assets remain.
 
-| 模块 | 路径 | 职责摘要 | 详细文档 |
-|------|------|----------|----------|
-| core | backend/app/core | 配置、DB 会话、统一异常、日志 | core/ARCHITECTURE.md |
-| entities | backend/app/entities | 7 类实体 CRUD、类型校验、检索 | entities/ARCHITECTURE.md |
-| relations | backend/app/relations | 关系 CRUD、动态属性、端点校验 | relations/ARCHITECTURE.md |
-| perspectives | backend/app/perspectives | 作者/角色/观众三视角过滤查询 | perspectives/ARCHITECTURE.md |
-| assets | backend/app/assets | 资产库（独立 assets.db）：图片上传、通用资产 CRUD、实体 HTML 资产页 | assets/ARCHITECTURE.md |
-| agent | backend/app/agent | LLM 多轮对话、实体建议草案 | agent/ARCHITECTURE.md |
-| projects | backend/app/projects | 项目 CRUD、归属校验、计数器维护、级联删除编排（F11 已落地） | projects/ARCHITECTURE.md |
-| frontend | frontend/ | 图谱工作台 SPA | frontend/ARCHITECTURE.md |
+## Knowledge routes
 
-## 5. 核心数据流（按业务场景）
-
-### 5.1 实体/关系 CRUD（作者全知）
-表单提交 → `POST/PATCH /api/entities|relations` → router（Pydantic 校验）→ service（业务规则：id 生成、视角标记完整性、删除引用校验）→ repository（ORM）→ SQLite → 响应 EntityRead → 前端 stores 刷新 → G6 按需更新节点/边。
-
-### 5.2 视角过滤查询
-前端切换视角 → `GET /api/graph?perspective=author|character|audience&character_id=?` → perspectives.service 聚合 entities + relations 全量 → 规则过滤：
-- author：不过滤，返回全部（含秘密）
-- character：仅 `character_id ∈ known_by` 的实体/关系
-- audience：仅 `audience_known == true`
-→ 返回过滤后的节点/边集合 → 前端全量替换图数据重绘。**过滤只发生在读取层，库中始终只有一份全知数据（单一事实源）。**
-
-### 5.3 资产管理（HTML 形态资产库）
-图片上传 → `POST /api/assets/images`（multipart）→ assets.service 校验类型白名单/大小上限（阈值来自 config）→ uuid 重命名后流式写盘 data/assets/ → 元数据入独立资产库 assets.db。通用资产（表情/风格/植被等参考）经表单创建、模板渲染为自包含 HTML 存库；项目资产=主库实体：卡片列表（缩略图/名称/概述，按类型分组）由 assets.service 跨库聚合，实体 HTML 资产页按 `entity.updated_at` 惰性生成、过期再生；实体删除后卡片列表请求触发孤儿清扫（记录+图片文件）。
-
-### 5.4 Agent 对话与确认写入
-用户消息 → `POST /api/agent/chat`（SSE 流式）→ agent.service 组装上下文（**仅注入当前视角可见实体**，经 perspectives 过滤）→ LLM 生成回复/实体建议草案（结构化 JSON）→ 前端渲染草案表单 → 用户确认 → 调 entities/relations service 落库。
-
-### 5.5 多项目工作台（F11 已落地，DESIGN.md §4/§7/§8）
-项目首屏选择 / 顶栏切换 → `/api/projects` 列表与 CRUD → 前端路由 `/projects/:id/*` 置换项目上下文 → 各 store 重置并按项目维度重载数据（图谱 / 项目资产 / 会话 / 记忆随项目；通用参考库为全局缓存不重拉）。全部领域读写增加 project 维度过滤（API 迁移为 `/api/projects/{pid}/...` 路径前缀，DESIGN.md §8.4）。删除项目走显式级联：主库事务删除实体/关系 → 按项目实体集合清扫 assets.db 记录 / 图片 / 物理文件（跨库失败补偿为落地设计点）。
-
-## 6. 分阶段演进路线
-
-| 阶段 | 范围 | 架构形态 |
-|------|------|----------|
-| 第 1 批（当前） | 实体/关系管理、三视角过滤、图可视化、@选择器、资产管理（HTML 资产库）、Agent 辅助创建 | 模块化单体 |
-| 第 1 批扩展 | 多项目底座已落地（F11：projects 模块 + 路由化 + 项目首屏）；工作台导航与资产页重构待 F12（规划，DESIGN.md §12） | 模块化单体（新增 projects 模块） |
-| 第 2 批（规划） | 作者/角色/观众多 Agent 工作流、场景生成、剧本审查、Ledger 状态管理（新增 7 张表）、批量生成控制台 | 按模块边界拆分微服务：agent 与生成类负载独立伸缩，entities/relations 可合并为"世界观数据服务" |
-
-## 7. 文档体系导航
-
-- 硬约束（禁止/必须）: 根 CONSTRAINTS.md（全局横切 + 模块约束文件导航，共 10 份）
-- 决策记录: DECISIONS.md
-- 进度: PROGRESS.md
-- 交互设计基线（多项目工作台，规划）: DESIGN.md
-- 数据结构蓝图（9 张表 + 资产库 + 多项目/Agent 规划，长期）: docs/data_struct_define.md
-- 功能清单: docs/features.md
-- 后端/前端/领域模块架构: backend/ARCHITECTURE.md、frontend/ARCHITECTURE.md、backend/app/*/ARCHITECTURE.md
-- 初始化方法论与验收清单: INIT.md
+Observable behavior is owned by `docs/product-specs/`. Non-obvious implementation reasoning is owned by
+`docs/design-docs/`. Complex work state is owned by `docs/exec-plans/active/`. Current schemas, API
+contracts, dependencies, and executable checks are owned by code and machine configuration.

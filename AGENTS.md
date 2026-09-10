@@ -1,99 +1,72 @@
-```
-agent入口文件
-- 项目概览
-- 首次运行命令
-- 全局硬约束
-- 工作规则
-- 专题文档路由
-```
-# AGENT.md
+# AI-director agent map
 
-## 项目概览
-基于"全知底层 + 视角属性"设计的影视世界观数据底座：模块化单体架构（FastAPI + SQLite + React/G6）提供实体/关系管理与作者-角色-观众三级视角隔离的力导向图可视化，为多智能体剧本工作流奠定单一事实源（第 1 批 MVP：数据管理 + 可视化 + Agent 辅助创建，不含图像生成）。
+AI-director is a local film-development workspace built around one complete world model and
+author/character/audience projections. It is a FastAPI + SQLite modular monolith with a React/G6
+frontend and a project-scoped creative assistant.
 
-## 首次运行命令
+This is the only always-on Agent document. Load other knowledge progressively for the task at hand.
+
+## Working rules
+
+- Keep the requested scope. Do not fold unrelated refactors into a change.
+- Preserve user changes and local data. Never commit `.env`, databases, uploaded assets, dependency
+  directories, or credentials.
+- Runtime configuration belongs in `backend/app/config.py`, frontend environment handling, and their
+  example environment files—not scattered literals.
+- Cross-domain backend calls use the target domain's service boundary. Exact import rules are enforced
+  by `backend/pyproject.toml` and architecture tests.
+- Use the smallest sufficient verification near the change. Add integration/E2E evidence when behavior
+  crosses real component boundaries. A full repository check is for broad changes, release/CI, or an
+  explicit request—not a session ritual.
+- Mutation testing is optional and reserved for high-value pure domain logic when a task's validation
+  plan justifies it. Never rerun historical mutation evidence by default.
+- Complex or cross-session work uses one active ExecPlan following `docs/PLANS.md`. Small fixes do not.
+- Product acceptance state is `feature_list.json`; update it only through
+  `python scripts/task.py verify ...`.
+
+## Commands
+
 ```bash
-# 环境要求: Python 3.12+ / Node.js 20+ / uv / pnpm 9+
-make setup         # 初始化: 安装前后端依赖、生成 .env、执行数据库迁移
-make dev           # 同时启动前后端（后端 http://localhost:8000/docs，前端 http://localhost:5173）
-make dev-backend   # 仅启动后端；make dev-frontend 仅启动前端
-make test          # 运行前后端全部测试
-make check         # 完整验证: 后端 ruff+format+mypy+pytest / 前端 typecheck+lint+build
+make setup                 # install dependencies, create .env, migrate
+make dev                   # backend :8000/docs + frontend :5173
+make test                  # all backend and frontend tests
+make check                 # full repository verification when justified
+make verify FXX            # run one feature's recorded acceptance checks
 ```
 
-> Windows 无 make 时用等价命令面板：`python scripts/task.py setup|dev|test|check`（Makefile 各 target 均委托该脚本，行为完全一致）。
-> 功能项验证与清单状态更新：`python scripts/task.py verify FXX`（等价 `make verify FXX`；状态由脚本写入 docs/features.md，禁止手改）。
+On Windows without make, use `python scripts/task.py <command>`. Run
+`python scripts/task.py help` for the complete executable command list and
+`python scripts/task.py verify --list` to query feature state.
 
+## Progressive knowledge routes
 
-## 全局硬约束
-- 所有公共函数必须按标准格式写 docstring（包含作用、参数、返回值、异常处理、依赖）
-- 禁止在代码中硬编码配置，使用 config.py 从环境变量或 .env 读取。
-- 每次决策都必须更新 DECISIONS.md 中的记录。
-- 每次进度更新都必须更新 PROGRESS.md 中的记录。
-- 每完成一个功能必须添加对应单元测试
-- 功能完成判定必须满足验证层级：L1 单元测试与 L2 集成测试每功能必须通过；L3 端到端测试涉及跨组件修改时必须通过；跳过任何必须层级 = 未完成（docs/testing.md）
-- 所有错误消息必须包含三要素：什么出了问题、为什么、怎么修（docs/lessons.md）
-- 每条架构约束必须有对应的自动检查（lint/测试）或登记于审查清单（docs/architecture_checks.md）
+Start with target code and its nearest tests. Read only the additional owner needed:
 
-## 功能清单规则
-- 功能清单文件: /docs/features.md
-- 每次只激活一个功能项
-- 功能项验证命令必须通过才能标为 passing
-- 不要修改功能清单的状态，由验证脚本自动更新
+- System location, ownership, or dependency direction: `ARCHITECTURE.md`.
+- Observable entity/relationship/graph behavior:
+  `docs/product-specs/world-building-workspace.md`.
+- Observable project/asset behavior: `docs/product-specs/projects-and-assets.md`.
+- Observable assistant behavior: `docs/product-specs/agent-assistance.md`.
+- Platform and storage reasoning: `docs/design-docs/platform-boundaries.md`.
+- World-model and visibility design: `docs/design-docs/world-model-and-perspectives.md`.
+- Project, asset, route, or workspace-state design:
+  `docs/design-docs/projects-assets-and-workspace.md`.
+- Agent context, memory, streaming, or confirmed-write design:
+  `docs/design-docs/agent-system.md`.
+- Current complex-task state: the relevant file in `docs/exec-plans/active/`.
+- Feature status or acceptance references: query `feature_list.json` by ID/category/status; do not load
+  the whole file when a narrow query is enough.
+- Current API/schema/config: source code, ORM/migrations, `backend/openapi.json`, and config files.
+- Third-party behavior: official upstream documentation or a task-specific file under
+  `docs/references/` if one exists.
 
-## 工作规则
-- 每次只完成一个功能点
-- 当前功能点在端到端通过之后，才能开始下一个
-- 不要在实现功能 A 时"顺便"重构功能 B
-- 功能完成的唯一标准（DoD，docs/testing.md §2）：必须层级测试全通过 + 测试文档 docs/tests/FXX 就位且状态全 pass + make check 通过
-- 测试文档先行：必须在功能任务清单开始执行前撰写该功能的测试文档 docs/tests/FXX_<name>.md（用例清单按 docs/testing.md §5 模板，初始状态 pending）；禁止边实现边补
-- 测试用例设计方法（docs/testing.md §8）：测试文档的用例清单必须按等价类划分（有效/无效）与边界值分析设计，并逐用例标注设计依据；同一断言逻辑的多情况用例必须实现为参数化测试（pytest.mark.parametrize），禁止复制同构测试函数
-- 变异测试（docs/testing.md §9）：测试文档撰写完成后，任务清单必须包含变异测试任务；用例实现完成、verify FXX 之前对本功能被测模块定向运行 mutmut——kill rate ≥ 85% 且存活变异体逐一分析（补用例或登记等价性），结果记入测试文档「变异测试结果」小节（工具随 F04 落地，自 F04 起生效）
-- 任务清单同步（PROGRESS.md「进行中」）：
-    1. 功能开始实现前，先列出该功能的任务清单（可执行的小任务粒度），同步写入 PROGRESS.md「进行中」小节；
-    2. 每完成一个任务，立即将其在「进行中」标记为已完成；
-    3. 全部任务完成并通过验证后，把「进行中」的小任务统一压缩为一条摘要移入「当前已完成」，清空「进行中」
-- 测试失败记录（docs/lessons.md §2）：每次测试不通过必须当场在 backend/logs/error.jsonl 追加一条 test_failure 记录（三要素齐全），修复后按提升流程（docs/lessons.md §1）归档（resolved-known / promoted-EXX / resolved-unique）；新类型错误同步登记 error_pattern 条目并完成自动化转化评估
-- 审查反馈提升（docs/lessons.md §1）：每次代码审查/测试失败中发现新类型的 agent 错误，当次会话内登记错误模式库并转化为自动检查（lint/架构测试/回归测试）；暂无法自动化的加入审查清单
-- 验收审查子代理（docs/testing.md §10）：测试全绿 + 变异达标之后、verify FXX 之前，必须派发只读子代理按协议独立审查本功能 diff（约束符合性/测试有效性/文档双态/已知模式复发），发现项 triage（修复或驳回）并把新类型问题按提升流程登记；审查者只报告不修改
+Completed plans, historical reports, the R1+ master plan, and unrelated design/product documents are
+not default context.
 
-## 每次会话开始时
-1. 读 PROGRESS.md 了解当前状态
-2. 读 DECISIONS.md 了解重要决策
-3. 跑 make check 确认仓库处于一致状态
-4. 从 PROGRESS.md 的"下一步"部分继续工作
+## Cold-start paths
 
-## 每次会话结束前
-1. 更新 PROGRESS.md
-2. 跑 make check 确认一致状态
-3. 提交所有已完成的工作（提交信息含中文时一律经临时文件 `git commit -F <file>`，规避 PowerShell GBK 参数乱码，见 docs/lessons.md E03）
-4. `git push` 同步到远程仓库（origin: github.com:lilmoon1314-cpu/AI-director）
-
-## 专题文档路由
-
-> 格式：文档 — 阅读时机。未按时机阅读即动手视为违规。
-
-### 每次会话开始时必读
-- `PROGRESS.md` — 了解当前状态、已完成项与下一步
-- `DECISIONS.md` — 了解既有技术决策，避免重复决策或与决策冲突
-- `CONSTRAINTS.md`（根）— 全局硬约束 + 模块约束文件导航，写任何代码前确认
-
-### 修改对应部分时必读
-- `ARCHITECTURE.md`（根）— 改动模块边界、依赖关系或跨模块数据流时必读
-- `backend/ARCHITECTURE.md` — 修改后端任何代码前必读（分层/异常/生命周期/API 总表）
-- `backend/CONSTRAINTS.md` — 修改后端任何代码前必读（解耦/事务/数据/异常）
-- `backend/app/<module>/ARCHITECTURE.md` — 修改该模块职责/接口/依赖前必读；变更时必须同步更新
-- `backend/app/<module>/CONSTRAINTS.md` — 实现/修改该模块任何功能前必读（core / entities / relations / perspectives / assets / agent）
-- `frontend/ARCHITECTURE.md` — 修改前端任何代码前必读（分层/store/渲染策略/生命周期）
-- `frontend/CONSTRAINTS.md` — 修改前端任何代码前必读（API 契约/视觉/性能/生命周期）
-- `Makefile` — 新增或修改开发命令时必读（命令契约见 INIT.md）
-
-### 特定场景必读
-- `INIT.md` — 执行项目初始化（F01）或调整初始化流程前必读
-- `DESIGN.md`（根）— 修改工作台导航/页面结构/资产页/Agent 界面/多项目交互前必读（交互设计基线，2026-09-06）
-- `docs/features.md` — 开始或完成任何功能点时必读（状态由验证脚本更新，禁止手改）
-- `docs/data_struct_define.md` — 修改实体/关系 schema、新增字段或新表时必读（9 张表数据蓝图）
-- `docs/testing.md` — 编写任何测试或判定功能完成前必读（层级定义/DoD/目录/模板）
-- `docs/tests/FXX_*.md` — 实现对应功能点时创建、验证通过后更新状态（每功能一份测试文档）
-- `docs/architecture_checks.md` — 新增或修改架构约束/检查规则前必读（约束→检查映射表）
-- `docs/lessons.md` — 代码审查或发现新错误类型时必读必更（审查反馈提升流程）
+- Small local fix: `AGENTS.md → target code → nearest test/config`.
+- Single-domain complex change: add the relevant ARCHITECTURE section, one bounded design doc, relevant
+  product spec if behavior changes, and an active ExecPlan.
+- Cross-layer behavior change: add the relevant product spec first, then only the participating design
+  docs, active ExecPlan, relevant feature entries, and integration/E2E tests.

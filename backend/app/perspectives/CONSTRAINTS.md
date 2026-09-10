@@ -1,8 +1,4 @@
-# perspectives 模块硬约束
+# Retired compatibility route
 
-> 实现/修改 perspectives 模块前必读。
-
-- 必须：过滤只发生在本模块读取层；禁止为任何视角生成或持久化数据副本（单一事实源）。
-- 禁止：本模块写库（只读模块）。
-- 禁止：character 视角下泄露被过滤实体的名称（边数据中也不得出现）。
-- 必须：过滤规则变更时同步更新本文件与根 ARCHITECTURE.md §5.2。
+Perspective behavior and design are owned by `docs/product-specs/world-building-workspace.md`,
+`docs/design-docs/world-model-and-perspectives.md`, code, and tests.

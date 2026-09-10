@@ -1,16 +1,4 @@
-# assets 模块硬约束
+# Retired compatibility route
 
-> 实现/修改 assets 模块前必读。
-
-- 必须：上传校验类型白名单与大小上限（阈值来自 config，禁止硬编码）；白名单仅图片 MIME。
-- 必须：上传流式写盘（分块），禁止整文件读入内存。
-- 必须：存储文件名 = `{uuid}.{ext}`；禁止使用用户提供的文件名拼接存储路径（防路径穿越）；解析存储名时必须校验解析路径落在 ASSET_DIR 内。
-- 必须：静态资产访问限制在 data/assets/ 目录内。
-- 必须：HTML 渲染（通用/实体页）对所有用户输入字段做 HTML 转义，禁止拼接未转义内容（XSS 防线）。
-- 必须：删除通用资产/图片/孤儿清扫时同步删除物理文件，记录与文件不一致视为缺陷。
-- 必须：实体资产页惰性生成以 `entity.updated_at` 判过期；禁止在实体写路径挂资产回调（保持 assets→entities 单向依赖，孤儿清理只在列表读取时执行）。
-- 必须：资产库 assets.db 的 schema 变更对既有文件向后兼容（加列/加表），启动 create_all 幂等（DECISIONS 2026-09-05）。
-- 禁止：在主库 entities 表新增资产引用列或在 properties.assets 中持久化资产路径（旧方案废弃，引用只存资产库）。
-- 禁止：MVP 阶段实现任何图像生成功能（仅上传、存储、展示）。
-- 必须（规划，随多项目底座生效，DESIGN.md §8.2）：通用资产（kind='general'）恒为跨项目全局，禁止为其增加 project 归属字段；实体资产随实体间接归属项目。
-- 必须（规划，随多项目底座生效）：删除项目必须触发显式级联清扫（按项目实体集合清理记录/图片/物理文件），禁止依赖列表时孤儿清扫感知成批实体消失。
+Asset behavior and design are owned by `docs/product-specs/projects-and-assets.md`,
+`docs/design-docs/projects-assets-and-workspace.md`, code, and tests.
