@@ -11,8 +11,8 @@ This specification owns observable project, navigation, and asset-library behavi
 - Project routes identify the active project. Switching projects replaces project-scoped graph,
   selection, project-asset, conversation, and memory state while retaining global reference assets.
 - Invalid or deleted project routes produce a recoverable error and a route back to the picker.
-- Deleting a project removes its project-scoped world-model, conversation, memory, and entity-asset
-  data. Shared reference assets remain available.
+- Deleting a project removes its project-scoped world-model, conversation, memory, Artifact Core, and
+  entity-asset data. Shared reference assets remain available.
 
 ## Asset library
 

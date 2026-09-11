@@ -2,7 +2,7 @@
 
 路由总表见 backend/ARCHITECTURE.md §7（/api/projects 前缀）。
 级联删除编排（组合层例外）:
-    DELETE /api/projects/{id} 需要跨 projects / relations / entities / assets 四模块
+    DELETE /api/projects/{id} 需要跨 projects / relations / entities / assets / agent / artifacts
     协作。projects 业务层零领域依赖（import-linter 契约），故编排位于本层——
     先校验（assert_deletable）→ 删关系（FK RESTRICT 先行）→ 删实体（收集 id）→
     projects.delete 原子提交主库 → assets 显式清扫（独立事务，失败由读取时
@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import service as agent_service
+from app.artifacts import service as artifacts_service
 from app.assets import service as assets_service
 from app.core.db import get_session
 from app.entities import service as entities_service
@@ -96,12 +97,14 @@ async def delete_project(
     异常: 404（项目不存在）/ 422（默认项目受保护）由全局异常处理器统一出口；
         主库删除原子提交，资产清扫失败由读取时孤儿清扫兜底。
     依赖: app.projects.service、app.relations.service、app.entities.service、
-        app.assets.service、app.agent.service（F10：会话与记忆文档清理）。
+        app.assets.service、app.agent.service（F10：会话与记忆文档清理）、
+        app.artifacts.service（R2：结构化制品清理）。
     """
     await service.assert_deletable(session, project_id)
     await relations_service.delete_by_project(session, project_id)
     entity_ids = await entities_service.delete_by_project(session, project_id)
     await agent_service.delete_project_data(session, project_id)
+    await artifacts_service.delete_project_data(session, project_id)
     await service.delete(session, project_id)
     if entity_ids:
         await assets_service.sweep_entity_assets(asset_session, entity_ids)

@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agent import service as agent_service
 from app.agent.router import router as agent_router
+from app.artifacts.router import router as artifacts_router
 from app.assets import service as assets_service
 from app.assets.router import router as assets_router
 from app.config import get_settings
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(assets_router)
     app.include_router(projects_router)
     app.include_router(agent_router)
+    app.include_router(artifacts_router)
 
     return app
 

@@ -10,7 +10,7 @@ React + TypeScript + G6
   views/components → Zustand stores → generated API client
                          │ REST / SSE
 FastAPI modular monolith
-  projects  entities  relations  perspectives  assets  agent
+  projects  entities  relations  perspectives  assets  agent  artifacts
                          ↓
   core: configuration, primary DB session, errors, observability
                          ↓
@@ -31,6 +31,7 @@ generated types—not by hand-maintained tables in this document.
 | Author/character/audience projections | `backend/app/perspectives/` | `docs/design-docs/world-model-and-perspectives.md` |
 | General assets, entity pages, image storage | `backend/app/assets/` | `docs/design-docs/projects-assets-and-workspace.md` |
 | Conversations, prompts, tools, memory, pending writes | `backend/app/agent/` | `docs/design-docs/agent-system.md` |
+| Screenplay artifacts, blocks, revisions, dependencies, stale | `backend/app/artifacts/` | `docs/design-docs/artifact-core.md` |
 | Navigation, graph, asset, and Agent UI | `frontend/src/` | `docs/design-docs/projects-assets-and-workspace.md`, `docs/design-docs/agent-system.md` |
 | Product acceptance state | `feature_list.json` | product specs referenced by each feature |
 | Development commands and feedback orchestration | `scripts/task.py` | `AGENTS.md` |
@@ -54,6 +55,8 @@ back into assets.
   from current entity data.
 - Agent turn: persisted user message → visible project context → provider stream/tool loop → persisted
   response and pending operations → explicit user approval → owning domain service.
+- Artifact edit: stable block edit → immutable revision snapshot → block-local diff → only matching
+  directed dependencies and their dependent artifacts become stale.
 - Project switch: route project ID → project-scoped store reset/reload; global reference assets remain.
 
 ## Knowledge routes

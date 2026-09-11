@@ -8,7 +8,13 @@
       "category": "platform",
       "acceptance_intent": "A clean checkout can install dependencies, create local configuration, migrate the database, start both applications, and run the test harness.",
       "status": "passing",
-      "verification": {"commands": ["make setup", "make test", "make check"]}
+      "verification": {
+        "commands": [
+          "make setup",
+          "make test",
+          "make check"
+        ]
+      }
     },
     {
       "id": "F02",
@@ -17,7 +23,12 @@
       "acceptance_intent": "Entities support validated create, read, update, delete, and search behavior while stable IDs and relationship references are protected.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pytest tests/unit/test_entities_service.py", "pytest tests/integration/test_entities_api.py"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_entities_service.py",
+          "pytest tests/integration/test_entities_api.py"
+        ]
+      }
     },
     {
       "id": "F03",
@@ -26,7 +37,13 @@
       "acceptance_intent": "Relationships support validated CRUD with valid endpoints, no self loops or silent duplicates, and consistent visibility markers.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pytest tests/unit/test_relations_service.py", "pytest tests/integration/test_relations_api.py", "pytest tests/e2e/test_relations_flow.py"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_relations_service.py",
+          "pytest tests/integration/test_relations_api.py",
+          "pytest tests/e2e/test_relations_flow.py"
+        ]
+      }
     },
     {
       "id": "F04",
@@ -35,7 +52,12 @@
       "acceptance_intent": "Author, character, and audience graph views expose only the entities and relationships allowed by their visibility rules without persisting view-specific copies.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pytest tests/unit/test_perspectives_service.py", "pytest tests/integration tests/e2e -k graph"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_perspectives_service.py",
+          "pytest tests/integration tests/e2e -k graph"
+        ]
+      }
     },
     {
       "id": "F05",
@@ -44,7 +66,13 @@
       "acceptance_intent": "Creators can inspect and edit the world model through an interactive force-directed graph and detail forms.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pnpm test:unit", "pnpm test:integration", "pnpm test:e2e"]}
+      "verification": {
+        "commands": [
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e"
+        ]
+      }
     },
     {
       "id": "F06",
@@ -53,7 +81,13 @@
       "acceptance_intent": "Creators can switch author, character, and audience views and the graph refreshes using the selected perspective.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pnpm test:unit", "pnpm test:integration", "pnpm test:e2e"]}
+      "verification": {
+        "commands": [
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e"
+        ]
+      }
     },
     {
       "id": "F07",
@@ -62,7 +96,14 @@
       "acceptance_intent": "Typing @ can search and insert stable entity references while showing whether each result is visible in the current graph view.",
       "status": "passing",
       "product_spec": "docs/product-specs/world-building-workspace.md",
-      "verification": {"commands": ["pytest tests/unit/test_entities_service.py", "pnpm test:unit", "pnpm test:integration", "pnpm test:e2e"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_entities_service.py",
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e"
+        ]
+      }
     },
     {
       "id": "F08",
@@ -71,7 +112,15 @@
       "acceptance_intent": "Creators can maintain reusable reference assets and project entity assets, upload safe images, and view self-contained HTML asset pages.",
       "status": "passing",
       "product_spec": "docs/product-specs/projects-and-assets.md",
-      "verification": {"commands": ["pytest tests/unit/test_assets_service.py", "pytest tests/integration tests/e2e -k asset", "pnpm test:unit", "pnpm test:integration", "pnpm test:e2e"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_assets_service.py",
+          "pytest tests/integration tests/e2e -k asset",
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e"
+        ]
+      }
     },
     {
       "id": "F10",
@@ -80,7 +129,12 @@
       "acceptance_intent": "A project-scoped assistant can hold persistent conversations, retrieve only perspective-visible context, propose structured changes, and write only after user confirmation.",
       "status": "passing",
       "product_spec": "docs/product-specs/agent-assistance.md",
-      "verification": {"commands": ["pytest tests/unit/test_agent_service.py", "pytest tests/integration tests/e2e -k agent"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_agent_service.py",
+          "pytest tests/integration tests/e2e -k agent"
+        ]
+      }
     },
     {
       "id": "F11",
@@ -89,7 +143,16 @@
       "acceptance_intent": "Creators can create, switch, rename, and delete isolated projects while global reference assets remain shared.",
       "status": "passing",
       "product_spec": "docs/product-specs/projects-and-assets.md",
-      "verification": {"commands": ["pytest tests/unit/test_projects_service.py", "pytest tests/integration/test_projects_api.py", "pytest tests/e2e -k project", "pnpm test:unit", "pnpm test:integration", "pnpm test:e2e"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_projects_service.py",
+          "pytest tests/integration/test_projects_api.py",
+          "pytest tests/e2e -k project",
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e"
+        ]
+      }
     },
     {
       "id": "F12",
@@ -98,7 +161,14 @@
       "acceptance_intent": "Project and general assets have stable routes, searchable library views, useful empty states, and non-destructive modal editing.",
       "status": "passing",
       "product_spec": "docs/product-specs/projects-and-assets.md",
-      "verification": {"commands": ["pnpm test:unit", "pnpm test:integration", "pnpm test:e2e", "pytest tests/integration -k asset"]}
+      "verification": {
+        "commands": [
+          "pnpm test:unit",
+          "pnpm test:integration",
+          "pnpm test:e2e",
+          "pytest tests/integration -k asset"
+        ]
+      }
     },
     {
       "id": "F13",
@@ -107,7 +177,15 @@
       "acceptance_intent": "Assistant responses stream content and reasoning, expose token usage, preserve conversation lifecycle, and allow safe session and memory-document management.",
       "status": "passing",
       "product_spec": "docs/product-specs/agent-assistance.md",
-      "verification": {"commands": ["pytest tests/unit/test_agent_service.py tests/unit/test_agent_llm.py tests/unit/test_agent_memory_docs.py", "pytest tests/integration -k agent", "pytest tests/e2e -k agent", "pnpm test:unit", "pnpm test:integration"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_agent_service.py tests/unit/test_agent_llm.py tests/unit/test_agent_memory_docs.py",
+          "pytest tests/integration -k agent",
+          "pytest tests/e2e -k agent",
+          "pnpm test:unit",
+          "pnpm test:integration"
+        ]
+      }
     },
     {
       "id": "F14",
@@ -116,7 +194,15 @@
       "acceptance_intent": "Assistant write tools create pending operations, present one end-of-turn confirmation, and apply only selected operations after server-side revalidation.",
       "status": "passing",
       "product_spec": "docs/product-specs/agent-assistance.md",
-      "verification": {"commands": ["pytest tests/unit/test_agent_service.py tests/unit/test_agent_tools.py", "pytest tests/integration -k agent", "pytest tests/e2e -k agent", "pnpm test:unit", "pnpm test:integration"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_agent_service.py tests/unit/test_agent_tools.py",
+          "pytest tests/integration -k agent",
+          "pytest tests/e2e -k agent",
+          "pnpm test:unit",
+          "pnpm test:integration"
+        ]
+      }
     },
     {
       "id": "F15",
@@ -125,7 +211,15 @@
       "acceptance_intent": "Provide distinct guide and work documents, transparent editable global preferences, and cross-session summary retrieval.",
       "status": "not_started",
       "product_spec": "docs/product-specs/agent-assistance.md",
-      "verification": {"commands": ["pytest tests/unit/test_agent_service.py tests/unit/test_agent_memory_docs.py", "pytest tests/integration -k agent", "pytest tests/e2e -k agent", "pnpm test:unit", "pnpm test:integration"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_agent_service.py tests/unit/test_agent_memory_docs.py",
+          "pytest tests/integration -k agent",
+          "pytest tests/e2e -k agent",
+          "pnpm test:unit",
+          "pnpm test:integration"
+        ]
+      }
     },
     {
       "id": "F16",
@@ -134,7 +228,29 @@
       "acceptance_intent": "A project can contain multiple series that share a world-model base while filtering series-specific entities, documents, assets, and assistant context.",
       "status": "not_started",
       "product_spec": "docs/product-specs/projects-and-assets.md",
-      "verification": {"commands": ["pytest tests/unit/test_projects_service.py tests/unit/test_perspectives_service.py", "pytest tests/integration -k series or graph", "pytest tests/e2e -k series", "pnpm test:unit", "pnpm test:integration"]}
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_projects_service.py tests/unit/test_perspectives_service.py",
+          "pytest tests/integration -k series or graph",
+          "pytest tests/e2e -k series",
+          "pnpm test:unit",
+          "pnpm test:integration"
+        ]
+      }
+    },
+    {
+      "id": "F17",
+      "title": "Artifact Core",
+      "category": "artifacts",
+      "acceptance_intent": "A screenplay uses stable blocks and immutable revisions so one block edit produces a local diff and stales only dependent artifacts sourced from that block.",
+      "status": "passing",
+      "product_spec": "docs/product-specs/artifact-core.md",
+      "verification": {
+        "commands": [
+          "pytest tests/integration/test_artifacts_api.py tests/e2e/test_artifacts_flow.py",
+          "pytest tests/architecture/test_architecture.py"
+        ]
+      }
     }
   ]
 }

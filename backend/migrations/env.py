@@ -6,16 +6,19 @@
 
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 
+import app.agent.models  # noqa: F401 — 注册表元数据（F10/F13/F14）
+import app.artifacts.models  # noqa: F401 — 注册表元数据（R2）
 import app.entities.models  # noqa: F401 — 注册表元数据
 import app.projects.models  # noqa: F401 — 注册表元数据（F11）
 import app.relations.models  # noqa: F401 — 注册表元数据
 from app.config import get_settings
-from app.core.db import Base, ensure_sqlite_dir
+from app.core.db import Base, UTCDateTime, ensure_sqlite_dir
 
 # Alembic Config 对象（提供 ini 中的配置访问）
 config = context.config
@@ -32,6 +35,13 @@ config.set_main_option("sqlalchemy.url", _database_url)
 target_metadata = Base.metadata
 
 
+def _render_item(type_: str, obj: Any, _autogen_context: Any) -> str | bool:
+    """Render runtime UTCDateTime columns as portable migration DateTime DDL."""
+    if type_ == "type" and isinstance(obj, UTCDateTime):
+        return "sa.DateTime(timezone=True)"
+    return False
+
+
 def run_migrations_offline() -> None:
     """离线模式：仅生成 SQL 脚本不连接数据库。
 
@@ -44,6 +54,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_item=_render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -55,7 +66,11 @@ def do_run_migrations(connection: Connection) -> None:
     作用: 在线模式的实际执行体（由异步连接经 run_sync 调用）。
     参数: connection — 同步代理连接。返回值: 无。异常: 无。依赖: alembic.context。
     """
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_item=_render_item,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

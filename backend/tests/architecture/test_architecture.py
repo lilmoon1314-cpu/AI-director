@@ -27,6 +27,7 @@ FORBIDDEN_IN_CORE = (
     "app.assets",
     "app.agent",
     "app.projects",
+    "app.artifacts",
 )
 
 pytestmark = pytest.mark.architecture
@@ -386,6 +387,53 @@ def test_agent_pending_writes_table_declared() -> None:
         "【原因】ORM 声明与迁移 DDL 漂移，新库缺表导致登记失败\n"
         "【修复】F14 迁移 create_table agent_pending_writes（含 CASCADE/索引）"
     )
+
+
+def test_artifact_core_schema_declared() -> None:
+    """R2 Artifact identity, ownership, immutable snapshots, and dependency DDL contract."""
+    from app.artifacts.models import (
+        Artifact,
+        ArtifactBlock,
+        ArtifactBlockRevision,
+        ArtifactDependency,
+        ArtifactRevision,
+    )
+    from app.projects.models import Project
+
+    assert Artifact.__table__.c["project_id"].nullable is False
+    project_fk = next(iter(Artifact.__table__.c["project_id"].foreign_keys))
+    assert project_fk.column.table is Project.__table__
+    assert Artifact.__table__.c["current_revision_no"].default.arg == 1
+
+    for child, column in (
+        (ArtifactBlock, "artifact_id"),
+        (ArtifactRevision, "artifact_id"),
+    ):
+        fk = next(iter(child.__table__.c[column].foreign_keys))
+        assert fk.ondelete == "CASCADE"
+
+    assert ArtifactBlockRevision.__table__.c["content"].nullable is False
+    assert ArtifactBlockRevision.__table__.c["position"].nullable is False
+    assert ArtifactDependency.__table__.c["is_stale"].default.arg is False
+    for column in (
+        "source_artifact_id",
+        "source_block_id",
+        "source_revision_id",
+        "dependent_artifact_id",
+    ):
+        assert ArtifactDependency.__table__.c[column].nullable is False
+
+    migration_sql = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    for table in (
+        "artifacts",
+        "artifact_blocks",
+        "artifact_revisions",
+        "artifact_block_revisions",
+        "artifact_dependencies",
+    ):
+        assert table in migration_sql, f"R2 migration must create {table}"
 
 
 def test_no_bak_residue_in_app() -> None:

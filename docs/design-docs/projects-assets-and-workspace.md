@@ -15,7 +15,8 @@ to that project; project-aware frontend calls supply project identity. Existing 
 
 The projects business layer depends only on core. Domain services validate project ownership through
 the projects service and update project counters in the caller's primary-database transaction. The
-projects router coordinates cross-domain deletion after proving the project is deletable.
+projects router coordinates cross-domain deletion after proving the project is deletable, including
+Artifact Core cleanup through `artifacts.service` in the primary-database transaction.
 
 ## Asset boundary
 
