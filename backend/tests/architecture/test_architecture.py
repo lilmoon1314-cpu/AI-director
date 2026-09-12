@@ -28,6 +28,7 @@ FORBIDDEN_IN_CORE = (
     "app.agent",
     "app.projects",
     "app.artifacts",
+    "app.narrative_state",
 )
 
 pytestmark = pytest.mark.architecture
@@ -434,6 +435,40 @@ def test_artifact_core_schema_declared() -> None:
         "artifact_dependencies",
     ):
         assert table in migration_sql, f"R2 migration must create {table}"
+
+
+def test_narrative_state_core_schema_declared() -> None:
+    """R3 temporal state, provenance, snapshots, claims, and knowledge DDL contract."""
+    from app.narrative_state.models import (
+        Claim,
+        KnowledgeState,
+        NarrativeTimepoint,
+        StateCurrent,
+        StateEvent,
+        StateSnapshot,
+    )
+
+    assert NarrativeTimepoint.__table__.c["sequence_no"].nullable is False
+    assert StateEvent.__table__.c["timepoint_id"].nullable is False
+    assert StateEvent.__table__.c["source_artifact_id"].nullable is True
+    assert StateCurrent.__table__.c["version"].nullable is False
+    assert StateSnapshot.__table__.c["snapshot_json"].nullable is False
+    assert Claim.__table__.c["truth_status"].nullable is False
+    assert KnowledgeState.__table__.c["acquired_timepoint_id"].nullable is False
+
+    migration_sql = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    for table in (
+        "narrative_timepoints",
+        "state_events",
+        "state_current",
+        "state_snapshots",
+        "claims",
+        "knowledge_states",
+    ):
+        assert table in migration_sql, f"R3 migration must create {table}"
+    assert "r3_relationship_state_baseline" in migration_sql
 
 
 def test_no_bak_residue_in_app() -> None:

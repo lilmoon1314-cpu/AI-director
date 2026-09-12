@@ -949,6 +949,159 @@ export interface paths {
         patch: operations["edit_block_api_artifacts__artifact_id__blocks__block_id__patch"];
         trace?: never;
     };
+    "/api/narrative-state/timepoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Timepoint */
+        post: operations["create_timepoint_api_narrative_state_timepoints_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Event */
+        post: operations["apply_event_api_narrative_state_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Event */
+        get: operations["get_event_api_narrative_state_events__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current */
+        get: operations["get_current_api_narrative_state_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Snapshot */
+        post: operations["create_snapshot_api_narrative_state_snapshots_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Snapshot */
+        get: operations["get_snapshot_api_narrative_state_snapshots__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Claim */
+        post: operations["create_claim_api_narrative_state_claims_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/knowledge-states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Knowledge */
+        post: operations["set_knowledge_api_narrative_state_knowledge_states_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/narrative-state/knowledge-states/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Knowledge */
+        get: operations["get_current_knowledge_api_narrative_state_knowledge_states_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1189,6 +1342,49 @@ export interface components {
              * @default
              */
             character_id: string;
+        };
+        /** ClaimCreate */
+        ClaimCreate: {
+            /** Project Id */
+            project_id: string;
+            /** Subject Ref */
+            subject_ref: string;
+            /** Predicate */
+            predicate: string;
+            /** Object Json */
+            object_json: unknown;
+            /**
+             * Truth Status
+             * @enum {string}
+             */
+            truth_status: "true" | "false" | "uncertain";
+            /** Author Note */
+            author_note?: string | null;
+        };
+        /** ClaimRead */
+        ClaimRead: {
+            /** Project Id */
+            project_id: string;
+            /** Subject Ref */
+            subject_ref: string;
+            /** Predicate */
+            predicate: string;
+            /** Object Json */
+            object_json: unknown;
+            /**
+             * Truth Status
+             * @enum {string}
+             */
+            truth_status: "true" | "false" | "uncertain";
+            /** Author Note */
+            author_note?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * ConfirmFailedItem
@@ -1480,6 +1676,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** EventApplicationRead */
+        EventApplicationRead: {
+            event: components["schemas"]["StateEventRead"];
+            current: components["schemas"]["StateCurrentRead"];
+        };
         /**
          * GeneralAssetCreate
          * @description 创建通用资产请求体（extra=forbid 拒绝未知字段）。
@@ -1573,6 +1774,65 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** KnowledgeStateCreate */
+        KnowledgeStateCreate: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Knower Type
+             * @enum {string}
+             */
+            knower_type: "character" | "audience";
+            /** Knower Id */
+            knower_id?: string | null;
+            /** Claim Id */
+            claim_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "suspects" | "believes" | "knows" | "misled";
+            /** Confidence */
+            confidence?: number | null;
+            /** Acquired Timepoint Id */
+            acquired_timepoint_id: string;
+            /** Source Ref */
+            source_ref: string;
+        };
+        /** KnowledgeStateRead */
+        KnowledgeStateRead: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Knower Type
+             * @enum {string}
+             */
+            knower_type: "character" | "audience";
+            /** Knower Id */
+            knower_id?: string | null;
+            /** Claim Id */
+            claim_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unknown" | "suspects" | "believes" | "knows" | "misled";
+            /** Confidence */
+            confidence?: number | null;
+            /** Acquired Timepoint Id */
+            acquired_timepoint_id: string;
+            /** Source Ref */
+            source_ref: string;
+            /** Id */
+            id: string;
+            /** Superseded By */
+            superseded_by: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * MemoryDocBrief
@@ -2085,6 +2345,181 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** SnapshotCreate */
+        SnapshotCreate: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "scene_entry" | "scene_exit" | "episode_entry" | "episode_exit";
+            /** Scope Id */
+            scope_id: string;
+            /** Timepoint Id */
+            timepoint_id: string;
+        };
+        /** SnapshotRead */
+        SnapshotRead: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "scene_entry" | "scene_exit" | "episode_entry" | "episode_exit";
+            /** Scope Id */
+            scope_id: string;
+            /** Timepoint Id */
+            timepoint_id: string;
+            /** Id */
+            id: string;
+            /** Snapshot Json */
+            snapshot_json: {
+                [key: string]: unknown;
+            }[];
+            /** Source Event Cursor */
+            source_event_cursor: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** StateCurrentRead */
+        StateCurrentRead: {
+            /** Project Id */
+            project_id: string;
+            /** Subject Type */
+            subject_type: string;
+            /** Subject Id */
+            subject_id: string;
+            /** Attribute Key */
+            attribute_key: string;
+            /** Value Json */
+            value_json: unknown | null;
+            /** Last Event Id */
+            last_event_id: string;
+            /** Timepoint Id */
+            timepoint_id: string;
+            /** Version */
+            version: number;
+        };
+        /** StateEventCreate */
+        StateEventCreate: {
+            /** Project Id */
+            project_id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "entity" | "relationship";
+            /** Subject Id */
+            subject_id: string;
+            /** Attribute Key */
+            attribute_key: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "set" | "add" | "remove" | "transition";
+            /** Value */
+            value: unknown;
+            /** Expected Before */
+            expected_before?: unknown | null;
+            /** Timepoint Id */
+            timepoint_id: string;
+            /**
+             * Cause Type
+             * @enum {string}
+             */
+            cause_type: "screenplay" | "event" | "user_edit" | "system" | "migration";
+            /** Cause Ref */
+            cause_ref: string;
+            /** Source Artifact Id */
+            source_artifact_id?: string | null;
+            /** Source Revision Id */
+            source_revision_id?: string | null;
+            /** Compensates Event Id */
+            compensates_event_id?: string | null;
+        };
+        /** StateEventRead */
+        StateEventRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Subject Type */
+            subject_type: string;
+            /** Subject Id */
+            subject_id: string;
+            /** Attribute Key */
+            attribute_key: string;
+            /** Operation */
+            operation: string;
+            /** Before Json */
+            before_json: unknown | null;
+            /** After Json */
+            after_json: unknown | null;
+            /** Timepoint Id */
+            timepoint_id: string;
+            /** Cause Type */
+            cause_type: string;
+            /** Cause Ref */
+            cause_ref: string;
+            /** Source Artifact Id */
+            source_artifact_id: string | null;
+            /** Source Revision Id */
+            source_revision_id: string | null;
+            /** Compensates Event Id */
+            compensates_event_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** TimepointCreate */
+        TimepointCreate: {
+            /** Project Id */
+            project_id: string;
+            /** Series Id */
+            series_id?: string | null;
+            /** Episode Id */
+            episode_id?: string | null;
+            /** Scene Id */
+            scene_id?: string | null;
+            /** Beat Id */
+            beat_id?: string | null;
+            /** Sequence No */
+            sequence_no: number;
+            /** World Time */
+            world_time?: string | null;
+        };
+        /** TimepointRead */
+        TimepointRead: {
+            /** Project Id */
+            project_id: string;
+            /** Series Id */
+            series_id?: string | null;
+            /** Episode Id */
+            episode_id?: string | null;
+            /** Scene Id */
+            scene_id?: string | null;
+            /** Beat Id */
+            beat_id?: string | null;
+            /** Sequence No */
+            sequence_no: number;
+            /** World Time */
+            world_time?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -3780,6 +4215,301 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_timepoint_api_narrative_state_timepoints_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TimepointCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimepointRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_event_api_narrative_state_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StateEventCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventApplicationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_event_api_narrative_state_events__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateEventRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_api_narrative_state_current_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                subject_type: "entity" | "relationship";
+                subject_id: string;
+                attribute_key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateCurrentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_snapshot_api_narrative_state_snapshots_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_snapshot_api_narrative_state_snapshots__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_claim_api_narrative_state_claims_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_knowledge_api_narrative_state_knowledge_states_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeStateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeStateRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_knowledge_api_narrative_state_knowledge_states_current_get: {
+        parameters: {
+            query: {
+                project_id: string;
+                claim_id: string;
+                knower_type: "character" | "audience";
+                knower_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeStateRead"];
                 };
             };
             /** @description Validation Error */

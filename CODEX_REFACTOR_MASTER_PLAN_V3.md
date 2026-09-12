@@ -1429,7 +1429,7 @@ design docs、product specs 与 `feature_list.json`。
 | R0 Harness | completed | repository baseline | 去重 Harness、建立 owner/routing/feedback 基线 | 不改业务行为；完成后停在 R1 前 | [`r0-harness-refactor.md`](docs/exec-plans/completed/r0-harness-refactor.md) |
 | R1 Agent split | completed | R0 | 行为不变地拆分 Agent service owners | 不新增产品能力或 R2 内容；完成后停在 R2 前 | [`r1-agent-service-split.md`](docs/exec-plans/completed/r1-agent-service-split.md) |
 | R2 Artifact Core | completed | R1 | 单一 `screenplay` 的 blocks/revisions/diff/localized stale | 不做 Narrative State、workflow 或 regeneration；完成后停在 R3 前 | [`r2-artifact-core.md`](docs/exec-plans/completed/r2-artifact-core.md) |
-| R3 Narrative State | not started | R2 | timepoints、state events/current/snapshots、claims、knowledge states；只迁移少量高价值属性 | 不一次迁移全部 entity properties；完成后停在 R4 前 | 启动 R3 时创建 |
+| R3 Narrative State | completed | R2 | timepoints、state events/current/snapshots、claims、knowledge states；只迁移少量高价值属性 | 不一次迁移全部 entity properties；完成后停在 R4 前 | [`r3-narrative-state-core.md`](docs/exec-plans/completed/r3-narrative-state-core.md) |
 | R4 Workflow Core | not started | R3 | requirement、episode、scene plan、gate、execution run；Skill 可 mock | 不进入 production-document 扩展；完成后停在 R5 前 | 启动 R4 时创建 |
 | R5 Production Documents | not started | R4 | 按本节既定顺序建立 production artifacts | 不接入完整 Atomic Skills；完成后停在 R6 前 | 启动 R5 时创建 |
 | R6 Atomic Skills | not started | R5 | 接入 bounded creative skills | 不自动扩展到本文未定义的新阶段 | 启动 R6 时创建 |

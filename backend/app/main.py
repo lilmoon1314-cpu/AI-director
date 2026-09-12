@@ -20,6 +20,7 @@ from app.assets.router import router as assets_router
 from app.config import get_settings
 from app.core import db, observability
 from app.entities.router import router as entities_router
+from app.narrative_state.router import router as narrative_state_router
 from app.perspectives.router import router as perspectives_router
 from app.projects import service as projects_service
 from app.projects.router import router as projects_router
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(agent_router)
     app.include_router(artifacts_router)
+    app.include_router(narrative_state_router)
 
     return app
 

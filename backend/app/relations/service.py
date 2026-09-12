@@ -268,6 +268,18 @@ async def create(session: AsyncSession, schema: RelationCreate) -> RelationRead:
         raise _duplicate(schema.source, schema.target, schema.type, existing.id)
 
     relation = await repository.add(session, _new_relation(schema, project_id))
+    from app.narrative_state import service as narrative_state_service
+
+    await narrative_state_service.sync_legacy_relationship_state(
+        session,
+        project_id,
+        relation.id,
+        {
+            key: value
+            for key in ("trust", "resentment")
+            if (value := getattr(schema, key)) is not None
+        },
+    )
     await projects_service.touch(session, project_id, relation_delta=1)
     await session.commit()
     return RelationRead.model_validate(relation)
@@ -317,6 +329,18 @@ async def update(session: AsyncSession, relation_id: str, schema: RelationUpdate
         relation.properties = {**relation.properties, **schema.properties}
 
     relation = await repository.save(session, relation)
+    from app.narrative_state import service as narrative_state_service
+
+    await narrative_state_service.sync_legacy_relationship_state(
+        session,
+        relation.project_id,
+        relation.id,
+        {
+            key: value
+            for key in ("trust", "resentment")
+            if key in schema.model_fields_set and (value := getattr(schema, key)) is not None
+        },
+    )
     # 项目「最近活跃」随关系编辑刷新（计数不变，touch 不自行 commit，随本事务提交）
     await projects_service.touch(session, relation.project_id)
     await session.commit()
@@ -378,3 +402,16 @@ async def delete_by_project(session: AsyncSession, project_id: str) -> int:
     异常: 无。依赖: app.relations.repository。
     """
     return await repository.delete_by_project(session, project_id)
+
+
+async def sync_stateful_projection(
+    session: AsyncSession, relation_id: str, attribute_key: str, value: object
+) -> None:
+    """Update an R3-owned legacy column projection without committing its transaction."""
+    if attribute_key not in {"trust", "resentment"} or not isinstance(value, (int, float)):
+        return
+    relation = await repository.get_by_id(session, relation_id)
+    if relation is None:
+        raise _not_found(relation_id)
+    setattr(relation, attribute_key, float(value))
+    await repository.save(session, relation)

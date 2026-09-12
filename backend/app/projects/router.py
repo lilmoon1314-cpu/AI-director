@@ -17,6 +17,7 @@ from app.artifacts import service as artifacts_service
 from app.assets import service as assets_service
 from app.core.db import get_session
 from app.entities import service as entities_service
+from app.narrative_state import service as narrative_state_service
 from app.projects import service
 from app.projects.schemas import ProjectCreate, ProjectRead, ProjectUpdate
 from app.relations import service as relations_service
@@ -104,6 +105,7 @@ async def delete_project(
     await relations_service.delete_by_project(session, project_id)
     entity_ids = await entities_service.delete_by_project(session, project_id)
     await agent_service.delete_project_data(session, project_id)
+    await narrative_state_service.delete_project_data(session, project_id)
     await artifacts_service.delete_project_data(session, project_id)
     await service.delete(session, project_id)
     if entity_ids:

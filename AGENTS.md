@@ -74,6 +74,8 @@ Read only the additional owner required by the task:
 - Observable assistant behavior: `docs/product-specs/agent-assistance.md`.
 - Platform and storage reasoning: `docs/design-docs/platform-boundaries.md`.
 - World-model and visibility design: `docs/design-docs/world-model-and-perspectives.md`.
+- Temporal narrative state, continuity snapshots, claims, or knowledge perspectives:
+  `docs/design-docs/narrative-state-core.md`.
 - Project, asset, route, or workspace-state design:
   `docs/design-docs/projects-assets-and-workspace.md`.
 - Agent context, memory, streaming, or confirmed-write design:

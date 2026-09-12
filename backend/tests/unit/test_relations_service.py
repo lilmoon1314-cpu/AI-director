@@ -11,6 +11,7 @@ import pytest
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.entities import service as entities_service
+from app.narrative_state import service as narrative_state_service
 from app.projects import service as projects_service
 from app.relations import repository, service
 from app.relations.models import Relationship
@@ -109,6 +110,14 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Relationship]:
     ) -> None:
         return None
 
+    async def fake_sync_legacy_relationship_state(
+        _session: Any,
+        _project_id: str,
+        _relationship_id: str,
+        _values: dict[str, float],
+    ) -> None:
+        return None
+
     monkeypatch.setattr(repository, "add", fake_add)
     monkeypatch.setattr(repository, "get_by_id", fake_get_by_id)
     monkeypatch.setattr(repository, "save", fake_save)
@@ -119,6 +128,11 @@ def store(monkeypatch: pytest.MonkeyPatch) -> dict[str, Relationship]:
     # F11 起关系写路径经 projects.service 校验归属/维护计数器——单元层一并桩化
     monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
     monkeypatch.setattr(projects_service, "touch", fake_touch)
+    monkeypatch.setattr(
+        narrative_state_service,
+        "sync_legacy_relationship_state",
+        fake_sync_legacy_relationship_state,
+    )
     return relations
 
 

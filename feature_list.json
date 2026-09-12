@@ -251,6 +251,20 @@
           "pytest tests/architecture/test_architecture.py"
         ]
       }
+    },
+    {
+      "id": "F18",
+      "title": "Narrative State Core",
+      "category": "narrative-state",
+      "acceptance_intent": "Ordered timepoints and append-only events produce traceable current state and immutable snapshots, while author claims remain separate from temporal character and audience knowledge.",
+      "status": "passing",
+      "product_spec": "docs/product-specs/narrative-continuity.md",
+      "verification": {
+        "commands": [
+          "pytest tests/integration/test_narrative_state_api.py tests/integration/test_narrative_state_migration_upgrade.py tests/e2e/test_narrative_state_flow.py",
+          "pytest tests/architecture/test_architecture.py"
+        ]
+      }
     }
   ]
 }
