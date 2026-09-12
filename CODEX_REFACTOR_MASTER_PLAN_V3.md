@@ -1419,6 +1419,24 @@ app/
 
 # 20. 迁移计划
 
+本节是这次有限 V3 initiative 的唯一阶段 owner。它只拥有阶段顺序、bounded purpose、前置条件、
+in/out scope、下一阶段边界、子 ExecPlan 链接和阶段状态；当前阶段的细粒度进度、测试记录、
+task-local 决策仍由对应 active ExecPlan 拥有。durable architecture、产品行为与验收状态仍分别属于
+design docs、product specs 与 `feature_list.json`。
+
+| 阶段 | 状态 | 前置条件 | bounded purpose / in scope | 明确 out scope 与下一边界 | 子 ExecPlan |
+|---|---|---|---|---|---|
+| R0 Harness | completed | repository baseline | 去重 Harness、建立 owner/routing/feedback 基线 | 不改业务行为；完成后停在 R1 前 | [`r0-harness-refactor.md`](docs/exec-plans/completed/r0-harness-refactor.md) |
+| R1 Agent split | completed | R0 | 行为不变地拆分 Agent service owners | 不新增产品能力或 R2 内容；完成后停在 R2 前 | [`r1-agent-service-split.md`](docs/exec-plans/completed/r1-agent-service-split.md) |
+| R2 Artifact Core | completed | R1 | 单一 `screenplay` 的 blocks/revisions/diff/localized stale | 不做 Narrative State、workflow 或 regeneration；完成后停在 R3 前 | [`r2-artifact-core.md`](docs/exec-plans/completed/r2-artifact-core.md) |
+| R3 Narrative State | not started | R2 | timepoints、state events/current/snapshots、claims、knowledge states；只迁移少量高价值属性 | 不一次迁移全部 entity properties；完成后停在 R4 前 | 启动 R3 时创建 |
+| R4 Workflow Core | not started | R3 | requirement、episode、scene plan、gate、execution run；Skill 可 mock | 不进入 production-document 扩展；完成后停在 R5 前 | 启动 R4 时创建 |
+| R5 Production Documents | not started | R4 | 按本节既定顺序建立 production artifacts | 不接入完整 Atomic Skills；完成后停在 R6 前 | 启动 R5 时创建 |
+| R6 Atomic Skills | not started | R5 | 接入 bounded creative skills | 不自动扩展到本文未定义的新阶段 | 启动 R6 时创建 |
+
+阶段只能由明确用户请求启动。启动时为该阶段创建 child ExecPlan；完成验收后更新本表状态并停止，
+不得自动进入下一阶段。不要在本表复制阶段内 milestones、日志或 implementation decisions。
+
 ## R0 — Harness 重构（优先级最高，不改业务行为）
 
 R0 不按“新文件清单”实施，而按 **去重 → 建 owner → 迁移 → 改路由 → 删除副本 → 验证冷启动** 的顺序实施。

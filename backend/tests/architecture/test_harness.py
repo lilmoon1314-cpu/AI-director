@@ -35,10 +35,12 @@ def _legacy_markdown_paths() -> list[Path]:
     return legacy
 
 
-def test_agents_is_a_small_map_without_session_rituals() -> None:
-    """The always-on entry stays bounded and does not restore retired default fan-out."""
+def test_agents_is_a_bounded_constitution_without_session_rituals() -> None:
+    """The always-on constitution stays bounded and does not restore retired default fan-out."""
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    assert len(agents.encode("utf-8")) <= 5000, "AGENTS.md must remain a small routing map"
+    assert len(agents.encode("utf-8")) <= 7000, (
+        "AGENTS.md must remain a bounded repository constitution and routing map"
+    )
     retired_defaults = (
         r"每次会话",
         r"read .*PROGRESS\.md",
