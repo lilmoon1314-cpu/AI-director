@@ -2,7 +2,7 @@
 
 ## Status / authorization
 
-**Proposed，尚未执行。** 用户本轮只要求创建本计划。2026-09-12 17:46 (+08:00) 完成方案编写阶段的基线整理；下列实施里程碑没有开始时间，不能标记为完成。计划不是 V3 的新阶段，不修改 V3 阶段顺序。R6 已记录遗留的修复另见 [已完成跟进](../completed/agent-baseline-followup.md)。
+**Active，已获实施授权。** 用户于 2026-09-13 要求开始 Agent 改善任务，验收仅做必要测试，结束后交付面向技术新手的分模块分析报告。2026-09-12 17:46 (+08:00) 为原方案编写基线时间。计划不是 V3 的新阶段，不修改 V3 阶段顺序。R6 已记录遗留的修复另见 [已完成跟进](../completed/agent-baseline-followup.md)。
 
 ## Purpose and scope
 
@@ -23,7 +23,7 @@
 - Skill/单块编辑切片再读 `atomic-skills.md`、`production-documents.md` 及对应 product spec。
 - Feature 只按 ID 查询 F10/F13/F14/F15/F21；F15 基线 `not_started`，现有测试不足以证明未来长期记忆功能。
 - R6 跟进后基线：432 个后端测试通过；mypy 87 文件、Ruff、16 import contracts 通过。既有 Starlette 弃用警告不混入此计划默认范围。
-- 工作区存在用户 R4–R6 未提交成果；开始实施先记录 status，不提交或清理用户工作。不要以 Git HEAD 代替实际工作区基线。
+- 方案编写时工作区曾存在用户 R4–R6 未提交成果；2026-09-13 实施开始实际 `git status --short` 为空。以实际工作区为基线，不提交或清理用户工作。
 
 ## Invariants
 
@@ -39,9 +39,9 @@
 
 ## Progress
 
-以下均为待实施事项。实施开始时获取真实时间并按 PLANS.md 标注起止时间；每个切片完成后才进入依赖它的下一片。
+每个切片完成后才进入依赖它的下一片；时间为实际观察值。
 
-- [ ] A / P0：建立权限与故障行为基线，定义运行状态和来源契约。
+- [x] 2026-09-13 11:35–11:47 (+08:00) A / P0：建立权限与故障行为基线，定义运行状态和来源契约。20 项契约测试通过；6 项目标故障真实复现，仍为 strict xfail；2 项 UI 风险有明确静态证据。契约尚未接入运行链路。
 - [ ] B / P0：全链路视角隔离与模型请求硬预算、工具执行硬配额。
 - [ ] C / P0：原子批准、真实读取版本、幂等和并发冲突。
 - [ ] D / P1：持久运行、可恢复流与摘要维护解耦。
@@ -144,10 +144,13 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 
 迁移严格 additive：开始先检查当前 head 与所有模型注册，生成后审查每条操作；有存量重复时输出冲突清单而非清理。以填充了会话、summary cursor、记忆段、pending、Artifact revision、Skill candidate 的数据库副本演练 upgrade。证明行数、来源关系、原文与版本不变；保留恢复副本。不要对用户真实库自动降级或回滚删除新表。
 
-收口检查：backend Ruff/format/mypy/import-linter，必要 API schema 生成及 frontend typecheck/lint/build，Agent 与参与领域测试，新增故障矩阵；最后 `python scripts/task.py check`。Feature status 只通过对应 `verify` 命令，先更新准确验收记录。测试名和命令在实现后记录实际值，不预造通过数。
+收口检查按用户 2026-09-13 最新要求，仅运行实际改动需要的 backend Ruff/format/mypy/import-linter、API schema 或 frontend 检查，以及参与边界的定向测试。全仓 `python scripts/task.py check` 仅在最终实际改动范围足够广而有必要时运行，不作为固定步骤。Feature status 只通过对应 `verify` 命令，先更新准确验收记录。实际命令与结果见 [A 故障基线](../../tests/agent-reliability-baseline.md)。
 
 ## Surprises / Discoveries
 
+- 2026-09-13：唯一迁移 head 为 `f63c8db205a9`，模型注册包含 agent/artifacts/narrative_state/workflow/production/skills；本片无迁移。Alembic 命令需要在 backend 工作目录执行。
+- 2026-09-13：临时库复现历史泄露、超窗仍调用、批量工具超额、摘要失败后遗漏、批准分次提交和 read/登记间新版被覆盖六项。后者由第二个真实 session 保存用户新版，不是 mock 版本推论。
+- 2026-09-13：前端 pending 刷新和旧流 finally 风险保留静态证据；未进行 UI 动态复现、真正杀进程或同时 CAS 压测。A 不将这些推论包装成通过的稳定性保证。
 - 现有摘要保留 cursor 不等于覆盖保持，后续尾窗仍可能丢上下文可见性。
 - “版本 CAS”和“确认写入”已有顺序场景保护，但数据库并发条件更新和原子决定尚缺。
 - R6 Skill 是接收 candidate 的独立校验器，未接聊天；JSON Schema/权限/保护片段保证比设计概括窄。
@@ -160,14 +163,22 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 - 摘要作为可重建派生视图，原文和领域事实保持权威；不以模型自述“已记住”作为验证。
 - 自主长期维护默认只提议语义改变；接受仍由作者控制，索引等派生数据可自动重建。
 - 原子事务通过公开参与式 service/UoW 实现，不绕过领域边界；旧公开 API 可继续承担独立事务。
-- 不把本计划算作已授权实施，也不自行修改 V3 master。
+- 2026-09-13 用户已授权实施；不自行修改 V3 master。遵照用户最新要求，验收采用最小充分测试，不把计划中的全仓 check 当作固定仪式。
+- A 的运行终态与 pending 批准状态分开：回答和提案保存成功即 run completed，提案仍待作者决定。原因与来源传播设计已写入 agent-system.md。
+- 故障基线采用 strict xfail 且仅捕获专用 UnmetAcceptance 异常；数据准备错误不能被当作预期失败。修复后移除对应标记，不改断言掩盖缺陷。
 
 ## Outcomes / Retrospective
 
-待实施。当前交付仅为问题分析与本计划，未部署任何建议能力。
+A 已完成；B–H 尚未实施，整体计划保持 Active。新增内部契约与故障用例，不改变现有聊天运行行为。最终定向验证为 20 passed / 6 xfailed，Ruff check/format 通过，mypy 单文件通过。六项 xfail 是未满足的安全要求，不计入通过数。
+
+面向技术新手的阶段报告见 [Agent 改善任务分析报告：A 阶段](../../reports/agent-improvement-slice-a-2026-09-13.md)，包含分模块目录、原理、选择原因、重难点、异常稳定性和证据限制。整体验收报告仍须在 B–H 实施完成后更新。
+
+经验：先在事务边界注入异常和第二连接保存新版，比只检查“有 version 字段/有 rollback”更能判断实际保证。未因历史 432-test 基线而重复全仓测试，未修改 feature 状态。
 
 ## Recovery / restart point
 
-下一会话收到实施授权后，先读取本计划与工程审阅，获取实际时间、`git status --short` 和迁移 head，核对工作区是否仍为 432-test 基线。然后从 A 的最小失败场景和契约开始；不要从向量库/框架替换或直接执行全部迁移开始。
+下一步从 B 开始，已有用户实施授权，无须再次索要许可。先读本计划 B、agent-system.md 的契约部分和 A 故障矩阵，再按需要定位模型/迁移、context/prompts/llm/tools 与对应测试。不要重复读取完整历史审阅或重跑 432-test 基线。
 
-本轮无迁移、后台任务或未完成数据操作。若没有新的实施授权，保持 Proposed；不要把计划文字当作可执行命令运行。
+A 新代码为 `backend/app/agent/contracts.py`，新测试为 `tests/unit/test_agent_contracts.py` 与 `tests/integration/test_agent_reliability_baseline.py`。B 先落实来源/视角持久策略与保守旧数据处理，再做所有请求预算和逐工具配额；逐项将已修复的 strict xfail 转为普通回归测试，同时补齐 B 专属验收场景。若新增表/列，仍需审查 additive 迁移并证明填充数据升级保持。
+
+本轮未提交 Git，未迁移，未启动后台任务，无未完成数据操作。工作区保留 A 的新增文件与设计/计划/报告修改。当前上下文已包含大量基线取证，建议后续在新会话按本恢复点继续 B，整体计划不归档、不标为完成。
