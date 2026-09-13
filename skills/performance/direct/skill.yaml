@@ -1,0 +1,1 @@
+{"id":"performance.direct","scope":"scene","context":{"required":["screenplay_blocks","production_breakdown"],"optional":["voice_profiles"]},"writes":["candidate_production_document"],"forbidden":["workflow_transition"],"validators":["output_schema"],"commit_action":"create_production_document"}

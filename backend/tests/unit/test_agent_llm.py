@@ -174,6 +174,28 @@ async def test_client_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "LLM_API_KEY" in err.fix, f"修复指引必须指向 LLM_API_KEY: {err.fix}"
 
 
+@pytest.mark.parametrize("close_fails", [False, True])
+async def test_dispose_client_clears_singleton_even_on_close_failure(
+    monkeypatch: pytest.MonkeyPatch, close_fails: bool
+) -> None:
+    class ClosingClient(FakeClient):
+        async def close(self) -> None:
+            await super().close()
+            if close_fails:
+                raise RuntimeError("close failed")
+
+    fake = ClosingClient()
+    monkeypatch.setattr(llm, "_client", fake)
+    if close_fails:
+        with pytest.raises(RuntimeError, match="close failed"):
+            await llm.dispose_client()
+    else:
+        await llm.dispose_client()
+    assert fake.closed
+    assert llm._client is None
+    await llm.dispose_client()
+
+
 async def test_complete_json_repairs_once(harness: LlmHarness) -> None:
     """U3: 首轮输出非 JSON → 修复重试恰 1 次后成功（边界值-重试恰 1 次）。"""
     harness.push(_response("我不是 JSON"), _response('```json\n{"a": 1}\n```'))

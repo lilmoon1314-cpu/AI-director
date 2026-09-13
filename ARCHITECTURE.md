@@ -10,7 +10,7 @@ React + TypeScript + G6
   views/components → Zustand stores → generated API client
                          │ REST / SSE
 FastAPI modular monolith
-  projects  entities  relations  perspectives  assets  agent  artifacts  narrative_state
+  projects  entities  relations  perspectives  assets  agent  artifacts  narrative_state  workflow  production  skills
                          ↓
   core: configuration, primary DB session, errors, observability
                          ↓
@@ -33,6 +33,9 @@ generated types—not by hand-maintained tables in this document.
 | Conversations, prompts, tools, memory, pending writes | `backend/app/agent/` | `docs/design-docs/agent-system.md` |
 | Screenplay artifacts, blocks, revisions, dependencies, stale | `backend/app/artifacts/` | `docs/design-docs/artifact-core.md` |
 | Timepoints, temporal state, snapshots, claims, knowledge | `backend/app/narrative_state/` | `docs/design-docs/narrative-state-core.md` |
+| Requirements, series/episodes/scenes, gates, execution audit | `backend/app/workflow/` | `docs/design-docs/workflow-core.md` |
+| Production document order, episode binding, semantic contracts | `backend/app/production/` | `docs/design-docs/production-documents.md` |
+| Atomic Skill registry, validation, candidates, confirmed adapters | `backend/app/skills/`, `skills/` | `docs/design-docs/atomic-skills.md` |
 | Navigation, graph, asset, and Agent UI | `frontend/src/` | `docs/design-docs/projects-assets-and-workspace.md`, `docs/design-docs/agent-system.md` |
 | Product acceptance state | `feature_list.json` | product specs referenced by each feature |
 | Development commands and feedback orchestration | `scripts/task.py` | `AGENTS.md` |
@@ -60,6 +63,12 @@ back into assets.
   directed dependencies and their dependent artifacts become stale.
 - Narrative state: ordered timepoint → append-only event with optional artifact provenance → versioned
   current projection → immutable scope snapshot; claims remain separate from character/audience belief.
+- Workflow: versioned requirement → series/episode/scene plan → deterministic gate evaluation → audited
+  mock run/candidate; no prompt-driven stage advancement.
+- Production: ordered document request → semantic validation → Artifact revision/dependency creation →
+  localized stale on selected upstream block changes; retained downstream content.
+- Atomic Skill: registered contract → explicit minimal context/gate validation → Workflow execution trace
+  → pending candidate/impact → explicit accept/reject → bounded owning-service adapter.
 - Project switch: route project ID → project-scoped store reset/reload; global reference assets remain.
 
 ## Knowledge routes

@@ -17,7 +17,10 @@ import app.artifacts.models  # noqa: F401 — 注册表元数据（R2）
 import app.entities.models  # noqa: F401 — 注册表元数据
 import app.narrative_state.models  # noqa: F401 — 注册表元数据（R3）
 import app.projects.models  # noqa: F401 — 注册表元数据（F11）
+import app.production.models  # noqa: F401 — 注册表元数据（R5）
 import app.relations.models  # noqa: F401 — 注册表元数据
+import app.skills.models  # noqa: F401 — 注册表元数据（R6）
+import app.workflow.models  # noqa: F401 — 注册表元数据（R4）
 from app.config import get_settings
 from app.core.db import Base, UTCDateTime, ensure_sqlite_dir
 

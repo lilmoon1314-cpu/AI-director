@@ -247,6 +247,15 @@ class SessionStub:
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch) -> Store:
     """内存存储 + 全量 mock（每个测试独享）。"""
+
+    async def fake_summarize(_text: str, _instruction: str) -> str:
+        return "测试摘要"
+
+    def forbid_provider_client() -> Any:
+        pytest.fail("Agent service 单测必须替换所有 LLM 路径，禁止创建真实客户端")
+
+    monkeypatch.setattr(llm, "summarize", fake_summarize)
+    monkeypatch.setattr(llm, "get_client", forbid_provider_client)
     store = Store()
     _install(store, monkeypatch)
     stub = SessionStub()
@@ -563,14 +572,14 @@ async def test_stream_chat_context_uses_summary_cursor_and_recent_tail(
     monkeypatch.setattr(llm, "stream_chat_turn", fake_stream)
     events = [
         event
-        async for event in service.stream_chat(
-            "conv-1", "CURRENT-UNIQUE", perspective="author"
-        )
+        async for event in service.stream_chat("conv-1", "CURRENT-UNIQUE", perspective="author")
     ]
 
     assert events[-1]["event"] == "done"
-    provider_text = captured[0]["system"] + "\n" + "\n".join(
-        str(message.get("content", "")) for message in captured[0]["messages"]
+    provider_text = (
+        captured[0]["system"]
+        + "\n"
+        + "\n".join(str(message.get("content", "")) for message in captured[0]["messages"])
     )
     assert "SUMMARY-UNIQUE" in provider_text
     assert "TAIL-ONE-UNIQUE" in provider_text and "TAIL-TWO-UNIQUE" in provider_text

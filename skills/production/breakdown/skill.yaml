@@ -1,0 +1,1 @@
+{"id":"production.breakdown","scope":"scene","context":{"required":["screenplay_blocks"],"optional":["asset_catalog"]},"writes":["candidate_production_document"],"forbidden":["canonical_entity_write","workflow_transition"],"validators":["output_schema"],"commit_action":"create_production_document"}

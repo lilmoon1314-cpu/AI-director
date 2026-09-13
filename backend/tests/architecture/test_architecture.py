@@ -29,6 +29,9 @@ FORBIDDEN_IN_CORE = (
     "app.projects",
     "app.artifacts",
     "app.narrative_state",
+    "app.workflow",
+    "app.production",
+    "app.skills",
 )
 
 pytestmark = pytest.mark.architecture
@@ -469,6 +472,88 @@ def test_narrative_state_core_schema_declared() -> None:
     ):
         assert table in migration_sql, f"R3 migration must create {table}"
     assert "r3_relationship_state_baseline" in migration_sql
+
+
+def test_workflow_core_schema_declared() -> None:
+    """R4 requirement history, planning hierarchy, gates, and execution audit contract."""
+    from app.workflow.models import (
+        Episode,
+        ExecutionRun,
+        ExecutionStep,
+        RequirementSpec,
+        ScenePlan,
+        WorkflowGate,
+        WorkflowSeries,
+    )
+
+    assert RequirementSpec.__table__.c["version"].nullable is False
+    assert WorkflowSeries.__table__.c["project_id"].nullable is False
+    assert Episode.__table__.c["position"].nullable is False
+    assert ScenePlan.__table__.c["target_duration"].nullable is False
+    assert WorkflowGate.__table__.c["requirements_json"].nullable is False
+    assert ExecutionRun.__table__.c["status"].default.arg == "pending"
+    assert next(iter(ExecutionStep.__table__.c["run_id"].foreign_keys)).ondelete == "CASCADE"
+
+    migration_sql = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    for table in (
+        "requirement_specs",
+        "workflow_series",
+        "episodes",
+        "scene_plans",
+        "workflow_gates",
+        "execution_runs",
+        "execution_steps",
+    ):
+        assert table in migration_sql, f"R4 migration must create {table}"
+
+
+def test_production_document_schema_declared() -> None:
+    """R5 semantic artifact snapshots and production bindings are database-backed."""
+    from app.artifacts.models import ArtifactBlockRevision
+    from app.production.models import ProductionDocument
+
+    assert ArtifactBlockRevision.__table__.c["semantic_json"].nullable is True
+    assert ProductionDocument.__table__.c["project_id"].nullable is False
+    assert ProductionDocument.__table__.c["episode_id"].nullable is False
+    artifact_fk = next(iter(ProductionDocument.__table__.c["artifact_id"].foreign_keys))
+    assert artifact_fk.ondelete == "CASCADE"
+    source_fk = next(iter(ProductionDocument.__table__.c["source_document_id"].foreign_keys))
+    assert source_fk.ondelete == "CASCADE"
+    migration_sql = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert "production_documents" in migration_sql
+    assert "semantic_json" in migration_sql
+
+
+def test_atomic_skill_contracts_and_candidate_schema_declared() -> None:
+    """R6 skill packages and confirmed candidate lifecycle are machine discoverable."""
+    from app.skills.models import SkillCandidate
+    from app.skills.registry import registry
+
+    contracts = registry.list()
+    assert len(contracts) == 10
+    assert {contract.id for contract in contracts} == {
+        "requirement.refine",
+        "story.develop",
+        "scene.plan",
+        "screenplay.scene_write",
+        "dialogue.humanize",
+        "production.breakdown",
+        "performance.direct",
+        "shot.plan",
+        "continuity.check",
+        "audience.audit",
+    }
+    assert SkillCandidate.__table__.c["status"].default.arg == "pending"
+    run_fk = next(iter(SkillCandidate.__table__.c["run_id"].foreign_keys))
+    assert run_fk.ondelete == "CASCADE"
+    migration_sql = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(MIGRATIONS_DIR.glob("*.py"))
+    )
+    assert "skill_candidates" in migration_sql
 
 
 def test_no_bak_residue_in_app() -> None:

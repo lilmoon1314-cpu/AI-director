@@ -75,13 +75,13 @@ root_packages = ["app"]
 name = "core 零业务依赖"
 type = "forbidden"
 source_modules = ["app.core"]
-forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills"]
 
 [[tool.importlinter.contracts]]
 name = "projects 业务层零领域依赖"
 type = "forbidden"
 source_modules = ["app.projects.service", "app.projects.repository", "app.projects.models", "app.projects.schemas"]
-forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent", "app.artifacts", "app.narrative_state"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills"]
 # 例外：projects.router 为请求级组合层，编排跨模块级联删除（业务规则仍在各领域 service）
 
 [[tool.importlinter.contracts]]
@@ -144,6 +144,63 @@ forbidden_modules = [
     "app.agent.writes",
     "app.agent.chat",
 ]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "workflow 只经其他领域 service"
+type = "forbidden"
+source_modules = ["app.workflow"]
+forbidden_modules = [
+    "app.projects.repository", "app.projects.models", "app.projects.schemas",
+    "app.artifacts.repository", "app.artifacts.models", "app.artifacts.schemas",
+    "app.narrative_state.repository", "app.narrative_state.models", "app.narrative_state.schemas",
+    "app.entities.repository", "app.entities.models", "app.entities.schemas",
+    "app.relations.repository", "app.relations.models", "app.relations.schemas",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "workflow 内部层私有：跨模块仅经 service"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state"]
+forbidden_modules = ["app.workflow.repository", "app.workflow.models", "app.workflow.schemas"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "production 只经其他领域 service"
+type = "forbidden"
+source_modules = ["app.production"]
+forbidden_modules = [
+    "app.projects.repository", "app.projects.models", "app.projects.schemas",
+    "app.artifacts.repository", "app.artifacts.models", "app.artifacts.schemas",
+    "app.workflow.repository", "app.workflow.models", "app.workflow.schemas",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "production 内部层私有：跨模块仅经 service"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow"]
+forbidden_modules = ["app.production.repository", "app.production.models", "app.production.schemas"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "skills 只经其他领域 service"
+type = "forbidden"
+source_modules = ["app.skills"]
+forbidden_modules = [
+    "app.projects.repository", "app.projects.models", "app.projects.schemas",
+    "app.artifacts.repository", "app.artifacts.models", "app.artifacts.schemas",
+    "app.workflow.repository", "app.workflow.models", "app.workflow.schemas",
+    "app.production.repository", "app.production.models", "app.production.schemas",
+]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "skills 内部层私有：跨模块仅经 service"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production"]
+forbidden_modules = ["app.skills.repository", "app.skills.models", "app.skills.schemas", "app.skills.registry"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]

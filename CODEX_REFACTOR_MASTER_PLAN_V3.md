@@ -1430,9 +1430,9 @@ design docs、product specs 与 `feature_list.json`。
 | R1 Agent split | completed | R0 | 行为不变地拆分 Agent service owners | 不新增产品能力或 R2 内容；完成后停在 R2 前 | [`r1-agent-service-split.md`](docs/exec-plans/completed/r1-agent-service-split.md) |
 | R2 Artifact Core | completed | R1 | 单一 `screenplay` 的 blocks/revisions/diff/localized stale | 不做 Narrative State、workflow 或 regeneration；完成后停在 R3 前 | [`r2-artifact-core.md`](docs/exec-plans/completed/r2-artifact-core.md) |
 | R3 Narrative State | completed | R2 | timepoints、state events/current/snapshots、claims、knowledge states；只迁移少量高价值属性 | 不一次迁移全部 entity properties；完成后停在 R4 前 | [`r3-narrative-state-core.md`](docs/exec-plans/completed/r3-narrative-state-core.md) |
-| R4 Workflow Core | not started | R3 | requirement、episode、scene plan、gate、execution run；Skill 可 mock | 不进入 production-document 扩展；完成后停在 R5 前 | 启动 R4 时创建 |
-| R5 Production Documents | not started | R4 | 按本节既定顺序建立 production artifacts | 不接入完整 Atomic Skills；完成后停在 R6 前 | 启动 R5 时创建 |
-| R6 Atomic Skills | not started | R5 | 接入 bounded creative skills | 不自动扩展到本文未定义的新阶段 | 启动 R6 时创建 |
+| R4 Workflow Core | completed | R3 | requirement、episode、scene plan、gate、execution run；Skill 可 mock | 不进入 production-document 扩展；完成后停在 R5 前 | [`r4-workflow-core.md`](docs/exec-plans/completed/r4-workflow-core.md) |
+| R5 Production Documents | completed | R4 | 按本节既定顺序建立 production artifacts | 不接入完整 Atomic Skills；完成后停在 R6 前 | [`r5-production-documents.md`](docs/exec-plans/completed/r5-production-documents.md) |
+| R6 Atomic Skills | completed | R5 | 接入 bounded creative skills | 不自动扩展到本文未定义的新阶段 | [`r6-atomic-skills.md`](docs/exec-plans/completed/r6-atomic-skills.md) |
 
 阶段只能由明确用户请求启动。启动时为该阶段创建 child ExecPlan；完成验收后更新本表状态并停止，
 不得自动进入下一阶段。不要在本表复制阶段内 milestones、日志或 implementation decisions。

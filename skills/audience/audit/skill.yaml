@@ -1,0 +1,1 @@
+{"id":"audience.audit","scope":"scene","context":{"required":["revealed_claims","approved_screenplay","audience_knowledge"],"optional":[],"denied":["future_episode_plan","hidden_truth","unrevealed_character_goal","writer_notes","agent_scratch"]},"writes":[],"forbidden":["canonical_state_write","workflow_transition"],"validators":["output_schema"],"commit_action":"none"}

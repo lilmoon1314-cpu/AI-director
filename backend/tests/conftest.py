@@ -36,8 +36,11 @@ async def _run_on_metadata(operation: str) -> None:
     import app.assets.models  # noqa: F401 — 注册资产库元数据
     import app.entities.models  # noqa: F401 — 注册表元数据
     import app.narrative_state.models  # noqa: F401 — 注册表元数据（R3）
+    import app.production.models  # noqa: F401 — 注册表元数据（R5）
     import app.projects.models  # noqa: F401 — 注册表元数据（F11）
     import app.relations.models  # noqa: F401 — 注册表元数据
+    import app.skills.models  # noqa: F401 — 注册表元数据（R6）
+    import app.workflow.models  # noqa: F401 — 注册表元数据（R4）
     from app.assets.db import dispose_assets_engine
     from app.core.db import Base
 

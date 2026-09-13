@@ -265,6 +265,48 @@
           "pytest tests/architecture/test_architecture.py"
         ]
       }
+    },
+    {
+      "id": "F19",
+      "title": "Workflow Core",
+      "category": "workflow",
+      "acceptance_intent": "Versioned project requirements feed an isolated series/episode/scene-plan hierarchy, deterministic gates report unmet prerequisites, and mock creative runs retain an ordered audit without canonical writes.",
+      "status": "passing",
+      "product_spec": "docs/product-specs/creative-workflow.md",
+      "verification": {
+        "commands": [
+          "pytest tests/integration/test_workflow_api.py tests/integration/test_workflow_migration_upgrade.py",
+          "pytest tests/architecture/test_architecture.py"
+        ]
+      }
+    },
+    {
+      "id": "F20",
+      "title": "Production Documents",
+      "category": "production",
+      "acceptance_intent": "Episodes move through the six ordered production documents with structured semantic blocks and traceable immediate-upstream dependencies; local source edits stale matching downstream without overwriting it.",
+      "status": "passing",
+      "product_spec": "docs/product-specs/production-documents.md",
+      "verification": {
+        "commands": [
+          "pytest tests/integration/test_artifacts_api.py tests/e2e/test_artifacts_flow.py tests/integration/test_production_api.py tests/integration/test_production_migration_upgrade.py",
+          "pytest tests/architecture/test_architecture.py"
+        ]
+      }
+    },
+    {
+      "id": "F21",
+      "title": "Atomic Skills",
+      "category": "skills",
+      "acceptance_intent": "Bounded skill contracts enforce minimal permitted context, deterministic gates and validators, audited impact previews, and durable explicit accept/reject before any declared canonical write.",
+      "status": "passing",
+      "product_spec": "docs/product-specs/atomic-skills.md",
+      "verification": {
+        "commands": [
+          "pytest tests/unit/test_skill_registry.py tests/integration/test_skills_api.py tests/integration/test_skills_migration_upgrade.py tests/e2e/test_atomic_skills_flow.py",
+          "pytest tests/architecture/test_architecture.py"
+        ]
+      }
     }
   ]
 }

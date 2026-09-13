@@ -1,0 +1,1 @@
+{"id":"story.develop","scope":"project","context":{"required":["requirement","world_model"],"optional":["existing_story"]},"writes":[],"forbidden":["canonical_entity_write","workflow_transition"],"validators":["output_schema","facts_preserved"],"commit_action":"none"}

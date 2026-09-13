@@ -36,6 +36,7 @@ class _BlockState:
     block_type: str
     position: int
     content: str
+    semantic: dict[str, object] | None
 
 
 def _not_found(kind: str, resource_id: str) -> NotFoundError:
@@ -60,6 +61,7 @@ def _states(
             block_type=block.block_type,
             position=snapshot.position,
             content=snapshot.content,
+            semantic=snapshot.semantic_json,
         )
         for snapshot, block in rows
     ]
@@ -101,7 +103,7 @@ def _artifact_read(
     return ArtifactRead(
         id=artifact.id,
         project_id=artifact.project_id,
-        type="screenplay",
+        type=artifact.type,
         title=artifact.title,
         status=artifact.status,
         current_revision=_revision_read(revision, states),
@@ -124,7 +126,11 @@ def _diff_entries(old: list[_BlockState], new: list[_BlockState]) -> list[Revisi
             kind = "added"
         elif after is None:
             kind = "removed"
-        elif before.position != after.position or before.content != after.content:
+        elif (
+            before.position != after.position
+            or before.content != after.content
+            or before.semantic != after.semantic
+        ):
             kind = "modified"
         else:
             kind = "unchanged"
@@ -149,7 +155,7 @@ async def create(session: AsyncSession, schema: ArtifactCreate) -> ArtifactRead:
     artifact = Artifact(
         id=generate_id("art"),
         project_id=project_id,
-        type="screenplay",
+        type=schema.type,
         title=schema.title,
         status="draft",
         current_revision_no=1,
@@ -182,9 +188,12 @@ async def create(session: AsyncSession, schema: ArtifactCreate) -> ArtifactRead:
                 block_id=block.id,
                 position=position,
                 content=item.content,
+                semantic_json=item.semantic,
             ),
         )
-        states.append(_BlockState(block.id, block.block_type, position, item.content))
+        states.append(
+            _BlockState(block.id, block.block_type, position, item.content, item.semantic)
+        )
     await projects_service.touch(session, project_id)
     await session.commit()
     return _artifact_read(artifact, revision, states)
@@ -237,7 +246,8 @@ async def edit_block(
     current = next((state for state in old_states if state.id == block_id), None)
     if current is None:
         raise _not_found("block", block_id)
-    if current.content == schema.content:
+    next_semantic = current.semantic if schema.semantic is None else schema.semantic
+    if current.content == schema.content and current.semantic == next_semantic:
         raise _invalid(
             "block 编辑没有变化",
             "提交内容与当前 revision 完全一致",
@@ -260,6 +270,7 @@ async def edit_block(
             state.block_type,
             state.position,
             schema.content if state.id == block_id else state.content,
+            next_semantic if state.id == block_id else state.semantic,
         )
         for state in old_states
     ]
@@ -272,6 +283,7 @@ async def edit_block(
                 block_id=state.id,
                 position=state.position,
                 content=state.content,
+                semantic_json=state.semantic,
             ),
         )
 
@@ -369,3 +381,65 @@ async def get_dependency(session: AsyncSession, dependency_id: str) -> Dependenc
 async def delete_project_data(session: AsyncSession, project_id: str) -> None:
     """Delete Artifact-owned rows inside the projects-router transaction."""
     await repository.delete_by_project(session, project_id)
+
+
+async def create_structured(
+    session: AsyncSession,
+    *,
+    project_id: str,
+    artifact_type: str,
+    title: str,
+    blocks: list[dict[str, object]],
+) -> ArtifactRead:
+    """Public cross-domain creation boundary without exposing Artifact internal schemas."""
+    return await create(
+        session,
+        ArtifactCreate.model_validate(
+            {"project_id": project_id, "type": artifact_type, "title": title, "blocks": blocks}
+        ),
+    )
+
+
+async def create_block_dependencies(
+    session: AsyncSession,
+    *,
+    source_artifact_id: str,
+    source_block_ids: list[str],
+    dependent_artifact_id: str,
+    dependency_type: str = "derived_from",
+) -> list[DependencyRead]:
+    """Create directed dependencies for selected current source blocks."""
+    return [
+        await create_dependency(
+            session,
+            DependencyCreate(
+                source_artifact_id=source_artifact_id,
+                source_block_id=block_id,
+                dependent_artifact_id=dependent_artifact_id,
+                dependency_type=dependency_type,
+            ),
+        )
+        for block_id in source_block_ids
+    ]
+
+
+async def edit_structured_block(
+    session: AsyncSession,
+    *,
+    project_id: str,
+    artifact_id: str,
+    block_id: str,
+    content: str,
+    semantic: dict[str, object] | None = None,
+) -> ArtifactRead:
+    artifact = await get(session, artifact_id)
+    if artifact.project_id != project_id:
+        raise _invalid(
+            "artifact 不属于请求项目",
+            "candidate target 与 project_id 不一致",
+            "只接受同项目 artifact block",
+            artifact_id=artifact_id,
+        )
+    return await edit_block(
+        session, artifact_id, block_id, BlockEdit(content=content, semantic=semantic)
+    )

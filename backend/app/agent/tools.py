@@ -264,7 +264,7 @@ def _registered_result(summary: str) -> str:
     )
 
 
-async def _resolve_entity_by_name(ctx: ToolContext, name: str) -> tuple[str, str, bool]:
+async def _resolve_entity_by_name(ctx: ToolContext, name: str) -> tuple[str, str, str]:
     """按名称/别名精确解析项目内实体（三态：未命中/不可见/可见命中）。
 
     作用: 解析结果（名称快照）经工具结果注入 LLM 上下文——必须过 perspectives

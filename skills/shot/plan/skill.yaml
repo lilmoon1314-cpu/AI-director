@@ -1,0 +1,1 @@
+{"id":"shot.plan","scope":"scene","context":{"required":["performance_beats","production_breakdown"],"optional":["approved_assets"]},"writes":["candidate_production_document"],"forbidden":["provider_selection","workflow_transition"],"validators":["output_schema"],"commit_action":"create_production_document"}

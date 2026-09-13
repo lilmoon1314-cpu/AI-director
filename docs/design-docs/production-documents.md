@@ -1,0 +1,17 @@
+# Production documents
+
+The production chain is Screenplay → Production Breakdown → Performance Script → Shot Plan →
+Storyboard → Timeline. Artifact Core remains the canonical store for stable block identity, immutable
+revisions, semantic snapshots, diffs, and stale dependencies. `app.production` owns only document
+purpose, episode/scene binding, type-specific semantic validation, and immediate-upstream sequencing.
+
+Readable `content` and optional structured `semantic_json` coexist in each immutable block snapshot.
+Screenplay accepts only scene heading, action, dialogue, parenthetical, and transition blocks; it does
+not absorb camera or provider settings. Breakdown describes resources and continuity. Performance beats
+describe acting, movement, and pacing. Shot plans describe camera intent. Storyboards bind panels to
+shots and references. Timeline clips organize playable tracks and do not become world-model truth.
+
+Every downstream document selects at least one current block from the same-project, same-episode,
+immediately preceding document. Artifact dependencies retain that source revision. Editing a selected
+source block marks only matching dependents stale and never deletes or regenerates them automatically.
+R6 skills may propose these documents but must use the same validation and candidate-acceptance boundary.

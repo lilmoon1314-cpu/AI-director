@@ -102,7 +102,7 @@ def test_populated_r2_upgrade_preserves_data_and_backfills_selected_state(tmp_pa
         )
         connection.commit()
 
-    _upgrade(database_path, "head")
+    _upgrade(database_path, R3_HEAD)
 
     with sqlite3.connect(database_path) as connection:
         assert pre_r3_tables.issubset(_tables(connection))
@@ -129,7 +129,7 @@ def test_populated_r2_upgrade_preserves_data_and_backfills_selected_state(tmp_pa
 
 def test_fresh_database_reaches_r3_head(tmp_path: Path) -> None:
     database_path = tmp_path / "fresh-r3.db"
-    _upgrade(database_path, "head")
+    _upgrade(database_path, R3_HEAD)
     with sqlite3.connect(database_path) as connection:
         assert R3_TABLES.issubset(_tables(connection))
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (

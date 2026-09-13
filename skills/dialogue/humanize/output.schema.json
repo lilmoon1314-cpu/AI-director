@@ -1,0 +1,1 @@
+{"type":"object","required":["artifact_id","block_id","content"],"properties":{"artifact_id":{"type":"string"},"block_id":{"type":"string"},"content":{"type":"string"},"semantic":{"type":"object"},"facts":{"type":"array"},"protected_spans":{"type":"array"}}}

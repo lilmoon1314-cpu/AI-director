@@ -1,0 +1,1 @@
+{"type":"object","required":["production_document"],"properties":{"production_document":{"type":"object"},"facts":{"type":"array"},"protected_spans":{"type":"array"}}}

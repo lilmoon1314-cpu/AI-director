@@ -102,13 +102,13 @@ def get_client() -> openai.AsyncOpenAI:
 async def dispose_client() -> None:
     """释放 LLM 客户端连接（应用停机 / 测试清理时调用）。
 
-    作用: 关闭底层 httpx 连接池并清空单例，允许下次以新配置重建。
-    参数: 无。返回值: 无。异常: 无。依赖: openai.AsyncOpenAI.close。
+    作用: 先释放单例引用，再关闭连接池；关闭失败也不复用失效客户端。
+    参数: 无。返回值: 无。异常: close 的异常原样上抛。依赖: openai.AsyncOpenAI.close。
     """
     global _client
-    if _client is not None:
-        await _client.close()
-        _client = None
+    client, _client = _client, None
+    if client is not None:
+        await client.close()
 
 
 def _wrap_llm_error(exc: Exception, *, model: str) -> AgentError:

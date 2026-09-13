@@ -132,7 +132,7 @@ def test_r1_data_survives_upgrade_to_r2(tmp_path: Path) -> None:
         )
         connection.commit()
 
-    _upgrade(database_path, "head")
+    _upgrade(database_path, R2_HEAD)
 
     with sqlite3.connect(database_path) as connection:
         post_r2_tables = _table_names(connection)

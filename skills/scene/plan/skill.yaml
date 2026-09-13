@@ -1,0 +1,1 @@
+{"id":"scene.plan","scope":"episode","context":{"required":["episode_outline","continuity_snapshot"],"optional":["story_bible"]},"writes":[],"forbidden":["workflow_transition"],"validators":["output_schema","facts_preserved"],"commit_action":"none"}

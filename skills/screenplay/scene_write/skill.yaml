@@ -1,0 +1,1 @@
+{"id":"screenplay.scene_write","scope":"scene","context":{"required":["scene_plan","scene_entry_state"],"optional":["adjacent_scenes"]},"writes":["candidate_production_document"],"forbidden":["canonical_entity_write","workflow_transition"],"validators":["output_schema","facts_preserved","protected_spans_unchanged"],"commit_action":"create_production_document"}

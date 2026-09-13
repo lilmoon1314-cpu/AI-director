@@ -3,6 +3,11 @@
 This document owns the durable design of project-scoped Agent conversations, context compilation,
 memory documents, and confirmed writes.
 
+For a code-level assessment of the current guarantees and their limitations, see
+[the 2026-09-12 engineering assessment](agent-engineering-assessment-2026-09-12.md). Its improvement
+plan is proposed, not implemented. In particular, summary coverage, cross-perspective history isolation,
+database-atomic version checks, and atomic approval/effect persistence are not yet complete guarantees.
+
 ## Context boundary
 
 Each conversation is bound to a project. Context is assembled from stable instructions, project memory

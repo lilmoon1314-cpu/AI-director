@@ -6,7 +6,14 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ArtifactType = Literal["screenplay"]
+ArtifactType = Literal[
+    "screenplay",
+    "production_breakdown",
+    "performance_script",
+    "shot_plan",
+    "storyboard",
+    "timeline",
+]
 DiffKind = Literal["unchanged", "modified", "added", "removed"]
 
 
@@ -19,6 +26,7 @@ class ScreenplayBlockCreate(BaseModel):
 
     block_type: str = Field(min_length=1, max_length=64)
     content: str = Field(max_length=100_000)
+    semantic: dict[str, object] | None = None
 
 
 class ArtifactCreate(BaseModel):
@@ -37,6 +45,7 @@ class ArtifactBlockRead(BaseModel):
     block_type: str
     position: int
     content: str
+    semantic: dict[str, object] | None
 
 
 class ArtifactRevisionRead(BaseModel):
@@ -62,6 +71,7 @@ class BlockEdit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(max_length=100_000)
+    semantic: dict[str, object] | None = None
 
 
 class RevisionDiffEntry(BaseModel):

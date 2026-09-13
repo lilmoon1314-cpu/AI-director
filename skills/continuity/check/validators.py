@@ -1,0 +1,1 @@
+VALIDATORS = ("output_schema",)

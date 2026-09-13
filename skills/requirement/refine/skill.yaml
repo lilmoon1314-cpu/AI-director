@@ -1,0 +1,1 @@
+{"id":"requirement.refine","scope":"project","context":{"required":["current_requirement"],"optional":["project_constraints"]},"writes":[],"forbidden":["workflow_transition"],"validators":["output_schema"],"commit_action":"none"}

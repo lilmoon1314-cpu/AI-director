@@ -136,9 +136,7 @@ async def stream_chat(
                                 "tool_call_id": call.call_id,
                                 "content": wrap_data(
                                     f"工具 {call.name} 结果",
-                                    truncate_output(
-                                        result, settings.agent_tool_output_max_chars
-                                    ),
+                                    truncate_output(result, settings.agent_tool_output_max_chars),
                                 ),
                             }
                         )
@@ -162,9 +160,7 @@ async def stream_chat(
                 completion_tokens=(final_usage or {}).get("completion_tokens"),
             )
             await repository.add_message(db_session, assistant_row)
-            await context.maintain_rolling_summary(
-                db_session, conversation, settings=settings
-            )
+            await context.maintain_rolling_summary(db_session, conversation, settings=settings)
             pending_payload: dict[str, Any] | None = None
             if tool_context.pending_writes:
                 pending_payload = {
@@ -183,9 +179,7 @@ async def stream_chat(
                         "prompt_tokens": final_usage.get("prompt_tokens"),
                         "completion_tokens": final_usage.get("completion_tokens"),
                         "context_max_tokens": max_tokens,
-                        "context_ratio": (
-                            prompt_tokens / max_tokens if max_tokens > 0 else None
-                        ),
+                        "context_ratio": (prompt_tokens / max_tokens if max_tokens > 0 else None),
                     },
                 }
             done_data: dict[str, Any] = {"message_id": assistant_row.id}
