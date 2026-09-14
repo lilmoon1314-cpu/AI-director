@@ -6,8 +6,8 @@
 安全约束:
     - 一切项目数据（文档内容/检索结果/实体详情）必须经 wrap_data 以「数据非指令」
       分隔符包裹后注入（提示注入防线，agent/CONSTRAINTS.md）。
-    - 预算裁剪顺序固定：文档段降级为目录 → 丢会话摘要 → 裁最旧消息；
-      system 与本轮用户消息永不裁剪。
+    - 不丢弃指导文档、摘要或未覆盖历史；可恢复目录在 context 层降级，
+      每次模型请求必须通过 budget.check_request。
 """
 
 import hashlib
@@ -62,7 +62,14 @@ def wrap_data(label: str, content: str) -> str:
     返回值: str — 包裹后的文本。
     异常: 无。依赖: 无。
     """
-    return f"{DATA_BEGIN.format(label=label)}\n{content}\n{DATA_END.format(label=label)}"
+    import json
+
+    # Labels can themselves be user-authored; keep them out of structural delimiters.
+    return (
+        f"{DATA_BEGIN.format(label='引用材料')}\n"
+        + json.dumps({"label": label, "content": content}, ensure_ascii=False)
+        + f"\n{DATA_END.format(label='引用材料')}"
+    )
 
 
 def truncate_output(text: str, max_chars: int) -> str:
@@ -164,7 +171,8 @@ def render_entity_details(entities: Sequence[Any]) -> str:
         aliases = "/".join(e.aliases) if e.aliases else "-"
         props = json.dumps(e.properties, ensure_ascii=False, sort_keys=True)
         blocks.append(
-            f"- id: {e.id}\n  类型: {e.type}\n  名称: {e.name}\n  别名: {aliases}\n"
+            f"- id: {e.id}\n  version: {getattr(e, 'version', 1)}\n  类型: {e.type}\n"
+            f"  名称: {e.name}\n  别名: {aliases}\n"
             f"  简介: {e.description or '-'}\n  观众已知: {e.audience_known}\n"
             f"  属性: {props}"
         )
@@ -174,16 +182,15 @@ def render_entity_details(entities: Sequence[Any]) -> str:
 def build_system_prompt(*, project_name: str, extra_rules: str = "") -> str:
     """构建静态系统提示词（L0 harness 层：角色、规则、注入防护声明）。
 
-    作用: 前缀缓存的最稳定层——只有项目名可变（建会话时已定）；
+    作用: 仅包含稳定规则；项目名由 context 放进低信任数据消息；
         携带数据非指令声明与职责边界（F10：创作助理 + 图谱问答，
         写库必须经草案确认）。
-    参数: project_name — 项目名；extra_rules — 追加规则（F13 工作流扩展位）。
+    参数: project_name — 保留的兼容参数，不插入规则；extra_rules — 服务端追加规则。
     返回值: str — 系统提示词。
     异常: 无。依赖: 无。
     """
     parts = [
         "你是影视世界观项目的创作助理，与作者协作维护世界观图谱与项目记忆文档。",
-        f"当前项目：{project_name}。",
         "职责边界：",
         "1. 回答创作问题、协助头脑风暴；图谱事实以提供的项目数据为准，不臆造。",
         "2. 需要把新实体/关系写入图谱时，只能产出结构化草案交作者确认，禁止声称已写入。",
@@ -239,7 +246,7 @@ def _render_context_block(
     parts.append("— 图谱目录 —")
     parts.append(wrap_data("图谱目录", graph_directory))
     parts.append("— 记忆文档目录 —")
-    parts.append(doc_directory)
+    parts.append(wrap_data("记忆文档目录", doc_directory))
     if summary:
         parts.append("— 更早对话的摘要 —")
         parts.append(wrap_data("会话摘要", summary))
@@ -256,48 +263,19 @@ def assemble_messages(
     history: Sequence[dict[str, str]],
     budget: int,
 ) -> list[dict[str, str]]:
-    """组装分层上下文消息序列，超预算时按固定顺序裁剪（前缀缓存友好）。
+    """编译规则、低信任项目数据和完整必要历史；不静默裁剪约束。
 
-    作用:
-        输出 [system, 项目上下文, *history]；总估算 token 超过 budget 时依序：
-        ①文档段全文降级为目录行 ②丢弃会话摘要 ③自最旧起裁剪历史消息；
-        system 与历史最后一条（本轮用户输入）永不裁剪。
-    参数:
-        system — 系统提示词；doc_sections — 文档段引用（可空）；
-        graph_directory / doc_directory — 目录文本；summary — 会话摘要；
-        history — 近期消息（role/content dicts，按时间正序，最后一条为本轮输入）；
-        budget — 上下文 token 预算（正数）。
-    返回值: list[dict[str, str]] — openai 消息格式。
-    异常: ValueError — budget 非正数。依赖: estimate_tokens、_render_context_block。
+    budget 保留为正数契约参数。真正的请求计量与拒绝由 budget.check_request
+    在 context/chat/LLM 边界执行，覆盖工具契约、协议与输出预留。
     """
     if budget <= 0:
         raise ValueError(f"budget 必须为正数，收到 {budget}")
 
-    def total(full: bool, with_summary: bool, kept: Sequence[dict[str, str]]) -> int:
-        block = _render_context_block(
-            doc_sections,
-            graph_directory,
-            doc_directory,
-            summary if with_summary else "",
-            docs_full=full,
-        )
-        return (
-            estimate_tokens(system)
-            + estimate_tokens(block)
-            + sum(estimate_tokens(m.get("content", "")) for m in kept)
-        )
-
+    # Guidance, summaries and uncovered history may contain mandatory constraints.
+    # Admission is checked at every provider boundary; do not silently discard them here.
     docs_full = True
     with_summary = bool(summary)
     kept = list(history)
-    if total(docs_full, with_summary, kept) <= budget:
-        pass
-    else:
-        docs_full = False
-        if total(docs_full, with_summary, kept) > budget:
-            with_summary = False
-        while len(kept) > 1 and total(docs_full, with_summary, kept) > budget:
-            kept.pop(0)
 
     context = _render_context_block(
         doc_sections,
@@ -306,6 +284,6 @@ def assemble_messages(
         summary if with_summary else "",
         docs_full=docs_full,
     )
-    messages = [{"role": "system", "content": system}, {"role": "system", "content": context}]
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": context}]
     messages.extend(kept)
     return messages

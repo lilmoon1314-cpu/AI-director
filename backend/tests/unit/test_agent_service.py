@@ -14,6 +14,7 @@ import pytest
 from app.agent import llm, repository, service
 from app.agent.llm import AssistantTurn, ToolCall
 from app.agent.schemas import ConfirmItem, ConfirmRequest, ProposeRequest
+from app.config import Settings
 from app.core import db
 from app.core.exceptions import AgentError, NotFoundError, ValidationError
 from app.perspectives import service as perspectives_service
@@ -38,6 +39,11 @@ class AgentSettingsStub:
     llm_timeout_seconds = 5
     llm_api_key = "sk-test"
     llm_base_url = "https://example.invalid/v1"
+
+    def __getattr__(self, name: str) -> Any:
+        if name in Settings.model_fields:
+            return Settings.model_fields[name].default
+        raise AttributeError(name)
 
 
 class ReviewSettingsStub(AgentSettingsStub):
@@ -158,6 +164,27 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
         section.updated_at = datetime.now(UTC)
         return section
 
+    async def fake_update_section_if_version(
+        _s: Any,
+        *,
+        doc_id: str,
+        section_id: str,
+        expected_version: int,
+        content: str,
+        title: str | None,
+        updated_by: str,
+        updated_at: Any,
+    ) -> bool:
+        section = await fake_get_section(_s, section_id)
+        if section is None or section.doc_id != doc_id or section.version != expected_version:
+            return False
+        section.content = content
+        section.title = section.title if title is None else title
+        section.version += 1
+        section.updated_by = updated_by
+        section.updated_at = updated_at
+        return True
+
     async def fake_list_sections(_s: Any, doc_id: str) -> list[Any]:
         return sorted(store.sections_by_doc.get(doc_id, []), key=lambda s: s.seq)
 
@@ -175,6 +202,20 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     async def fake_save_pending(_s: Any, pending: Any) -> Any:
         store.pendings[pending.id] = pending
         return pending
+
+    async def fake_claim_pending(_s: Any, pending_id: str) -> bool:
+        pending = store.pendings[pending_id]
+        if pending.status != "pending":
+            return False
+        pending.status = "approving"
+        return True
+
+    async def fake_reject_pending(_s: Any, pending_id: str) -> bool:
+        pending = store.pendings[pending_id]
+        if pending.status != "pending":
+            return False
+        pending.status = "rejected"
+        return True
 
     async def fake_list_pending_by_conversation(_s: Any, conversation_id: str) -> list[Any]:
         rows = [p for p in store.pendings.values() if p.conversation_id == conversation_id]
@@ -202,10 +243,13 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     monkeypatch.setattr(repository, "add_section", fake_add_section)
     monkeypatch.setattr(repository, "get_section", fake_get_section)
     monkeypatch.setattr(repository, "save_section", fake_save_section)
+    monkeypatch.setattr(repository, "update_section_if_version", fake_update_section_if_version)
     monkeypatch.setattr(repository, "list_sections", fake_list_sections)
     monkeypatch.setattr(repository, "add_pending", fake_add_pending)
     monkeypatch.setattr(repository, "get_pending", fake_get_pending)
     monkeypatch.setattr(repository, "save_pending", fake_save_pending)
+    monkeypatch.setattr(repository, "claim_pending", fake_claim_pending)
+    monkeypatch.setattr(repository, "reject_pending_if_pending", fake_reject_pending)
     monkeypatch.setattr(
         repository, "list_pending_by_conversation", fake_list_pending_by_conversation
     )
@@ -242,6 +286,9 @@ class SessionStub:
     async def rollback(self) -> None:
         """计数 rollback。"""
         self.rollbacks += 1
+
+    async def flush(self) -> None:
+        return None
 
 
 @pytest.fixture
@@ -410,9 +457,14 @@ async def test_tool_loop_quota_then_plain_answer(
     )
     # U17: 工具结果截断到上限并带标记，且经注入分隔符包裹（agent_tool_output_max_chars=50）
     tool_msg = next(m for m in calls[1]["messages"] if m.get("role") == "tool")
-    marker = "\n[输出已截断：原文 500 字符，上限 50]"
-    expected = service.wrap_data("工具 search_entities 结果", "x" * 50 + marker)
-    assert tool_msg["content"] == expected, f"截断+包裹必须精确: {tool_msg['content'][:90]}…"
+    import json
+
+    wrapped = json.loads(tool_msg["content"].splitlines()[1])
+    page = json.loads(wrapped["content"])
+    assert page["result"]["content"] == "x" * 50
+    assert page["result"]["truncated"] is True
+    assert page["result"]["continuation"]
+    assert page["scope"] == {"project_id": "proj-1", "perspective": "author", "character_id": None}
     names = [e["event"] for e in events]
     assert names.count("tool") == 2, f"tool 事件 start+done 各一: {names}"
     assert names[-1] == "done", f"正常收尾: {names}"
@@ -1041,6 +1093,7 @@ def _seed_pending(
         payload_json=_json.dumps(payload, ensure_ascii=False),
         baseline_json=_json.dumps(baseline, ensure_ascii=False) if baseline is not None else None,
         status="pending",
+        result_json=None,
         created_at=datetime.now(UTC),
     )
     store.pendings[pending_id] = row
@@ -1136,7 +1189,7 @@ async def test_approve_create_entity_overrides_project(
     )
     seen: dict[str, Any] = {}
 
-    async def fake_create(_s: Any, schema: Any) -> Any:
+    async def fake_create(_s: Any, schema: Any, **_kwargs: Any) -> Any:
         seen["schema"] = schema
         return SimpleNamespace(id="ent-9", name=schema.name)
 
@@ -1159,13 +1212,14 @@ async def test_approve_update_entity_merges_properties(
         "update_entity",
         {"entity_id": "ent-1", "entity_name": "阿诚", "properties_patch": {"age": 30}},
         pending_id="pw-1",
+        baseline={"entity_id": "ent-1", "expected_version": 1},
     )
     seen: dict[str, Any] = {}
 
     async def fake_get(_s: Any, _entity_id: str) -> Any:
         return SimpleNamespace(id="ent-1", project_id="proj-1", name="阿诚")
 
-    async def fake_update(_s: Any, _entity_id: str, schema: Any) -> Any:
+    async def fake_update(_s: Any, _entity_id: str, schema: Any, **_kwargs: Any) -> Any:
         seen["schema"] = schema
         return SimpleNamespace(id="ent-1", name="阿诚")
 
@@ -1198,7 +1252,7 @@ async def test_approve_create_relation(store: Store, monkeypatch: pytest.MonkeyP
     )
     seen: dict[str, Any] = {}
 
-    async def fake_create(_s: Any, schema: Any) -> Any:
+    async def fake_create(_s: Any, schema: Any, **_kwargs: Any) -> Any:
         seen["schema"] = schema
         return SimpleNamespace(
             id="rel-1", type=schema.type, source=schema.source, target=schema.target
@@ -1305,7 +1359,7 @@ async def test_approve_single_failure_does_not_block(
     _seed_pending(store, "create_entity", {"type": "character", "name": "周兰"}, pending_id="pw-1")
     _seed_pending(store, "create_entity", {"name": "缺类型"}, pending_id="pw-2")
 
-    async def fake_create(_s: Any, schema: Any) -> Any:
+    async def fake_create(_s: Any, schema: Any, **_kwargs: Any) -> Any:
         return SimpleNamespace(id="ent-ok", name=schema.name)
 
     monkeypatch.setattr(service.entities_service, "create", fake_create)

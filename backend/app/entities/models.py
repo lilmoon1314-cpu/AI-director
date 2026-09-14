@@ -5,7 +5,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UTCDateTime
@@ -44,6 +44,7 @@ class Entity(Base):
     description: Mapped[str] = mapped_column(String, nullable=False, default="")
     audience_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     properties: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow

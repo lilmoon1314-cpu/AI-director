@@ -239,19 +239,31 @@ def test_patch_updates_fields_and_merges_properties(client: TestClient) -> None:
         预期: 200，id 不变，age 更新且 gender 保留。
     """
     entity_id = _create_entity(client, "周兰", properties={"age": 19, "gender": "女"})
+    before = client.get(f"/api/entities/{entity_id}").json()
     resp = client.patch(
         f"/api/entities/{entity_id}",
-        json={"name": "周兰（成年）", "properties": {"age": 20}},
+        json={
+            "name": "周兰（成年）",
+            "properties": {"age": 20},
+            "expected_version": before["version"],
+        },
     )
     assert resp.status_code == 200, f"PATCH 应成功: {resp.status_code} {resp.text}"
     updated = resp.json()
     assert updated["id"] == entity_id, "PATCH 不允许改变实体 id"
     assert updated["name"] == "周兰（成年）"
+    assert updated["version"] == before["version"] + 1
     assert updated["properties"] == {"age": 20, "gender": "女"}, (
         f"【问题】properties 合并语义失效: {updated['properties']}\n"
         "【原因】update 未保留旧字段或整体替换了 properties\n"
         "【修复】检查 service.update 的浅合并逻辑"
     )
+    stale = client.patch(
+        f"/api/entities/{entity_id}",
+        json={"name": "过期覆盖", "expected_version": before["version"]},
+    )
+    assert stale.status_code == 409
+    assert client.get(f"/api/entities/{entity_id}").json()["name"] == "周兰（成年）"
 
 
 def test_patch_rejects_id_field_with_unified_error(client: TestClient) -> None:

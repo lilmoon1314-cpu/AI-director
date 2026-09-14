@@ -233,7 +233,9 @@ async def count_by_entity(session: AsyncSession, entity_id: str) -> int:
 
 
 @checkpoint
-async def create(session: AsyncSession, schema: RelationCreate) -> RelationRead:
+async def create(
+    session: AsyncSession, schema: RelationCreate, *, commit: bool = True
+) -> RelationRead:
     """创建关系（自环/端点/known_by/重复/跨项目五重校验后入库）。
 
     作用: 关系创建的业务入口；id 由系统生成；project_id 缺省归属默认项目；
@@ -281,7 +283,8 @@ async def create(session: AsyncSession, schema: RelationCreate) -> RelationRead:
         },
     )
     await projects_service.touch(session, project_id, relation_delta=1)
-    await session.commit()
+    if commit:
+        await session.commit()
     return RelationRead.model_validate(relation)
 
 

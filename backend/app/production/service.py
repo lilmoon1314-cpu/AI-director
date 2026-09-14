@@ -74,7 +74,9 @@ def _validate_blocks(schema: ProductionDocumentCreate) -> None:
             )
 
 
-async def create(session: AsyncSession, schema: ProductionDocumentCreate) -> ProductionDocumentRead:
+async def create(
+    session: AsyncSession, schema: ProductionDocumentCreate, *, commit: bool = True
+) -> ProductionDocumentRead:
     await workflow_service.ensure_episode_owned(session, schema.project_id, schema.episode_id)
     if schema.scene_id is not None:
         await workflow_service.ensure_scene_owned(
@@ -132,6 +134,7 @@ async def create(session: AsyncSession, schema: ProductionDocumentCreate) -> Pro
         artifact_type=schema.document_type,
         title=schema.title,
         blocks=[block.model_dump() for block in schema.blocks],
+        commit=False,
     )
     if source is not None:
         await artifacts_service.create_block_dependencies(
@@ -140,6 +143,7 @@ async def create(session: AsyncSession, schema: ProductionDocumentCreate) -> Pro
             source_block_ids=schema.source_block_ids,
             dependent_artifact_id=artifact.id,
             dependency_type=f"{source.document_type}_to_{schema.document_type}",
+            commit=False,
         )
     row = ProductionDocument(
         id=generate_id(),
@@ -154,7 +158,8 @@ async def create(session: AsyncSession, schema: ProductionDocumentCreate) -> Pro
         created_at=_utcnow(),
     )
     await repository.add(session, row)
-    await session.commit()
+    if commit:
+        await session.commit()
     return _read(row)
 
 
@@ -174,9 +179,13 @@ async def delete_project_data(session: AsyncSession, project_id: str) -> None:
 
 
 async def create_from_payload(
-    session: AsyncSession, project_id: str, payload: dict[str, object]
+    session: AsyncSession,
+    project_id: str,
+    payload: dict[str, object],
+    *,
+    commit: bool = True,
 ) -> ProductionDocumentRead:
-    """Confirmed-write adapter without exposing Production internal schemas."""
+    """Confirmed-write adapter；commit=False 时参与候选决定事务。"""
     merged = dict(payload)
     merged["project_id"] = project_id
-    return await create(session, ProductionDocumentCreate.model_validate(merged))
+    return await create(session, ProductionDocumentCreate.model_validate(merged), commit=commit)

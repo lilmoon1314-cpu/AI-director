@@ -31,7 +31,15 @@ class ContextScope(Contract):
 
 class SourceRef(Contract):
     scope: ContextScope
-    kind: Literal["message", "section", "entity", "artifact_revision"]
+    kind: Literal[
+        "message",
+        "section",
+        "entity",
+        "artifact_revision",
+        "graph_projection",
+        "project_metadata",
+        "summary",
+    ]
     source_id: str = Field(min_length=1)
     version: int | None = Field(default=None, ge=1)
     revision_id: str | None = None

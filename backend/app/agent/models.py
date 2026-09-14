@@ -6,7 +6,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UTCDateTime
@@ -69,6 +69,10 @@ class Message(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     role: Mapped[str] = mapped_column(String, nullable=False)
+    # Legacy rows are author-only; never infer safe narrow visibility from their text.
+    context_key: Mapped[str] = mapped_column(
+        String, nullable=False, default="author", server_default="author"
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # assistant 行的思考过程（真流式 reasoning_content 聚合；user/tool 行为 NULL）
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
@@ -92,6 +96,15 @@ class MemoryDoc(Base):
     """
 
     __tablename__ = "memory_docs"
+    __table_args__ = (
+        Index(
+            "uq_memory_docs_project_guide_kind",
+            "project_id",
+            "kind",
+            unique=True,
+            sqlite_where=text("kind IN ('positioning', 'style')"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
@@ -136,7 +149,21 @@ class PendingWrite(Base):
     baseline_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # pending（待确认）/ approved（已落库）/ rejected（已放弃）
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    # 成功决定的稳定响应；与业务效果同事务写入，重复 approve 可返回同一结果。
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+class ConversationPartition(Base):
+    """Narrow-perspective summary state; legacy author summary remains on Conversation."""
+
+    __tablename__ = "agent_conversation_partitions"
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    context_key: Mapped[str] = mapped_column(String, primary_key=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    summary_until_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class MemoryDocSection(Base):

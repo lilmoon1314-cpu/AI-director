@@ -42,8 +42,8 @@
 每个切片完成后才进入依赖它的下一片；时间为实际观察值。
 
 - [x] 2026-09-13 11:35–11:47 (+08:00) A / P0：建立权限与故障行为基线，定义运行状态和来源契约。20 项契约测试通过；6 项目标故障真实复现，仍为 strict xfail；2 项 UI 风险有明确静态证据。契约尚未接入运行链路。
-- [ ] B / P0：全链路视角隔离与模型请求硬预算、工具执行硬配额。
-- [ ] C / P0：原子批准、真实读取版本、幂等和并发冲突。
+- [x] 2026-09-13 12:12–17:17 (+08:00) B / P0：全链路视角隔离与模型请求硬预算、工具执行硬配额。用户明确要求仅继续 B，结束后交付详细分模块报告，完成后停在 C 边界。
+- [x] 2026-09-14（完成于 12:30 +08:00）C / P0：原子批准、真实读取版本、幂等和并发冲突。业务效果与决定状态进入同一事务；pending/Skill 重放幂等；Entity、文档段和 Artifact 使用数据库条件更新保护旧基线；真实用户库完成增量升级并保全 435 行旧数据。
 - [ ] D / P1：持久运行、可恢复流与摘要维护解耦。
 - [ ] E / P1：可追溯摘要、关键状态覆盖与原文恢复。
 - [ ] F / P1：有来源的长期记忆、跨会话召回、冲突与遗忘。
@@ -148,14 +148,19 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 
 ## Surprises / Discoveries
 
-- 2026-09-13：唯一迁移 head 为 `f63c8db205a9`，模型注册包含 agent/artifacts/narrative_state/workflow/production/skills；本片无迁移。Alembic 命令需要在 backend 工作目录执行。
+- 2026-09-13 A 阶段：当时唯一迁移 head 为 `f63c8db205a9`，模型注册包含 agent/artifacts/narrative_state/workflow/production/skills；本片无迁移。Alembic 命令需要在 backend 工作目录执行。
 - 2026-09-13：临时库复现历史泄露、超窗仍调用、批量工具超额、摘要失败后遗漏、批准分次提交和 read/登记间新版被覆盖六项。后者由第二个真实 session 保存用户新版，不是 mock 版本推论。
 - 2026-09-13：前端 pending 刷新和旧流 finally 风险保留静态证据；未进行 UI 动态复现、真正杀进程或同时 CAS 压测。A 不将这些推论包装成通过的稳定性保证。
 - 现有摘要保留 cursor 不等于覆盖保持，后续尾窗仍可能丢上下文可见性。
-- “版本 CAS”和“确认写入”已有顺序场景保护，但数据库并发条件更新和原子决定尚缺。
+- 2026-09-14 C 阶段：SQLite 的条件 `UPDATE ... WHERE version/status = expected` 配合 `rowcount` 可在数据库层选出唯一赢家；进程内先读后写检查不足以承担并发正确性。
 - R6 Skill 是接收 candidate 的独立校验器，未接聊天；JSON Schema/权限/保护片段保证比设计概括窄。
 - F15 仍未开始，不应把 memory_docs 表存在当作完整长期记忆实现。
 - 当前 observer/日志 `checkpoint` 是观测装饰器，不是执行恢复 checkpoint。
+
+- B：实际用户库停在 `a8f3c1d6e2b4`，早于代码迁移 head；审查完整升级链后，先备份和副本演练，再升级到 `b071c2d3e4f5`。原有 8 张表、435 行的全部旧列数据哈希一致，完整性和外键检查通过。历史 R6 迁移测试固定到其 R6 revision，避免新 head 改变历史测试范围。
+- C：实际用户库从 `b071c2d3e4f5` 升级到 `c184d5e6f7a8`。升级前没有 positioning/style 指导文档重复；29 张既有业务表共 435 行的全部旧列哈希一致，完整性与外键检查通过。
+- C：部分领域服务原先会自行提交。为保持公开 API 的独立事务习惯，同时允许 Agent/Skill 组成原子事务，新增 `commit=False` 参与模式，由最外层决定一次提交或回滚。
+- C：Entity 的 `expected_version` 在公开更新 schema 中暂为可选，以兼容旧客户端；当前 Agent 与前端编辑器都会发送真实读取版本。缺少真实读取基线的 Agent 写入会直接拒绝。
 
 ## Decision Log
 
@@ -167,18 +172,27 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 - A 的运行终态与 pending 批准状态分开：回答和提案保存成功即 run completed，提案仍待作者决定。原因与来源传播设计已写入 agent-system.md。
 - 故障基线采用 strict xfail 且仅捕获专用 UnmetAcceptance 异常；数据准备错误不能被当作预期失败。修复后移除对应标记，不改断言掩盖缺陷。
 
+- B：旧消息默认归作者，作者摘要保留原字段；其他视角/角色使用独立摘要分区，避免猜测旧数据归属。
+- B：预算采用保守 UTF-8 字节估算，覆盖消息、工具 schema、协议余量和输出预留，不引入 tokenizer 依赖；这不是供应商精确 token 保证。必需指导、摘要和未覆盖历史不静默删除，超限明确失败。
+- B：工具续取保存为本轮作用域内快照；每次执行前检查配额，并统一限制调用次数、重复失败和时间。
+- C：pending/candidate 先以条件状态迁移取得决定权，但过渡状态只存在于未提交事务中；业务效果、最终状态与可重放结果随后一次提交。失败会整体回滚，重试可安全重新取得 pending。
+- C：读取工具把实际返回给模型的 Entity/文档段版本记录在本轮上下文中；写入从该记录取基线。数据库 CAS 再防止读取后的用户修改被旧申请覆盖。
+- C：Artifact revision 既是内容历史，也是 Skill 候选的基线；接受候选前必须仍指向候选执行时的 revision。重复同一决定返回已保存结果，相反决定返回冲突。
+
 ## Outcomes / Retrospective
 
-A 已完成；B–H 尚未实施，整体计划保持 Active。新增内部契约与故障用例，不改变现有聊天运行行为。最终定向验证为 20 passed / 6 xfailed，Ruff check/format 通过，mypy 单文件通过。六项 xfail 是未满足的安全要求，不计入通过数。
+A、B、C 已完成；D–H 尚未实施，整体计划保持 Active。C 已把业务效果、pending/candidate 最终决定与稳定结果放入同一事务，并把实际读取版本贯穿到 Entity、文档段、Artifact 与 Skill。A 阶段的六项目标故障现在全部是普通通过的回归测试，没有保留 xfail。
 
-面向技术新手的阶段报告见 [Agent 改善任务分析报告：A 阶段](../../reports/agent-improvement-slice-a-2026-09-13.md)，包含分模块目录、原理、选择原因、重难点、异常稳定性和证据限制。整体验收报告仍须在 B–H 实施完成后更新。
+C 定向验证合计 298 项后端通过、0 项 xfail，3 个前端文件共 22 项通过；Ruff check/format、55 个后端源文件 mypy、16 条 import-linter 规则、前端 TypeScript 和定向 ESLint 均通过。只运行参与边界所需测试，未跑全仓、mutation、benchmark 或真实模型，未修改 feature 状态。
 
-经验：先在事务边界注入异常和第二连接保存新版，比只检查“有 version 字段/有 rollback”更能判断实际保证。未因历史 432-test 基线而重复全仓测试，未修改 feature 状态。
+面向技术新手的最新报告见 [C 阶段详细分析报告](../../reports/agent-improvement-slice-c-2026-09-14.md)，包含分模块目录、事务与 CAS 原理、选择原因、重难点、异常稳定性、数据库恢复文件与证据限制。[B 阶段报告](../../reports/agent-improvement-slice-b-2026-09-13.md) 和 [A 阶段报告](../../reports/agent-improvement-slice-a-2026-09-13.md) 保留为历史证据。
+
+经验：边界必须检查真实请求和逐次工具执行，不能只限制循环次数；原文在数据库里不等于已进入模型。并发安全必须在数据库条件更新处裁决，应用层先查询只能改善提示，不能防止竞态。数据升级必须以实际数据库 revision 为起点验证，不能只验证代码最新一跳。
 
 ## Recovery / restart point
 
-下一步从 B 开始，已有用户实施授权，无须再次索要许可。先读本计划 B、agent-system.md 的契约部分和 A 故障矩阵，再按需要定位模型/迁移、context/prompts/llm/tools 与对应测试。不要重复读取完整历史审阅或重跑 432-test 基线。
+本次按用户要求完成 C 并停在 D 边界，不自动推进。用户后续要求继续时，从 D 的聊天 run 持久化、SSE 查询/回放、取消与刷新恢复开始；先读本计划 D、`agent-system.md` 的运行恢复部分，再定位 chat/API/store 及最近测试。不要重复读取完整历史审阅或重跑 A–C 的历史全仓基线。
 
-A 新代码为 `backend/app/agent/contracts.py`，新测试为 `tests/unit/test_agent_contracts.py` 与 `tests/integration/test_agent_reliability_baseline.py`。B 先落实来源/视角持久策略与保守旧数据处理，再做所有请求预算和逐工具配额；逐项将已修复的 strict xfail 转为普通回归测试，同时补齐 B 专属验收场景。若新增表/列，仍需审查 additive 迁移并证明填充数据升级保持。
+C 已完成的验收与命令见 C 报告。实际数据库已升级到 `c184d5e6f7a8`，无待执行迁移操作，不要重复升级或自动 downgrade。升级前备份位于 `backend/data/backups/agent-c-20260914-122119-328323-before.db`，同前缀的 rehearsal 与 verification 文件记录副本演练、旧列哈希、行数及升级检查；恢复应另行评估升级后的新增数据，不直接覆盖现库。
 
-本轮未提交 Git，未迁移，未启动后台任务，无未完成数据操作。工作区保留 A 的新增文件与设计/计划/报告修改。当前上下文已包含大量基线取证，建议后续在新会话按本恢复点继续 B，整体计划不归档、不标为完成。
+A–C 修改均未提交 Git；未启动后台任务，未调用真实计费模型，C 未修改实际 `.env`。整体计划不归档、不标为完成。D–H 必须按后续用户请求逐阶段推进并更新报告。

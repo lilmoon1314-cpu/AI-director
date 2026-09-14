@@ -63,6 +63,9 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
         onErrorRetry={() => void loadMessages(conversationId, true)}
       />
       <UsageBar usage={usage} messages={messages ?? []} />
+      <p className="px-3 py-1 text-xs text-slate-500" data-testid="agent-context-scope">
+        各视角及角色分别保留对话上下文；记忆文档仅供作者视角使用。
+      </p>
       <PendingWritesCard
         items={pendingItems}
         approving={approving}

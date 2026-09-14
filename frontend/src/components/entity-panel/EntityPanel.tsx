@@ -142,6 +142,7 @@ export function EntityPanel() {
     setError(null);
     try {
       const updated = await api.updateEntity(entity.id, {
+        expected_version: entity.version,
         name: form.name.trim(),
         aliases: form.aliases
           .split(/[,，、]/)

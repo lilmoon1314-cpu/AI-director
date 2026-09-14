@@ -19,11 +19,33 @@ This specification owns the behavior visible to creators using project-scoped Ag
 
 - Every conversation belongs to one project and uses the selected author, character, or audience
   perspective.
+- Model context is partitioned within that conversation by perspective and viewpoint character.
+  Switching back resumes that partition's history and summary. Legacy unlabelled history and summaries
+  remain available to author only. The creator's conversation-management view retains all messages;
+  perspective selection is not a login or multi-user authorization system.
 - World-model context and entity-name resolution expose only information visible in that perspective.
   Content retrieved from project data is treated as data, not as instructions to the Agent.
 - Memory documents are project-scoped, split into editable sections, and rendered as escaped HTML.
+- Their titles, directories, sections, and related Agent tools are author-only until narrower document
+  permissions are explicitly supported. Graph tools still use the selected perspective.
 - A stale section update is rejected instead of overwriting a newer user edit.
+- Entity edits expose a version. The editor sends the version it displayed, and a stale save is
+  rejected with a conflict instead of overwriting a later edit.
 - Positioning and style are guide documents with at most one document of each kind per project.
+
+## Request and tool limits
+
+- Every model request is checked against the configured application budget, including tool contracts,
+  serialized message fields, protocol allowance, and reserved output. The current estimator uses UTF-8
+  bytes conservatively rather than claiming exact provider tokenization.
+- Recoverable directories may be omitted with an explicit paging instruction. Guidance, summaries,
+  and uncovered history are retained; if they do not fit, a visible error explains how to proceed.
+- A tool batch cannot exceed the remaining execution quota. Every unexecuted call receives a quota
+  result. Calls returned after tools are disabled cause a visible failure rather than extra execution.
+- Long tool results have continuation references limited to the current turn and scope. Directory
+  pages contain visible entries only. Reading a continuation also consumes a tool execution.
+- Model-call count, total turn duration, per-tool duration, and repeated identical failures are bounded.
+  SDK automatic retries are disabled; proposals are never silently retried as business writes.
 
 ## Proposed writes
 
@@ -35,8 +57,13 @@ This specification owns the behavior visible to creators using project-scoped Ag
 - Approval revalidates every selected item on the server, binds it to the conversation's project, and
   applies valid items through the owning domain service. One invalid item does not authorize or hide
   another item.
-- Section writes retain optimistic-concurrency protection through approval. Applied world-model and
-  document changes refresh their corresponding views.
+- The business effect and the pending operation's approved state commit in one database transaction.
+  A failed decision leaves both unchanged. Repeating the same approval returns the first saved result
+  and does not create the effect again; concurrent approve/reject requests allow only one decision.
+- Entity and section writes carry the version actually returned by a read tool. A write request without
+  that baseline is rejected and asks the Agent to reread. Artifact skill candidates retain their source
+  revision and are rejected when that source is no longer current.
+- Applied world-model and document changes refresh their corresponding views.
 
 ## Planned acceptance
 

@@ -17,6 +17,33 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "continue_tool_result",
+            "description": "续取本轮截断结果。",
+            "parameters": {
+                "type": "object",
+                "properties": {"continuation": {"type": "string"}},
+                "required": ["continuation"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_context_directory",
+            "description": "分页读取可见目录，按 next_offset 续页。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["graph", "documents"]},
+                    "offset": {"type": "integer", "minimum": 0},
+                },
+                "required": ["kind"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_entities",
             "description": "按名称或别名检索项目内当前视角可见的实体，返回完整详情。",
             "parameters": {

@@ -110,7 +110,12 @@ const server = setupServer(
         { status: 404 },
       );
     }
-    return HttpResponse.json({ ...found, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" });
+    return HttpResponse.json({
+      ...found,
+      version: 1,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    });
   }),
   http.post("*/api/entities", async ({ request }) => {
     createCalls += 1;
@@ -133,10 +138,15 @@ const server = setupServer(
   http.patch("*/api/entities/:id", async ({ request, params }) => {
     const found = entities.find((e) => e.id === params.id);
     if (!found) return HttpResponse.json({ problem: "实体不存在" }, { status: 404 });
-    const body = (await request.json()) as Partial<SeedEntity>;
+    const body = (await request.json()) as Partial<SeedEntity> & { expected_version?: number };
     lastPatchBody = body;
-    Object.assign(found, body);
-    return HttpResponse.json({ ...found, updated_at: "2026-01-02T00:00:00Z" });
+    const { expected_version, ...changes } = body;
+    Object.assign(found, changes);
+    return HttpResponse.json({
+      ...found,
+      version: (expected_version ?? 0) + 1,
+      updated_at: "2026-01-02T00:00:00Z",
+    });
   }),
   http.delete("*/api/entities/:id", ({ params }) => {
     deleteCalls += 1;
@@ -245,6 +255,7 @@ describe("Workbench 集成（I1–I8）", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
     const panel = await screen.findByTestId("entity-panel");
     await waitFor(() => expect(panel).toHaveTextContent("周兰然"));
+    expect(lastPatchBody).toMatchObject({ expected_version: 1, name: "周兰然" });
     await waitFor(() => expect(screen.getByTestId("graph-stats")).toHaveTextContent("6 节点 · 3 边"));
   });
 

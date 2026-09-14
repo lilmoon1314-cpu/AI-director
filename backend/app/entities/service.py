@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ReferentialError
+from app.core.exceptions import ConflictError, NotFoundError, ReferentialError
 from app.core.observability import checkpoint
 from app.entities import repository
 from app.entities.models import Entity, _utcnow
@@ -72,6 +72,7 @@ def _new_entity(schema: EntityCreate, project_id: str) -> Entity:
         description=schema.description,
         audience_known=schema.audience_known,
         properties=schema.properties,
+        version=1,
         created_at=now,
         updated_at=now,
     )
@@ -88,7 +89,7 @@ def _resolve_project_id(schema: EntityCreate) -> str:
 
 
 @checkpoint
-async def create(session: AsyncSession, schema: EntityCreate) -> EntityRead:
+async def create(session: AsyncSession, schema: EntityCreate, *, commit: bool = True) -> EntityRead:
     """创建实体（校验 properties 类型与项目归属后入库）。
 
     作用: 实体创建的业务入口；id 由系统生成，project_id 缺省归属默认项目；
@@ -103,7 +104,8 @@ async def create(session: AsyncSession, schema: EntityCreate) -> EntityRead:
     await projects_service.ensure_exists(session, project_id)
     entity = await repository.add(session, _new_entity(schema, project_id))
     await projects_service.touch(session, project_id, entity_delta=1)
-    await session.commit()
+    if commit:
+        await session.commit()
     return EntityRead.model_validate(entity)
 
 
@@ -124,7 +126,9 @@ async def get(session: AsyncSession, entity_id: str) -> EntityRead:
 
 
 @checkpoint
-async def update(session: AsyncSession, entity_id: str, schema: EntityUpdate) -> EntityRead:
+async def update(
+    session: AsyncSession, entity_id: str, schema: EntityUpdate, *, commit: bool = True
+) -> EntityRead:
     """局部更新实体（仅更新显式提供的字段；id 不可变由请求模型保证）。
 
     作用:
@@ -139,23 +143,49 @@ async def update(session: AsyncSession, entity_id: str, schema: EntityUpdate) ->
     if entity is None:
         raise _not_found(entity_id)
 
+    values: dict[str, object] = {}
     if schema.name is not None:
-        entity.name = schema.name
+        values["name"] = schema.name
     if schema.aliases is not None:
-        entity.aliases = list(schema.aliases)
+        values["aliases"] = list(schema.aliases)
     if schema.description is not None:
-        entity.description = schema.description
+        values["description"] = schema.description
     if schema.audience_known is not None:
-        entity.audience_known = schema.audience_known
+        values["audience_known"] = schema.audience_known
     if schema.properties is not None:
         merged: dict[str, Any] = {**entity.properties, **schema.properties}
         validate_properties(entity.type, merged)
-        entity.properties = merged  # 整体替换，保证 JSON 列变更可被检测
+        values["properties"] = merged
 
-    entity = await repository.save(session, entity)
+    if schema.expected_version is not None:
+        changed = await repository.update_if_version(
+            session, entity_id, schema.expected_version, values
+        )
+        if not changed:
+            current = await repository.get_by_id(session, entity_id)
+            raise ConflictError(
+                problem="实体已被他人修改（版本冲突）",
+                cause=(
+                    f"实体当前版本为 v{getattr(current, 'version', '?')}，"
+                    f"请求基于 v{schema.expected_version}"
+                ),
+                fix="重新读取实体最新内容后再生成更新申请",
+                detail={"entity_id": entity_id, "expected_version": schema.expected_version},
+            )
+        for key, value in values.items():
+            setattr(entity, key, value)
+        entity.version = schema.expected_version + 1
+    else:
+        for key, value in values.items():
+            setattr(entity, key, value)
+        entity.version += 1
+        entity = await repository.save(session, entity)
     # 项目「最近活跃」随实体编辑刷新（计数不变，touch 不自行 commit，随本事务提交）
     await projects_service.touch(session, entity.project_id)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return EntityRead.model_validate(entity)
 
 

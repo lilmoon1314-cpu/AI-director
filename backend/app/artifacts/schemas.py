@@ -72,6 +72,7 @@ class BlockEdit(BaseModel):
 
     content: str = Field(max_length=100_000)
     semantic: dict[str, object] | None = None
+    expected_revision_id: str | None = Field(default=None, min_length=1)
 
 
 class RevisionDiffEntry(BaseModel):

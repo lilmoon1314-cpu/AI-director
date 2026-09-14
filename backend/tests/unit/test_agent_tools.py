@@ -362,10 +362,13 @@ async def test_update_entity_target_validation(
 
     monkeypatch.setattr(entities_service, "get", fake_get)
     monkeypatch.setattr(perspectives_service, "filter_entities_for_agent", fake_filter)
+    ctx = _wctx()
+    if expect_registered:
+        ctx.read_versions[("entity", "ent-1")] = 2
     text = await execute_tool(
         "update_entity",
         json.dumps({"entity_id": "ent-1", "description": "新简介"}, ensure_ascii=False),
-        _wctx(),
+        ctx,
     )
     assert label
     if expect_registered:
@@ -539,10 +542,13 @@ async def test_update_entity_perspective_guard(
 
     monkeypatch.setattr(entities_service, "get", fake_get)
     monkeypatch.setattr(perspectives_service, "filter_entities_for_agent", fake_filter)
+    ctx = _wctx()
+    if expect_ok:
+        ctx.read_versions[("entity", "ent-1")] = 2
     text = await execute_tool(
         "update_entity",
         json.dumps({"entity_id": "ent-1", "description": "x"}, ensure_ascii=False),
-        _wctx(),
+        ctx,
     )
     if expect_ok:
         assert "已登记" in text
@@ -609,10 +615,13 @@ async def test_write_doc_section_validation(
     write_world["docs"]["mdoc-2"] = SimpleNamespace(
         id="mdoc-2", project_id="proj-OTHER", kind="style", title="别家的文档", version=1
     )
+    ctx = _wctx()
+    if expect_ok:
+        ctx.read_versions[("section", "msec-2")] = 3
     text = await execute_tool(
         "write_doc_section",
         json.dumps({"doc_id": doc_id, "seq": seq, "content": "新内容"}, ensure_ascii=False),
-        _wctx(),
+        ctx,
     )
     assert label
     if expect_ok:
@@ -650,7 +659,7 @@ async def test_pending_limit_boundary(
     assert len(write_world["pendings"]) == 2, "超限不得登记"
 
 
-def test_tool_specs_cover_nine_tools() -> None:
+def test_tool_specs_cover_read_write_and_pagination_tools() -> None:
     """F14-U9: 四检索 + 五写入工具名稳定（prompt 契约回归）。"""
     names = {spec["function"]["name"] for spec in tools.TOOL_SPECS}
     assert names == {
@@ -663,4 +672,6 @@ def test_tool_specs_cover_nine_tools() -> None:
         "create_relation",
         "create_memory_doc",
         "write_doc_section",
+        "list_context_directory",
+        "continue_tool_result",
     }, f"工具集必须为九件: {names}"

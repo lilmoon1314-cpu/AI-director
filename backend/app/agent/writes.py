@@ -200,6 +200,7 @@ async def _apply_pending_write(
                 properties=dict(payload.get("properties", {})),
                 project_id=project_id,
             ),
+            commit=False,
         )
         return ApproveResultItem(id=row.id, kind=row.kind, target_id=entity.id, name=entity.name)
     if row.kind == "update_entity":
@@ -225,8 +226,21 @@ async def _apply_pending_write(
                 patch[key] = payload[key]
         if "properties_patch" in payload:
             patch["properties"] = payload["properties_patch"]
+        baseline = json.loads(row.baseline_json or "{}")
+        expected_version = baseline.get("expected_version")
+        if baseline.get("entity_id") != entity_id or not isinstance(expected_version, int):
+            raise ValidationError(
+                problem="实体更新缺少真实读取版本",
+                cause="登记行没有与目标实体匹配的 expected_version",
+                fix="放弃该项，让 agent 先重新读取实体再生成更新申请",
+                detail={"entity_id": entity_id},
+            )
+        patch["expected_version"] = expected_version
         updated = await entities_service.update(
-            db_session, entity_id, entities_service.EntityUpdate(**patch)
+            db_session,
+            entity_id,
+            entities_service.EntityUpdate(**patch),
+            commit=False,
         )
         return ApproveResultItem(id=row.id, kind=row.kind, target_id=updated.id, name=updated.name)
     if row.kind == "create_relation":
@@ -244,6 +258,7 @@ async def _apply_pending_write(
                     if key in payload
                 },
             ),
+            commit=False,
         )
         return ApproveResultItem(
             id=row.id,
@@ -257,6 +272,7 @@ async def _apply_pending_write(
             project_id=project_id,
             kind=str(payload.get("kind", "")),
             title=payload.get("title"),
+            commit=False,
         )
         return ApproveResultItem(
             id=row.id,
@@ -292,6 +308,7 @@ async def _apply_pending_write(
             title=payload.get("title"),
         ),
         updated_by="agent",
+        commit=False,
     )
     return ApproveResultItem(
         id=row.id,
@@ -306,6 +323,7 @@ async def approve_pending_writes(
     db_session: AsyncSession, schema: PendingWriteActionRequest
 ) -> ApproveResponse:
     conversation = await conversations.load_conversation(db_session, schema.conversation_id)
+    project_id = conversation.project_id
     created: list[ApproveResultItem] = []
     failed: list[ApproveFailedItem] = []
     for pending_id in schema.ids:
@@ -318,6 +336,9 @@ async def approve_pending_writes(
                 )
             )
             continue
+        if row.status == "approved" and row.result_json:
+            created.append(ApproveResultItem.model_validate_json(row.result_json))
+            continue
         if row.status != "pending":
             failed.append(
                 ApproveFailedItem(
@@ -327,13 +348,31 @@ async def approve_pending_writes(
             )
             continue
         try:
-            result = await _apply_pending_write(db_session, row, conversation.project_id)
+            if not await repository.claim_pending(db_session, row.id):
+                await db_session.rollback()
+                current = await repository.get_pending(db_session, pending_id)
+                if current is not None and current.status == "approved" and current.result_json:
+                    created.append(ApproveResultItem.model_validate_json(current.result_json))
+                else:
+                    failed.append(
+                        ApproveFailedItem(
+                            id=pending_id,
+                            reason="该登记已被另一项批准或拒绝请求处理，请刷新确认卡",
+                        )
+                    )
+                continue
+            row.status = "approving"
+            result = await _apply_pending_write(db_session, row, project_id)
             row.status = "approved"
+            row.result_json = result.model_dump_json()
             await repository.save_pending(db_session, row)
             await db_session.commit()
             created.append(result)
         except Exception as exc:  # noqa: BLE001 - contract is per-item failure
             await db_session.rollback()
+            # rollback restores the persisted state; keep in-memory/test doubles aligned too.
+            row.status = "pending"
+            row.result_json = None
             failed.append(ApproveFailedItem(id=pending_id, reason=_format_failure(exc)))
     return ApproveResponse(created=created, failed=failed)
 
@@ -357,11 +396,17 @@ async def reject_pending_writes(
         row = await repository.get_pending(db_session, pending_id)
         if row is None or row.conversation_id != conversation.id:
             raise _pending_not_found(pending_id)
-        if row.status == "pending":
-            row.status = "rejected"
-            await repository.save_pending(db_session, row)
+        if row.status == "rejected":
             rejected.append(pending_id)
-    await db_session.commit()
+            continue
+        if row.status == "pending" and await repository.reject_pending_if_pending(
+            db_session, pending_id
+        ):
+            row.status = "rejected"
+            await db_session.commit()
+            rejected.append(pending_id)
+        else:
+            await db_session.rollback()
     return RejectResponse(rejected=rejected)
 
 

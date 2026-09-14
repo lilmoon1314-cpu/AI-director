@@ -1,7 +1,7 @@
 """Data access for Artifact Core; transaction ownership stays in service."""
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.artifacts.models import (
@@ -20,6 +20,23 @@ async def add(session: AsyncSession, row: object) -> None:
 
 async def flush(session: AsyncSession) -> None:
     await session.flush()
+
+
+async def advance_revision_if_current(
+    session: AsyncSession,
+    artifact_id: str,
+    expected_no: int,
+    next_no: int,
+    updated_at: object,
+) -> bool:
+    """原子推进 current revision，防止两个编辑都从同一版本成功。"""
+    result = await session.execute(
+        update(Artifact)
+        .where(Artifact.id == artifact_id, Artifact.current_revision_no == expected_no)
+        .values(current_revision_no=next_no, updated_at=updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
 
 
 async def get_artifact(session: AsyncSession, artifact_id: str) -> Artifact | None:

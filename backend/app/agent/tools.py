@@ -15,6 +15,8 @@
 """
 
 import json
+import secrets
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,11 +29,41 @@ from app.agent.models import PendingWrite
 from app.agent.prompts import render_entity_details
 from app.agent.schemas import Perspective, generate_pending_write_id
 from app.agent.templates import DOC_TEMPLATES, GUIDE_KINDS
-from app.agent.tool_specs import TOOL_SPECS  # noqa: F401  （再导出：service/tests 经 tools 引用）
+from app.agent.tool_specs import TOOL_SPECS
 from app.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.entities import service as entities_service
 from app.perspectives import service as perspectives_service
+
+
+def specs_for(perspective: Perspective) -> list[dict[str, Any]]:
+    """Keep schemas intact; omit redundant field prose to save conservative input budget."""
+    specs = deepcopy(TOOL_SPECS)
+    if perspective != "author":
+        specs = [
+            spec
+            for spec in specs
+            if spec["function"]["name"]
+            not in {
+                "read_doc_section",
+                "write_doc_section",
+                "create_memory_doc",
+            }
+        ]
+
+    def compact(value: Any) -> None:
+        if isinstance(value, dict):
+            value.pop("description", None)
+            for child in value.values():
+                compact(child)
+        elif isinstance(value, list):
+            for child in value:
+                compact(child)
+
+    for spec in specs:
+        compact(spec["function"]["parameters"])
+    return specs
+
 
 # 工具声明（TOOL_SPECS）已抽至 tool_specs.py——纯契约数据模块，
 # 变异测试缩域时排除该文件（docs/testing.md §9 等价豁免的源头化）。
@@ -55,6 +87,87 @@ class ToolContext:
     character_id: str = ""
     conversation_id: str = ""
     pending_writes: list[PendingWrite] = field(default_factory=list)
+    continuations: dict[str, str] = field(default_factory=dict)
+    # 仅记录本轮实际返回给模型的版本；写工具不得以登记瞬间的新版替代它。
+    read_versions: dict[tuple[str, str], int] = field(default_factory=dict)
+
+
+def page_result(result: str, ctx: ToolContext, max_chars: int) -> str:
+    """Per-turn, per-scope snapshots: continuation tokens never work in another turn."""
+    from app.agent.contracts import ToolResult
+    from app.agent.scope import make_scope
+
+    continuation = None
+    if len(result) > max_chars:
+        continuation = secrets.token_urlsafe(18)
+        ctx.continuations[continuation] = result[max_chars:]
+    failed = result.startswith("工具执行失败")
+    payload = ToolResult(
+        ok=not failed,
+        content=result[:max_chars],
+        error_code="TOOL_REJECTED" if failed else None,
+        truncated=continuation is not None,
+        continuation=continuation,
+    )
+    return json.dumps(
+        {
+            "scope": make_scope(ctx.project_id, ctx.perspective, ctx.character_id).model_dump(),
+            "result": payload.model_dump(),
+        },
+        ensure_ascii=False,
+    )
+
+
+async def _tool_continue_result(ctx: ToolContext, args: dict[str, Any]) -> str:
+    result = ctx.continuations.get(str(args.get("continuation", "")))
+    if result is None:
+        return _error_result("续取引用无效", "仅本轮当前视角的引用可用", "重新执行原读取工具")
+    return result
+
+
+async def _tool_list_directory(ctx: ToolContext, args: dict[str, Any]) -> str:
+    offset = args.get("offset", 0)
+    if type(offset) is not int or offset < 0:
+        return _error_result("目录页码无效", "offset 必须是非负整数", "从 offset=0 开始")
+    kind = args.get("kind", "graph")
+    size = get_settings().agent_directory_page_size
+    entries: list[dict[str, Any]]
+    if kind == "graph":
+        graph = await perspectives_service.get_graph(
+            ctx.session,
+            perspective=ctx.perspective,
+            character_id=ctx.character_id or None,
+            project_id=ctx.project_id,
+        )
+        entries = [
+            {"id": node.id, "name": node.name, "type": node.type}
+            for node in sorted(graph.nodes, key=lambda node: node.id)
+        ]
+    elif kind == "documents" and ctx.perspective == "author":
+        docs = await repository.list_docs(ctx.session, ctx.project_id)
+        entries = []
+        for doc in sorted(docs, key=lambda doc: doc.id)[offset : offset + size]:
+            sections = await repository.list_sections(ctx.session, doc.id)
+            entries.append(
+                {
+                    "id": doc.id,
+                    "title": doc.title,
+                    "sections": [{"seq": sec.seq, "title": sec.title} for sec in sections],
+                }
+            )
+        return json.dumps(
+            {"items": entries, "next_offset": offset + size if offset + size < len(docs) else None},
+            ensure_ascii=False,
+        )
+    else:
+        return _error_result("目录不可读取", "目录类型无效或当前视角未获授权", "使用可见图谱目录")
+    return json.dumps(
+        {
+            "items": entries[offset : offset + size],
+            "next_offset": offset + size if offset + size < len(entries) else None,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _error_result(problem: str, cause: str, fix: str) -> str:
@@ -76,6 +189,8 @@ async def _tool_search_entities(ctx: ToolContext, args: dict[str, Any]) -> str:
         project_id=ctx.project_id,
         entity_ids=[b.id for b in briefs],
     )
+    for entity in visible:
+        ctx.read_versions[("entity", entity.id)] = getattr(entity, "version", 1)
     return render_entity_details(visible)
 
 
@@ -89,6 +204,8 @@ async def _tool_get_entity_detail(ctx: ToolContext, args: dict[str, Any]) -> str
         project_id=ctx.project_id,
         entity_ids=[entity_id],
     )
+    for entity in visible:
+        ctx.read_versions[("entity", entity.id)] = getattr(entity, "version", 1)
     return render_entity_details(visible)
 
 
@@ -140,7 +257,11 @@ async def _tool_read_doc_section(ctx: ToolContext, args: dict[str, Any]) -> str:
     sections = await repository.list_sections(ctx.session, doc_id)
     for sec in sections:
         if sec.seq == seq:
-            return f"《{doc.title}》第 {sec.seq} 段「{sec.title}」：\n\n{sec.content}"
+            ctx.read_versions[("section", sec.id)] = sec.version
+            return (
+                f"《{doc.title}》第 {sec.seq} 段「{sec.title}」"
+                f"（section_id={sec.id}, version={sec.version}）：\n\n{sec.content}"
+            )
     return _error_result(
         problem=f"文档 {doc_id} 不存在第 {seq} 段",
         cause=f"该文档共 {len(sections)} 段，段号越界",
@@ -339,7 +460,7 @@ async def _tool_update_entity(ctx: ToolContext, args: dict[str, Any]) -> str:
         entity_ids=[entity.id],
     )
     if not visible:
-        return _entity_not_visible_error(entity.name)
+        return _entity_not_visible_error(parsed.entity_id)
     patch = parsed.model_dump(exclude={"entity_id"}, exclude_unset=True)
     if not patch:
         return _error_result(
@@ -348,8 +469,21 @@ async def _tool_update_entity(ctx: ToolContext, args: dict[str, Any]) -> str:
             fix="补充要修改的字段后重试",
         )
     payload = {"entity_id": parsed.entity_id, "entity_name": entity.name, **patch}
+    read_version = ctx.read_versions.get(("entity", entity.id))
+    if read_version is None:
+        return _error_result(
+            problem="缺少该实体的读取版本",
+            cause="本轮模型尚未通过实体读取工具取得目标实体的版本",
+            fix="先调用 get_entity_detail 或 search_entities，再基于返回内容重新申请更新",
+        )
     summary = f"更新实体「{entity.name}」（{'、'.join(sorted(patch))}）"
-    limit_error = await _register_pending(ctx, "update_entity", payload, summary)
+    limit_error = await _register_pending(
+        ctx,
+        "update_entity",
+        payload,
+        summary,
+        baseline={"entity_id": entity.id, "expected_version": read_version},
+    )
     return limit_error if limit_error is not None else _registered_result(summary)
 
 
@@ -451,7 +585,14 @@ async def _tool_write_doc_section(ctx: ToolContext, args: dict[str, Any]) -> str
     }
     if parsed.title is not None:
         payload["title"] = parsed.title
-    baseline = {"section_id": section.id, "expected_version": section.version}
+    read_version = ctx.read_versions.get(("section", section.id))
+    if read_version is None:
+        return _error_result(
+            problem="缺少该文档段的读取版本",
+            cause="本轮模型尚未通过 read_doc_section 读取目标段，无法证明草案基于哪一版",
+            fix="先读取同一 doc_id/seq，再基于返回内容重新生成写入申请",
+        )
+    baseline = {"section_id": section.id, "expected_version": read_version}
     summary = f"写入《{doc.title}》第 {parsed.seq} 段「{section.title}」"
     limit_error = await _register_pending(
         ctx, "write_doc_section", payload, summary, baseline=baseline
@@ -460,6 +601,8 @@ async def _tool_write_doc_section(ctx: ToolContext, args: dict[str, Any]) -> str
 
 
 _TOOL_IMPLS = {
+    "continue_tool_result": _tool_continue_result,
+    "list_context_directory": _tool_list_directory,
     "search_entities": _tool_search_entities,
     "get_entity_detail": _tool_get_entity_detail,
     "get_neighborhood": _tool_get_neighborhood,
@@ -483,6 +626,12 @@ async def execute_tool(name: str, arguments: str, ctx: ToolContext) -> str:
     异常: 无（全部失败模式折叠为文本）。
     依赖: _TOOL_IMPLS。
     """
+    if ctx.perspective != "author" and name in {
+        "read_doc_section",
+        "write_doc_section",
+        "create_memory_doc",
+    }:
+        return _error_result("记忆文档仅作者视角可用", "文档未声明窄视角权限", "切换作者视角")
     impl = _TOOL_IMPLS.get(name)
     if impl is None:
         return _error_result(

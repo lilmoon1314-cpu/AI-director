@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,20 +43,28 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     # 轻量模型：摘要等辅助任务路由（成本分级，F10）
     llm_model_light: str = "gpt-4o-mini"
-    llm_timeout_seconds: int = 60
+    llm_timeout_seconds: int = Field(default=60, gt=0)
 
     # --- Agent（F10 对话底座）---
-    # 单轮对话上下文硬预算（近似 tokens；超限按裁剪顺序降级，见 agent/prompts.py）
-    agent_context_max_tokens: int = 8000
+    # 请求预算含协议和输出预留；强制上下文无法容纳时明确拒绝发送。
+    agent_context_max_tokens: int = Field(default=8000, gt=0)
+    # UTF-8 byte fallback is deliberately conservative, not provider-exact tokenization.
+    agent_output_reserve_tokens: int = Field(default=1024, gt=0)
+    agent_protocol_reserve_tokens: int = Field(default=128, ge=0)
+    agent_max_model_calls_per_turn: int = Field(default=8, gt=0)
+    agent_turn_timeout_seconds: float = Field(default=180, gt=0)
+    agent_tool_timeout_seconds: float = Field(default=15, gt=0)
+    agent_max_repeated_tool_failures: int = Field(default=2, gt=0)
+    agent_directory_page_size: int = Field(default=12, gt=0, le=100)
     # 近期消息全量注入窗口（条）；超窗最旧消息压缩进会话摘要
-    agent_history_window_messages: int = 20
+    agent_history_window_messages: int = Field(default=20, gt=0)
     # 受控 ReAct：每条用户消息允许的工具调用配额
-    agent_max_tool_calls_per_turn: int = 4
+    agent_max_tool_calls_per_turn: int = Field(default=4, ge=0)
     # 单轮对话允许登记的待写入（pending write）数量上限；超限后写入工具返回
     # 错误文本（模型可收敛），已登记项不受影响（F14 轮末统一确认）
     agent_max_pending_writes: int = 8
     # 单次工具输出注入上下文的截断上限（字符）
-    agent_tool_output_max_chars: int = 2000
+    agent_tool_output_max_chars: int = Field(default=2000, gt=0)
     # 内容合规 hook 开关（MVP 本地敏感词表实现，预留外部审核 API 位）
     agent_content_review_enabled: bool = False
     # 敏感词表（逗号分隔；仅在 agent_content_review_enabled=true 时生效）

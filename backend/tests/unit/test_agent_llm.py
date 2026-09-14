@@ -13,6 +13,7 @@ import openai
 import pytest
 
 from app.agent import llm
+from app.config import Settings
 from app.core.exceptions import AgentError, ValidationError
 
 pytestmark = pytest.mark.unit
@@ -26,6 +27,11 @@ class _SettingsStub:
     llm_model = "model-main"
     llm_model_light = "model-light"
     llm_timeout_seconds = 5
+
+    def __getattr__(self, name: str) -> Any:
+        if name in Settings.model_fields:
+            return Settings.model_fields[name].default
+        raise AttributeError(name)
 
 
 class FakeCompletions:

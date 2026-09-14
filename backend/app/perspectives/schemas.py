@@ -63,6 +63,7 @@ class EntityContext(BaseModel):
     """
 
     id: str
+    version: int
     type: str = Field(description="实体类型（character/faction/location/item/skill/event/concept）")
     name: str
     aliases: list[str]

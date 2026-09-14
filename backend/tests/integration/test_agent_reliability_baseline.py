@@ -70,9 +70,6 @@ def chat(client, conversation, text="继续", perspective="author"):
     return response.text
 
 
-@pytest.mark.xfail(
-    strict=True, raises=UnmetAcceptance, reason="B: unscoped history leaks to audience"
-)
 def test_author_history_does_not_enter_audience_prompt(client, monkeypatch):
     _, conversation = seed(client)
     capture = Capture([AssistantTurn(content="秘密口令-鹤鸣九号"), AssistantTurn(content="继续")])
@@ -85,7 +82,6 @@ def test_author_history_does_not_enter_audience_prompt(client, monkeypatch):
     )
 
 
-@pytest.mark.xfail(strict=True, raises=UnmetAcceptance, reason="B: oversized mandatory input sent")
 def test_oversized_chinese_input_never_calls_provider(client, monkeypatch):
     _, conversation = seed(client)
     monkeypatch.setattr(get_settings(), "agent_context_max_tokens", 100)
@@ -95,7 +91,6 @@ def test_oversized_chinese_input_never_calls_provider(client, monkeypatch):
     require_acceptance(len(capture.prompts) == 0, "oversized request called provider once")
 
 
-@pytest.mark.xfail(strict=True, raises=UnmetAcceptance, reason="B: quota only checked before batch")
 def test_batch_executes_only_allowed_tool_count(client, monkeypatch):
     _, conversation = seed(client)
     monkeypatch.setattr(get_settings(), "agent_max_tool_calls_per_turn", 1)
@@ -130,9 +125,6 @@ def test_batch_executes_only_allowed_tool_count(client, monkeypatch):
     require_acceptance(len(executed) == 1, f"executed {len(executed)} tools with quota 1")
 
 
-@pytest.mark.xfail(
-    strict=True, raises=UnmetAcceptance, reason="E: summary failure hides uncovered input"
-)
 def test_failed_summary_does_not_silently_hide_uncovered_requirement(client, monkeypatch):
     _, conversation = seed(client)
     monkeypatch.setattr(get_settings(), "agent_history_window_messages", 2)
@@ -149,9 +141,6 @@ def test_failed_summary_does_not_silently_hide_uncovered_requirement(client, mon
     )
 
 
-@pytest.mark.xfail(
-    strict=True, raises=UnmetAcceptance, reason="C: effect commits before approval state"
-)
 def test_failed_approval_persistence_does_not_leave_business_effect(client, monkeypatch):
     project, conversation = seed(client)
     call = ToolCall(
@@ -198,12 +187,9 @@ def test_failed_approval_persistence_does_not_leave_business_effect(client, monk
     require_acceptance("原子批准标记" not in response.text, "failed approval left entity committed")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=UnmetAcceptance,
-    reason="C: registration captures current version instead of read version",
-)
 def test_user_edit_between_read_and_registration_cannot_be_overwritten(client, monkeypatch):
+    # Isolate the C-stage concurrency defect from B request-admission behavior.
+    monkeypatch.setattr(get_settings(), "agent_context_max_tokens", 100000)
     project, conversation = seed(client)
     response = client.post("/api/agent/memory-docs", params={"project_id": project})
     assert response.status_code == 201

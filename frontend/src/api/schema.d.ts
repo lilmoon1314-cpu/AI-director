@@ -1571,6 +1571,8 @@ export interface components {
             semantic?: {
                 [key: string]: unknown;
             } | null;
+            /** Expected Revision Id */
+            expected_revision_id?: string | null;
         };
         /** Body_upload_image_api_assets_images_post */
         Body_upload_image_api_assets_images_post: {
@@ -1612,6 +1614,8 @@ export interface components {
             status: string;
             /** Committed Ref */
             committed_ref: string | null;
+            /** Base Revision Id */
+            base_revision_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1944,6 +1948,8 @@ export interface components {
             id: string;
             /** Project Id */
             project_id: string;
+            /** Version */
+            version: number;
             /**
              * Created At
              * Format: date-time
@@ -1977,6 +1983,8 @@ export interface components {
             properties?: {
                 [key: string]: unknown;
             } | null;
+            /** Expected Version */
+            expected_version?: number | null;
         };
         /** EpisodeCreate */
         EpisodeCreate: {

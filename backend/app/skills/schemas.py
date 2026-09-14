@@ -48,5 +48,6 @@ class CandidateRead(BaseModel):
     impact: dict[str, object]
     status: str
     committed_ref: str | None
+    base_revision_id: str | None
     created_at: datetime
     decided_at: datetime | None

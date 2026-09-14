@@ -93,6 +93,27 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
         store.sections[section.id] = section
         return section
 
+    async def fake_update_section_if_version(
+        _s: Any,
+        *,
+        doc_id: str,
+        section_id: str,
+        expected_version: int,
+        content: str,
+        title: str | None,
+        updated_by: str,
+        updated_at: Any,
+    ) -> bool:
+        section = store.sections.get(section_id)
+        if section is None or section.doc_id != doc_id or section.version != expected_version:
+            return False
+        section.content = content
+        section.title = section.title if title is None else title
+        section.version += 1
+        section.updated_by = updated_by
+        section.updated_at = updated_at
+        return True
+
     async def fake_find_doc_by_kind(_s: Any, project_id: str, kind: str) -> Any:
         return next(
             (d for d in store.docs.values() if d.project_id == project_id and d.kind == kind),
@@ -109,6 +130,7 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(repository, "get_section", fake_get_section)
     monkeypatch.setattr(repository, "list_sections", fake_list_sections)
     monkeypatch.setattr(repository, "save_section", fake_save_section)
+    monkeypatch.setattr(repository, "update_section_if_version", fake_update_section_if_version)
     monkeypatch.setattr(repository, "find_doc_by_kind", fake_find_doc_by_kind)
     monkeypatch.setattr(projects_service, "ensure_exists", fake_ensure_exists)
 
@@ -125,6 +147,9 @@ class CommitStub:
 
     async def rollback(self) -> None:
         """空操作。"""
+        return None
+
+    async def flush(self) -> None:
         return None
 
 

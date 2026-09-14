@@ -26,6 +26,8 @@ class SkillCandidate(Base):
     candidate_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     impact_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     commit_action: Mapped[str] = mapped_column(String, nullable=False)
+    # 候选生成时实际读取的 Artifact revision；接受时必须仍为 current。
+    base_revision_id: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     committed_ref: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)

@@ -4,10 +4,35 @@
 """
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.models import Conversation, MemoryDoc, MemoryDocSection, Message, PendingWrite
+from app.agent.models import (
+    Conversation,
+    ConversationPartition,
+    MemoryDoc,
+    MemoryDocSection,
+    Message,
+    PendingWrite,
+)
+
+
+async def summary_partition(
+    session: AsyncSession,
+    conversation: Conversation,
+    key: str,
+    *,
+    create: bool = False,
+) -> Conversation | ConversationPartition | None:
+    if key == "author":
+        return conversation
+    row = await session.get(ConversationPartition, (conversation.id, key))
+    if row is None and create:
+        row = ConversationPartition(conversation_id=conversation.id, context_key=key, summary="")
+        session.add(row)
+        await session.flush()
+    return row
+
 
 # ---- 会话 ----
 
@@ -196,6 +221,47 @@ async def save_section(session: AsyncSession, section: MemoryDocSection) -> Memo
     return section
 
 
+async def update_section_if_version(
+    session: AsyncSession,
+    *,
+    doc_id: str,
+    section_id: str,
+    expected_version: int,
+    content: str,
+    title: str | None,
+    updated_by: str,
+    updated_at: object,
+) -> bool:
+    """原子更新段版本，并在同一事务内推进父文档版本。"""
+    values: dict[str, object] = {
+        "content": content,
+        "version": expected_version + 1,
+        "updated_by": updated_by,
+        "updated_at": updated_at,
+    }
+    if title is not None:
+        values["title"] = title
+    result = await session.execute(
+        update(MemoryDocSection)
+        .where(
+            MemoryDocSection.id == section_id,
+            MemoryDocSection.doc_id == doc_id,
+            MemoryDocSection.version == expected_version,
+        )
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if getattr(result, "rowcount", 0) != 1:
+        return False
+    await session.execute(
+        update(MemoryDoc)
+        .where(MemoryDoc.id == doc_id)
+        .values(version=MemoryDoc.version + 1, updated_at=updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    return True
+
+
 # ---- 待写入登记（F14 轮末统一确认）----
 
 
@@ -243,6 +309,28 @@ async def save_pending(session: AsyncSession, pending: PendingWrite) -> PendingW
     """
     await session.flush()
     return pending
+
+
+async def claim_pending(session: AsyncSession, pending_id: str) -> bool:
+    """用数据库条件更新取得决定权；approving 只存在于当前未提交事务。"""
+    result = await session.execute(
+        update(PendingWrite)
+        .where(PendingWrite.id == pending_id, PendingWrite.status == "pending")
+        .values(status="approving")
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
+
+
+async def reject_pending_if_pending(session: AsyncSession, pending_id: str) -> bool:
+    """只有 pending 可原子转为 rejected，供 approve/reject 并发竞争。"""
+    result = await session.execute(
+        update(PendingWrite)
+        .where(PendingWrite.id == pending_id, PendingWrite.status == "pending")
+        .values(status="rejected")
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
 
 
 # ---- 项目级联 ----

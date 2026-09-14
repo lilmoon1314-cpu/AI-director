@@ -33,7 +33,7 @@ def test_populated_r5_upgrade_preserves_production_data(tmp_path: Path) -> None:
             "INSERT INTO projects VALUES (?,?,?,?,?,?,?)", ("p", "P", "", 0, 0, stamp, stamp)
         )
         connection.commit()
-    _upgrade(path, "head")
+    _upgrade(path, R6_HEAD)
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT name FROM projects WHERE id='p'").fetchone() == ("P",)
         assert "skill_candidates" in {
@@ -47,7 +47,7 @@ def test_populated_r5_upgrade_preserves_production_data(tmp_path: Path) -> None:
 
 def test_fresh_database_reaches_r6_head(tmp_path: Path) -> None:
     path = tmp_path / "fresh-r6.db"
-    _upgrade(path, "head")
+    _upgrade(path, R6_HEAD)
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
             R6_HEAD,

@@ -1,6 +1,9 @@
 """R6 Atomic Skills validation, audit, and confirmed-write acceptance."""
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.skills import repository as skills_repository
 
 
 def _scope(client: TestClient, name: str = "Skills") -> tuple[str, str, str]:
@@ -154,6 +157,7 @@ def test_dialogue_candidate_reject_accept_and_validators(client: TestClient) -> 
     )
     assert pending.status_code == 201, pending.text
     assert pending.json()["status"] == "pending"
+    assert pending.json()["base_revision_id"] == artifact["current_revision"]["id"]
     assert pending.json()["impact"]["requires_confirmation"] is True
     assert (
         client.get(f"/api/artifacts/{artifact_id}").json()["current_revision"]["blocks"][0][
@@ -185,6 +189,71 @@ def test_dialogue_candidate_reject_accept_and_validators(client: TestClient) -> 
     revised = client.get(f"/api/artifacts/{artifact_id}").json()
     assert revised["current_revision"]["revision_no"] == 2
     assert revised["current_revision"]["blocks"][0]["content"] == "Natural"
+    repeated = client.post(
+        f"/api/skills/candidates/{accepted_candidate['id']}/accept",
+        json={"project_id": project_id},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["committed_ref"] == accepted.json()["committed_ref"]
+    repeated_artifact = client.get(f"/api/artifacts/{artifact_id}").json()
+    assert repeated_artifact["current_revision"]["revision_no"] == 2
+
+
+def test_candidate_effect_rolls_back_with_decision_and_stale_base_is_rejected(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_id, episode_id, scene_id = _scope(client, "Candidate CAS")
+    _, artifact = _screenplay(client, project_id, episode_id, scene_id)
+    artifact_id = str(artifact["id"])
+    block_id = artifact["current_revision"]["blocks"][0]["id"]
+
+    atomic_candidate = client.post(
+        "/api/skills/dialogue.humanize/execute",
+        json=_dialogue_payload(project_id, block_id, artifact_id, "Atomic"),
+    ).json()
+    original_save = skills_repository.save
+
+    async def fail_save(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected candidate decision persistence failure")
+
+    monkeypatch.setattr(skills_repository, "save", fail_save)
+    with pytest.raises(RuntimeError, match="injected candidate"):
+        client.post(
+            f"/api/skills/candidates/{atomic_candidate['id']}/accept",
+            json={"project_id": project_id},
+        )
+    unchanged = client.get(f"/api/artifacts/{artifact_id}").json()
+    assert unchanged["current_revision"]["revision_no"] == 1
+    assert unchanged["current_revision"]["blocks"][0]["content"] == "Hello"
+
+    monkeypatch.setattr(skills_repository, "save", original_save)
+    accepted = client.post(
+        f"/api/skills/candidates/{atomic_candidate['id']}/accept",
+        json={"project_id": project_id},
+    )
+    assert accepted.status_code == 200, accepted.text
+
+    stale_candidate = client.post(
+        "/api/skills/dialogue.humanize/execute",
+        json=_dialogue_payload(project_id, block_id, artifact_id, "Stale candidate"),
+    ).json()
+    current = client.get(f"/api/artifacts/{artifact_id}").json()["current_revision"]
+    edited = client.patch(
+        f"/api/artifacts/{artifact_id}/blocks/{block_id}",
+        json={
+            "content": "User edit",
+            "semantic": {},
+            "expected_revision_id": current["id"],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    stale = client.post(
+        f"/api/skills/candidates/{stale_candidate['id']}/accept",
+        json={"project_id": project_id},
+    )
+    assert stale.status_code == 409, stale.text
+    latest = client.get(f"/api/artifacts/{artifact_id}").json()
+    assert latest["current_revision"]["blocks"][0]["content"] == "User edit"
 
 
 def test_production_candidate_accept_and_project_isolation(client: TestClient) -> None:

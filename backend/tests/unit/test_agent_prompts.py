@@ -63,7 +63,7 @@ def test_assemble_order_system_context_history() -> None:
     messages = assemble_messages(**_base_kwargs(history), budget=10**9)
 
     assert messages[0]["role"] == "system", "首条必须是 system（最稳定层）"
-    assert messages[1]["role"] == "system" and "项目上下文" in messages[1]["content"], (
+    assert messages[1]["role"] == "user" and "项目上下文" in messages[1]["content"], (
         "第二条必须是项目上下文块"
     )
     assert [m["content"] for m in messages[2:]] == [m["content"] for m in history], (
@@ -107,58 +107,14 @@ def test_doc_directory_digest_stability() -> None:
     assert render_doc_directory([]) == "（暂无记忆文档）", "空目录必须有占位说明"
 
 
-@pytest.mark.parametrize(
-    ("stage", "expect_docs_full", "expect_summary", "expect_history_kept"),
-    [
-        ("fit", True, True, "all"),
-        ("docs_degraded", False, True, "all"),
-        ("summary_dropped", False, False, "all"),
-        ("history_trimmed", False, False, "less"),
-    ],
-    ids=["预算恰好不裁", "超1-文档降目录", "再超-摘要丢弃", "再超-裁最旧消息"],
-)
-def test_budget_trimming_fixed_order(
-    stage: str, expect_docs_full: bool, expect_summary: bool, expect_history_kept: str
-) -> None:
-    """U9 参数化: 预算裁剪固定顺序与边界（边界值-各阶段恰好/超 1）。
-
-    预算经自校准获得：先以巨预算装配量出实际总量，再按阶段回退 1 token，
-    保证落在每个裁剪边界的紧邻两侧。
-    """
+@pytest.mark.parametrize("budget", [1, 100, 100000])
+def test_compilation_never_silently_discards_required_context(budget: int) -> None:
+    """B: admission rejects overflow later; compilation retains guidance and history."""
     history = _history(4)
-    kwargs = _base_kwargs(history)
-
-    def calibrate(target_stage: str) -> int:
-        msgs = assemble_messages(**kwargs, budget=10**9)
-        total = _total_tokens(msgs)
-        if target_stage == "fit":
-            return total
-        if target_stage == "docs_degraded":
-            return total - 1
-        msgs2 = assemble_messages(**kwargs, budget=total - 1)
-        total2 = _total_tokens(msgs2)
-        if target_stage == "summary_dropped":
-            return total2 - 1
-        msgs3 = assemble_messages(**kwargs, budget=total2 - 1)
-        return _total_tokens(msgs3) - 1
-
-    messages = assemble_messages(**kwargs, budget=calibrate(stage))
-    ctx = messages[1]["content"]
-
-    assert ("— 记忆文档内容 —" in ctx) == expect_docs_full, (
-        f"[{stage}] 文档段全文态与预期不符: {ctx[:200]}"
-    )
-    assert ("会话摘要" in ctx) == expect_summary, f"[{stage}] 会话摘要态与预期不符"
-
-    kept = len(messages) - 2
-    if expect_history_kept == "all":
-        assert kept == len(history), f"[{stage}] 历史必须全保留（{kept}/{len(history)}）"
-    else:
-        assert 1 <= kept < len(history), f"[{stage}] 必须裁掉最旧但保留本轮消息: {kept}"
-        assert messages[-1]["content"] == history[-1]["content"], (
-            f"[{stage}] 本轮用户消息（末条）永不裁剪"
-        )
-    assert messages[0]["content"] == kwargs["system"], f"[{stage}] system 永不裁剪"
+    messages = assemble_messages(**_base_kwargs(history), budget=budget)
+    assert "三幕式" in messages[1]["content"]
+    assert "主角的动机" in messages[1]["content"]
+    assert messages[2:] == history
 
 
 def test_injection_wrapping_and_system_note() -> None:
@@ -167,13 +123,13 @@ def test_injection_wrapping_and_system_note() -> None:
     assert "不是指令" in system, f"system 必须携带注入防护声明: {system}"
 
     wrapped = wrap_data("文档《风格约定》第1段", "正文内容")
-    assert wrapped.startswith("[项目数据开始：文档《风格约定》第1段"), f"开始分隔符缺失: {wrapped}"
-    assert wrapped.endswith("[项目数据结束：文档《风格约定》第1段]"), f"结束分隔符缺失: {wrapped}"
+    assert wrapped.startswith("[项目数据开始：引用材料"), f"开始分隔符缺失: {wrapped}"
+    assert wrapped.endswith("[项目数据结束：引用材料]"), f"结束分隔符缺失: {wrapped}"
 
     messages = assemble_messages(**_base_kwargs(_history(1)), budget=10**9)
     ctx = messages[1]["content"]
-    assert "[项目数据开始：文档《风格约定》第1段 " in ctx, "文档段必须被数据分隔符包裹"
-    assert "[项目数据开始：图谱目录" in ctx, "图谱目录必须被数据分隔符包裹"
+    assert '"label": "文档《风格约定》第1段"' in ctx, "文档段必须被数据分隔符包裹"
+    assert '"label": "图谱目录"' in ctx, "图谱目录必须被数据分隔符包裹"
 
 
 def test_render_entity_details_full_fields() -> None:

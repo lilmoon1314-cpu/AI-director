@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from app.agent import llm as agent_llm
 from app.agent.llm import AssistantTurn, ToolCall
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 pytestmark = pytest.mark.integration
 
@@ -507,6 +507,11 @@ def test_llm_failure_degrades_with_three_elements(
     if failure == "missing_key":
 
         class _NoKeySettings:
+            def __getattr__(self, name: str) -> Any:
+                if name in Settings.model_fields:
+                    return Settings.model_fields[name].default
+                raise AttributeError(name)
+
             llm_api_key = ""
             llm_base_url = "https://example.invalid/v1"
             llm_model = "m"
@@ -784,6 +789,9 @@ def test_pending_writes_full_flow(client: TestClient, monkeypatch: pytest.Monkey
 
     设计依据: 等价类-有效（create_entity + write_doc_section 双登记）。
     """
+    # B: retain the write contract under an explicit sufficient request budget.
+    monkeypatch.setattr(get_settings(), "agent_context_max_tokens", 100000)
+
     project = _create_project(client, "写入链路项目")
     pid = project["id"]
     session = _create_session(client, pid)
@@ -800,6 +808,11 @@ def test_pending_writes_full_flow(client: TestClient, monkeypatch: pytest.Monkey
             ),
             ToolCall(
                 call_id="c2",
+                name="read_doc_section",
+                arguments=f'{{"doc_id": "{doc["id"]}", "seq": 1}}',
+            ),
+            ToolCall(
+                call_id="c3",
                 name="write_doc_section",
                 arguments=(
                     f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "第三人称限制视角。"}}'
@@ -821,7 +834,7 @@ def test_pending_writes_full_flow(client: TestClient, monkeypatch: pytest.Monkey
     events = _parse_sse(chat.text)
     assert events[-1]["event"] == "done", f"轮必须正常收尾: {events[-1]}"
     tool_events = [e for e in events if e["event"] == "tool"]
-    assert len(tool_events) == 4, f"两次工具调用应产生 start/done 事件对: {tool_events}"
+    assert len(tool_events) == 6, f"三次工具调用应产生 start/done 事件对: {tool_events}"
     done_data = events[-1]["data"]
     assert "pending_writes" in done_data, f"done 必须携带清单: {done_data}"
     items = done_data["pending_writes"]
@@ -870,6 +883,12 @@ def test_approve_persists_entity_and_status(
     assert approve.status_code == 200, approve.text[:300]
     body = approve.json()
     assert len(body["created"]) == 1 and body["failed"] == [], f"必须全部成功: {body}"
+    repeated = client.post(
+        "/api/agent/pending-writes/approve",
+        json={"conversation_id": session["id"], "ids": [pending_id]},
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["created"] == body["created"]
 
     entities = client.get("/api/entities", params={"project_id": pid}).json()
     match = [e for e in entities if e["name"] == "沈墨"]
@@ -884,6 +903,9 @@ def test_approve_write_section_cas_conflict(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """F14-I3: 登记后用户手改段 → approve 该项 failed 含版本冲突（CAS 防线）。"""
+    # B: retain the write contract under an explicit sufficient request budget.
+    monkeypatch.setattr(get_settings(), "agent_context_max_tokens", 100000)
+
     project = _create_project(client, "CAS项目")
     pid = project["id"]
     session = _create_session(client, pid)
@@ -898,11 +920,16 @@ def test_approve_write_section_cas_conflict(
             _pending_turn(
                 ToolCall(
                     call_id="c1",
+                    name="read_doc_section",
+                    arguments=f'{{"doc_id": "{doc["id"]}", "seq": 1}}',
+                ),
+                ToolCall(
+                    call_id="c2",
                     name="write_doc_section",
                     arguments=(
                         f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "agent 版本内容"}}'
                     ),
-                )
+                ),
             ),
             AssistantTurn(content="已登记段写入。"),
         ],
@@ -1014,6 +1041,8 @@ def test_project_deletion_cascades_pending_writes(
 
 def test_pending_limit_integration(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """F14-I7: 上限=1 时第二轮登记被拒（错误文本进 tool result，轮正常 done 不打断）。"""
+    # B: retain the write contract under an explicit sufficient request budget.
+    monkeypatch.setattr(get_settings(), "agent_context_max_tokens", 100000)
 
     class LimitOneSettings:
         """真配置副本 + 上限收紧为 1（其余字段沿用运行配置）。"""

@@ -7,13 +7,16 @@
       禁止未捕获异常冒泡（agent/CONSTRAINTS.md）。
 """
 
+import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
 
 import openai
 
+from app.agent.budget import TurnBudget, active_budget, check_request
+from app.agent.prompts import wrap_data
 from app.config import get_settings
 from app.core.exceptions import AgentError, ValidationError
 from app.core.observability import emit_event
@@ -95,6 +98,7 @@ def get_client() -> openai.AsyncOpenAI:
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
             timeout=settings.llm_timeout_seconds,
+            max_retries=0,
         )
     return _client
 
@@ -120,7 +124,7 @@ def _wrap_llm_error(exc: Exception, *, model: str) -> AgentError:
     """
     return _client_error(
         problem=f"LLM 调用失败（{type(exc).__name__}）",
-        cause=f"模型 {model} 的补全请求未成功：{exc}",
+        cause=f"模型 {model} 的补全请求未成功（{type(exc).__name__}）",
         fix=(
             "检查 LLM_BASE_URL/LLM_API_KEY 配置与端点可用性后重试；"
             "持续失败可调大 LLM_TIMEOUT_SECONDS"
@@ -174,15 +178,24 @@ async def chat_turn(
         AgentError — API 密钥未配置 / 超时 / 端点失败 / 连接失败。
     依赖: get_client、app.config.get_settings、core.observability。
     """
-    resolved_model = model or get_settings().llm_model
-    client = get_client()
+    limiter = active_budget.get() or TurnBudget.start(get_settings())
+    settings = limiter.settings
+    resolved_model = model or settings.llm_model
     chat_messages: list[dict[str, Any]] = [{"role": "system", "content": system}, *messages]
-    kwargs: dict[str, Any] = {"model": resolved_model, "messages": chat_messages}
+    check_request(chat_messages, tools, settings)
+    limiter.admit()
+    client = get_client()
+    kwargs: dict[str, Any] = {
+        "model": resolved_model,
+        "messages": chat_messages,
+        "max_tokens": settings.agent_output_reserve_tokens,
+    }
     if tools:
         kwargs["tools"] = tools
     try:
-        response = await client.chat.completions.create(**kwargs)
-    except (openai.APITimeoutError, openai.APIError, openai.OpenAIError) as exc:
+        async with asyncio.timeout(min(limiter.remaining(), settings.llm_timeout_seconds)):
+            response = await client.chat.completions.create(**kwargs)
+    except (TimeoutError, openai.APITimeoutError, openai.APIError, openai.OpenAIError) as exc:
         raise _wrap_llm_error(exc, model=resolved_model) from exc
 
     _record_usage(resolved_model, response.usage)
@@ -215,7 +228,7 @@ async def stream_chat_turn(
     *,
     tools: list[dict[str, Any]] | None = None,
     model: str | None = None,
-) -> AsyncIterator[tuple[str, Any]]:
+) -> AsyncGenerator[tuple[str, Any], None]:
     """执行一次流式对话补全，按到达顺序逐片产出规范化事件（真流式，F13）。
 
     作用:
@@ -236,69 +249,82 @@ async def stream_chat_turn(
         AgentError — API 密钥未配置 / 超时 / 端点失败 / 流中断。
     依赖: get_client、app.config.get_settings、core.observability。
     """
-    resolved_model = model or get_settings().llm_model
-    client = get_client()
+    limiter = active_budget.get() or TurnBudget.start(get_settings())
+    settings = limiter.settings
+    resolved_model = model or settings.llm_model
     chat_messages: list[dict[str, Any]] = [{"role": "system", "content": system}, *messages]
+    check_request(chat_messages, tools, settings)
+    if active_budget.get() is None:
+        limiter.admit()  # Chat orchestration reserves its own streaming calls.
+    client = get_client()
     kwargs: dict[str, Any] = {
         "model": resolved_model,
         "messages": chat_messages,
         "stream": True,
         "stream_options": {"include_usage": True},
+        "max_tokens": settings.agent_output_reserve_tokens,
     }
     if tools:
         kwargs["tools"] = tools
+    stream = None
     try:
-        stream = await client.chat.completions.create(**kwargs)
-        content_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        # 流式 tool_calls 分片：index -> {"id", "name", "args": [分片…]}（按 index 聚合）
-        tool_acc: dict[int, dict[str, Any]] = {}
-        usage_payload: dict[str, int | None] | None = None
-        async for chunk in stream:
-            if chunk.usage is not None:
-                usage_payload = {
-                    "prompt_tokens": getattr(chunk.usage, "prompt_tokens", None),
-                    "completion_tokens": getattr(chunk.usage, "completion_tokens", None),
-                }
-                _record_usage(resolved_model, chunk.usage)
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            reasoning_text = getattr(delta, "reasoning_content", None)
-            if reasoning_text:
-                reasoning_parts.append(reasoning_text)
-                yield ("reasoning_delta", reasoning_text)
-            if delta.content:
-                content_parts.append(delta.content)
-                yield ("content_delta", delta.content)
-            for frag in delta.tool_calls or []:
-                slot = tool_acc.setdefault(frag.index, {"id": "", "name": "", "args": []})
-                if frag.id:
-                    slot["id"] = frag.id
-                if frag.function and frag.function.name:
-                    slot["name"] = frag.function.name
-                if frag.function and frag.function.arguments:
-                    slot["args"].append(frag.function.arguments)
-        tool_calls = [
-            ToolCall(call_id=slot["id"], name=slot["name"], arguments="".join(slot["args"]))
-            for _, slot in sorted(tool_acc.items())
-        ]
-        content = "".join(content_parts) if content_parts else None
-        raw: dict[str, Any] = {"role": "assistant", "content": content}
-        if tool_calls:
-            raw["tool_calls"] = [
-                {
-                    "id": tc.call_id,
-                    "type": "function",
-                    "function": {"name": tc.name, "arguments": tc.arguments},
-                }
-                for tc in tool_calls
+        async with asyncio.timeout(min(limiter.remaining(), settings.llm_timeout_seconds)):
+            stream = await client.chat.completions.create(**kwargs)
+            content_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            # 流式 tool_calls 分片：index -> {"id", "name", "args": [分片…]}（按 index 聚合）
+            tool_acc: dict[int, dict[str, Any]] = {}
+            usage_payload: dict[str, int | None] | None = None
+            async for chunk in stream:
+                if chunk.usage is not None:
+                    usage_payload = {
+                        "prompt_tokens": getattr(chunk.usage, "prompt_tokens", None),
+                        "completion_tokens": getattr(chunk.usage, "completion_tokens", None),
+                    }
+                    _record_usage(resolved_model, chunk.usage)
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                reasoning_text = getattr(delta, "reasoning_content", None)
+                if reasoning_text:
+                    reasoning_parts.append(reasoning_text)
+                    yield ("reasoning_delta", reasoning_text)
+                if delta.content:
+                    content_parts.append(delta.content)
+                    yield ("content_delta", delta.content)
+                for frag in delta.tool_calls or []:
+                    slot = tool_acc.setdefault(frag.index, {"id": "", "name": "", "args": []})
+                    if frag.id:
+                        slot["id"] = frag.id
+                    if frag.function and frag.function.name:
+                        slot["name"] = frag.function.name
+                    if frag.function and frag.function.arguments:
+                        slot["args"].append(frag.function.arguments)
+            tool_calls = [
+                ToolCall(call_id=slot["id"], name=slot["name"], arguments="".join(slot["args"]))
+                for _, slot in sorted(tool_acc.items())
             ]
-        if usage_payload is not None:
-            yield ("usage", usage_payload)
-        yield ("turn", AssistantTurn(content=content, tool_calls=tool_calls, raw=raw))
-    except (openai.APITimeoutError, openai.APIError, openai.OpenAIError) as exc:
+            content = "".join(content_parts) if content_parts else None
+            raw: dict[str, Any] = {"role": "assistant", "content": content}
+            if tool_calls:
+                raw["tool_calls"] = [
+                    {
+                        "id": tc.call_id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": tc.arguments},
+                    }
+                    for tc in tool_calls
+                ]
+            if usage_payload is not None:
+                yield ("usage", usage_payload)
+            yield ("turn", AssistantTurn(content=content, tool_calls=tool_calls, raw=raw))
+    except (TimeoutError, openai.APITimeoutError, openai.APIError, openai.OpenAIError) as exc:
         raise _wrap_llm_error(exc, model=resolved_model) from exc
+    finally:
+        if stream is not None:
+            close = getattr(stream, "close", None) or getattr(stream, "aclose", None)
+            if close is not None:
+                await close()
 
 
 def _parse_json_payload(raw: str) -> dict[str, Any]:
@@ -342,31 +368,39 @@ async def complete_json(
         AgentError — 端点失败 / 超时 / 密钥未配置。
     依赖: chat_turn、_parse_json_payload。
     """
-    history = list(messages)
-    last_raw = ""
-    for attempt in range(_JSON_REPAIR_LIMIT + 1):
-        turn = await chat_turn(system, history, model=model)
-        last_raw = turn.content or ""
-        try:
-            return _parse_json_payload(last_raw)
-        except ValueError:
-            if attempt >= _JSON_REPAIR_LIMIT:
-                break
-            history = [
-                *messages,
-                {"role": "assistant", "content": last_raw},
-                {
-                    "role": "user",
-                    "content": "上面的输出不是合法的 JSON 对象。请只输出一个合法 JSON 对象，"
-                    "不要包含任何解释文字或代码栅栏。",
-                },
-            ]
-    raise ValidationError(
-        problem="LLM 返回内容无法解析为 JSON 草案",
-        cause=f"修复重试（{_JSON_REPAIR_LIMIT} 次）后输出仍非合法 JSON 对象",
-        fix="重试一次；持续失败请调整任务描述复杂度或更换 LLM_MODEL",
-        detail={"raw_prefix": last_raw[:200]},
-    )
+    limiter = active_budget.get() or TurnBudget.start(get_settings())
+    token = active_budget.set(limiter)
+    try:
+        async with asyncio.timeout(limiter.remaining()):
+            history = list(messages)
+            last_raw = ""
+            for attempt in range(_JSON_REPAIR_LIMIT + 1):
+                turn = await chat_turn(system, history, model=model)
+                last_raw = turn.content or ""
+                try:
+                    return _parse_json_payload(last_raw)
+                except ValueError:
+                    if attempt >= _JSON_REPAIR_LIMIT:
+                        break
+                    history = [
+                        *messages,
+                        {"role": "assistant", "content": last_raw},
+                        {
+                            "role": "user",
+                            "content": "上面的输出不是合法的 JSON 对象。"
+                            "请只输出一个合法 JSON 对象，"
+                            "不要包含任何解释文字或代码栅栏。",
+                        },
+                    ]
+            raise ValidationError(
+                problem="LLM 返回内容无法解析为 JSON 草案",
+                cause=f"修复重试（{_JSON_REPAIR_LIMIT} 次）后输出仍非合法 JSON 对象",
+                fix="重试一次；持续失败请调整任务描述复杂度或更换 LLM_MODEL",
+                detail={"raw_prefix": last_raw[:200]},
+            )
+
+    finally:
+        active_budget.reset(token)
 
 
 async def summarize(text: str, instruction: str) -> str:
@@ -382,8 +416,8 @@ async def summarize(text: str, instruction: str) -> str:
     """
     settings = get_settings()
     turn = await chat_turn(
-        "你是助理，严格按指令压缩文本。",
-        [{"role": "user", "content": f"{instruction}\n\n<text>\n{text}\n</text>"}],
+        "你是助理，严格按指令压缩文本。" + instruction,
+        [{"role": "user", "content": wrap_data("待摘要原文", text)}],
         model=settings.llm_model_light,
     )
     return turn.content or ""

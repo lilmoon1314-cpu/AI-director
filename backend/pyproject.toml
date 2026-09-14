@@ -143,6 +143,9 @@ forbidden_modules = [
     "app.agent.conversations",
     "app.agent.writes",
     "app.agent.chat",
+    "app.agent.contracts",
+    "app.agent.scope",
+    "app.agent.budget",
 ]
 allow_indirect_imports = true
 

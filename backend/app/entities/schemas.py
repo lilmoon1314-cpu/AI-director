@@ -247,6 +247,7 @@ class EntityUpdate(BaseModel):
     description: str | None = None
     audience_known: bool | None = None
     properties: dict[str, Any] | None = None
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class EntityRead(EntityBase):
@@ -256,6 +257,7 @@ class EntityRead(EntityBase):
 
     id: str
     project_id: str
+    version: int
     created_at: datetime
     updated_at: datetime
 

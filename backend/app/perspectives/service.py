@@ -298,6 +298,7 @@ async def filter_entities_for_agent(
     return [
         EntityContext(
             id=e.id,
+            version=getattr(e, "version", 1),
             type=e.type,
             name=e.name,
             aliases=list(e.aliases),

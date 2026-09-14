@@ -101,6 +101,7 @@ def _read(row: SkillCandidate) -> CandidateRead:
         impact=row.impact_json,
         status=row.status,
         committed_ref=row.committed_ref,
+        base_revision_id=row.base_revision_id,
         created_at=row.created_at,
         decided_at=row.decided_at,
     )
@@ -135,12 +136,20 @@ async def execute(session: AsyncSession, skill_id: str, payload: SkillExecute) -
                 f"unmet={evaluation.model_dump()['unmet']}",
                 "满足全部 prerequisite 后重试",
             )
+    base_revision_id: str | None = None
     if contract.commit_action == "edit_block":
         artifact = await artifacts_service.get(session, str(payload.candidate["artifact_id"]))
         if artifact.project_id != payload.project_id:
             raise _invalid(
                 "candidate target 跨项目", "artifact ownership 不一致", "选择同项目 block"
             )
+        base_revision_id = artifact.current_revision.id
+    elif contract.commit_action == "create_production_document":
+        raw_document = payload.candidate.get("production_document")
+        if isinstance(raw_document, dict) and raw_document.get("source_document_id"):
+            source = await production_service.get(session, str(raw_document["source_document_id"]))
+            source_artifact = await artifacts_service.get(session, source.artifact_id)
+            base_revision_id = source_artifact.current_revision.id
     run = await workflow_service.start_run(
         session,
         project_id=payload.project_id,
@@ -178,6 +187,7 @@ async def execute(session: AsyncSession, skill_id: str, payload: SkillExecute) -
         candidate_json=payload.candidate,
         impact_json=impact,
         commit_action=contract.commit_action,
+        base_revision_id=base_revision_id,
         status="pending",
         committed_ref=None,
         created_at=_utcnow(),
@@ -188,24 +198,12 @@ async def execute(session: AsyncSession, skill_id: str, payload: SkillExecute) -
     return _read(row)
 
 
-async def decide(
-    session: AsyncSession, candidate_id: str, project_id: str, *, accept: bool
-) -> CandidateRead:
-    row = await repository.get(session, candidate_id)
-    if row is None or row.project_id != project_id:
-        raise _invalid(
-            "candidate 不存在或不属于项目",
-            "id/ownership 不匹配",
-            "使用 execute 返回的同项目 candidate id",
-        )
-    if row.status != "pending":
-        raise ConflictError(
-            problem="candidate 已决定",
-            cause=f"status={row.status}",
-            fix="不要重复 accept/reject；创建新 execution",
-        )
+async def _apply_candidate(
+    session: AsyncSession, row: SkillCandidate, project_id: str
+) -> str | None:
+    """执行候选业务效果但不提交；决定状态由外层同事务收口。"""
     committed_ref: str | None = None
-    if accept and row.commit_action == "edit_block":
+    if row.commit_action == "edit_block":
         value = row.candidate_json
         artifact = await artifacts_service.edit_structured_block(
             session,
@@ -218,9 +216,11 @@ async def decide(
                 if isinstance(value.get("semantic"), dict)
                 else None
             ),
+            expected_revision_id=row.base_revision_id,
+            commit=False,
         )
         committed_ref = artifact.current_revision.id
-    elif accept and row.commit_action == "create_production_document":
+    elif row.commit_action == "create_production_document":
         raw_document = row.candidate_json.get("production_document")
         if not isinstance(raw_document, dict):
             raise _invalid(
@@ -228,14 +228,71 @@ async def decide(
                 "production_document 不是 object",
                 "按 output schema 提供 production_document",
             )
+        if row.base_revision_id is not None and raw_document.get("source_document_id"):
+            source = await production_service.get(session, str(raw_document["source_document_id"]))
+            source_artifact = await artifacts_service.get(session, source.artifact_id)
+            if source_artifact.current_revision.id != row.base_revision_id:
+                raise ConflictError(
+                    problem="production candidate 的来源已更新",
+                    cause=(
+                        f"当前 revision={source_artifact.current_revision.id}，"
+                        f"候选基于 {row.base_revision_id}"
+                    ),
+                    fix="基于最新来源重新执行 skill",
+                )
         document = await production_service.create_from_payload(
-            session, project_id, cast(dict[str, object], raw_document)
+            session,
+            project_id,
+            cast(dict[str, object], raw_document),
+            commit=False,
         )
         committed_ref = document.id
-    row.status = "accepted" if accept else "rejected"
-    row.committed_ref = committed_ref
-    row.decided_at = _utcnow()
-    await session.commit()
+    return committed_ref
+
+
+async def decide(
+    session: AsyncSession, candidate_id: str, project_id: str, *, accept: bool
+) -> CandidateRead:
+    row = await repository.get(session, candidate_id)
+    if row is None or row.project_id != project_id:
+        raise _invalid(
+            "candidate 不存在或不属于项目",
+            "id/ownership 不匹配",
+            "使用 execute 返回的同项目 candidate id",
+        )
+    decided_status = "accepted" if accept else "rejected"
+    if row.status == decided_status:
+        return _read(row)
+    if row.status != "pending":
+        raise ConflictError(
+            problem="candidate 已决定",
+            cause=f"status={row.status}",
+            fix="不要重复执行相反决定；需要新内容时创建新 execution",
+        )
+    if not await repository.claim(session, candidate_id):
+        await session.rollback()
+        current = await repository.get(session, candidate_id)
+        if current is not None and current.status == decided_status:
+            return _read(current)
+        raise ConflictError(
+            problem="candidate 已被另一请求决定",
+            cause=f"status={getattr(current, 'status', 'unknown')}",
+            fix="刷新 candidate 状态，不要重复执行相反决定",
+        )
+    row.status = "deciding"
+    try:
+        committed_ref = await _apply_candidate(session, row, project_id) if accept else None
+        row.status = decided_status
+        row.committed_ref = committed_ref
+        row.decided_at = _utcnow()
+        await repository.save(session, row)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        row.status = "pending"
+        row.committed_ref = None
+        row.decided_at = None
+        raise
     return _read(row)
 
 

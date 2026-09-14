@@ -25,7 +25,7 @@ from app.artifacts.schemas import (
     RevisionDiffRead,
     generate_id,
 )
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.observability import checkpoint
 from app.projects import service as projects_service
 
@@ -148,7 +148,9 @@ def _diff_entries(old: list[_BlockState], new: list[_BlockState]) -> list[Revisi
 
 
 @checkpoint
-async def create(session: AsyncSession, schema: ArtifactCreate) -> ArtifactRead:
+async def create(
+    session: AsyncSession, schema: ArtifactCreate, *, commit: bool = True
+) -> ArtifactRead:
     project_id = schema.project_id or projects_service.DEFAULT_PROJECT_ID
     await projects_service.ensure_exists(session, project_id)
     now = _utcnow()
@@ -195,7 +197,8 @@ async def create(session: AsyncSession, schema: ArtifactCreate) -> ArtifactRead:
             _BlockState(block.id, block.block_type, position, item.content, item.semantic)
         )
     await projects_service.touch(session, project_id)
-    await session.commit()
+    if commit:
+        await session.commit()
     return _artifact_read(artifact, revision, states)
 
 
@@ -234,7 +237,13 @@ async def diff(
 
 @checkpoint
 async def edit_block(
-    session: AsyncSession, artifact_id: str, block_id: str, schema: BlockEdit
+    session: AsyncSession,
+    artifact_id: str,
+    block_id: str,
+    schema: BlockEdit,
+    *,
+    expected_revision_id: str | None = None,
+    commit: bool = True,
 ) -> ArtifactRead:
     artifact = await repository.get_artifact(session, artifact_id)
     if artifact is None:
@@ -243,6 +252,14 @@ async def edit_block(
     if block is None or block.artifact_id != artifact.id:
         raise _not_found("block", block_id)
     old_revision, old_states = await _current_revision(session, artifact)
+    expected_revision_id = expected_revision_id or schema.expected_revision_id
+    if expected_revision_id is not None and old_revision.id != expected_revision_id:
+        raise ConflictError(
+            problem="Artifact 已产生新 revision",
+            cause=f"当前 revision={old_revision.id}，候选基于 {expected_revision_id}",
+            fix="重新读取 current revision 并重新生成候选",
+            detail={"artifact_id": artifact_id, "current_revision_id": old_revision.id},
+        )
     current = next((state for state in old_states if state.id == block_id), None)
     if current is None:
         raise _not_found("block", block_id)
@@ -257,10 +274,27 @@ async def edit_block(
         )
 
     now = _utcnow()
+    next_revision_no = old_revision.revision_no + 1
+    advanced = await repository.advance_revision_if_current(
+        session,
+        artifact.id,
+        old_revision.revision_no,
+        next_revision_no,
+        now,
+    )
+    if not advanced:
+        raise ConflictError(
+            problem="Artifact 已产生并发 revision",
+            cause=f"current revision 不再是 {old_revision.id}",
+            fix="重新读取 current revision 并重新生成候选",
+            detail={"artifact_id": artifact_id, "expected_revision_id": old_revision.id},
+        )
+    artifact.current_revision_no = next_revision_no
+    artifact.updated_at = now
     new_revision = ArtifactRevision(
         id=generate_id("rev"),
         artifact_id=artifact.id,
-        revision_no=old_revision.revision_no + 1,
+        revision_no=next_revision_no,
         created_at=now,
     )
     await repository.add(session, new_revision)
@@ -297,16 +331,17 @@ async def edit_block(
         if dependent is not None:
             dependent.status = "stale"
             dependent.updated_at = now
-    artifact.current_revision_no = new_revision.revision_no
-    artifact.updated_at = now
     await repository.flush(session)
     await projects_service.touch(session, artifact.project_id)
-    await session.commit()
+    if commit:
+        await session.commit()
     return _artifact_read(artifact, new_revision, new_states)
 
 
 @checkpoint
-async def create_dependency(session: AsyncSession, schema: DependencyCreate) -> DependencyRead:
+async def create_dependency(
+    session: AsyncSession, schema: DependencyCreate, *, commit: bool = True
+) -> DependencyRead:
     source = await repository.get_artifact(session, schema.source_artifact_id)
     dependent = await repository.get_artifact(session, schema.dependent_artifact_id)
     if source is None:
@@ -365,7 +400,8 @@ async def create_dependency(session: AsyncSession, schema: DependencyCreate) -> 
         updated_at=now,
     )
     await repository.add(session, dependency)
-    await session.commit()
+    if commit:
+        await session.commit()
     return DependencyRead.model_validate(dependency)
 
 
@@ -390,6 +426,7 @@ async def create_structured(
     artifact_type: str,
     title: str,
     blocks: list[dict[str, object]],
+    commit: bool = True,
 ) -> ArtifactRead:
     """Public cross-domain creation boundary without exposing Artifact internal schemas."""
     return await create(
@@ -397,6 +434,7 @@ async def create_structured(
         ArtifactCreate.model_validate(
             {"project_id": project_id, "type": artifact_type, "title": title, "blocks": blocks}
         ),
+        commit=commit,
     )
 
 
@@ -407,6 +445,7 @@ async def create_block_dependencies(
     source_block_ids: list[str],
     dependent_artifact_id: str,
     dependency_type: str = "derived_from",
+    commit: bool = True,
 ) -> list[DependencyRead]:
     """Create directed dependencies for selected current source blocks."""
     return [
@@ -418,6 +457,7 @@ async def create_block_dependencies(
                 dependent_artifact_id=dependent_artifact_id,
                 dependency_type=dependency_type,
             ),
+            commit=commit,
         )
         for block_id in source_block_ids
     ]
@@ -431,6 +471,8 @@ async def edit_structured_block(
     block_id: str,
     content: str,
     semantic: dict[str, object] | None = None,
+    expected_revision_id: str | None = None,
+    commit: bool = True,
 ) -> ArtifactRead:
     artifact = await get(session, artifact_id)
     if artifact.project_id != project_id:
@@ -441,5 +483,10 @@ async def edit_structured_block(
             artifact_id=artifact_id,
         )
     return await edit_block(
-        session, artifact_id, block_id, BlockEdit(content=content, semantic=semantic)
+        session,
+        artifact_id,
+        block_id,
+        BlockEdit(content=content, semantic=semantic),
+        expected_revision_id=expected_revision_id,
+        commit=commit,
     )

@@ -1,5 +1,6 @@
 """Agent 记忆文档 owner：模板建档、读取、CAS 更新与页面渲染。"""
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import repository
@@ -59,8 +60,9 @@ async def create_doc(
     kind: str,
     *,
     title: str | None = None,
+    commit: bool = True,
 ) -> MemoryDocRead:
-    """按模板建档，并保持指导文档 project/kind 唯一。"""
+    """按模板建档；commit=False 时显式参与调用方的同库事务。"""
     template = DOC_TEMPLATES.get(kind)
     if template is None:
         raise ValidationError(
@@ -93,7 +95,15 @@ async def create_doc(
         kind=kind,
         title=title or str(template["title"]),
     )
-    doc = await repository.add_doc(db_session, doc)
+    try:
+        doc = await repository.add_doc(db_session, doc)
+    except IntegrityError as exc:
+        raise ConflictError(
+            problem=f"「{template['label']}」指导文档已被并发创建",
+            cause=f"项目 '{resolved_project}' 的 kind={kind} 已满足数据库唯一约束",
+            fix="刷新文档目录并编辑已经创建的文档",
+            detail={"project_id": resolved_project, "kind": kind},
+        ) from exc
     for sequence, section_title in enumerate(template["sections"], start=1):
         await repository.add_section(
             db_session,
@@ -104,7 +114,8 @@ async def create_doc(
                 title=str(section_title),
             ),
         )
-    await db_session.commit()
+    if commit:
+        await db_session.commit()
     return await _doc_read(db_session, doc)
 
 
@@ -158,8 +169,9 @@ async def update_section(
     payload: SectionUpdate,
     *,
     updated_by: str,
+    commit: bool = True,
 ) -> MemoryDocSectionRead:
-    """以 section version 做 CAS；成功时同步推进文档版本。"""
+    """数据库 CAS 更新段与文档版本；commit=False 时参与调用方事务。"""
     doc = await repository.get_doc(db_session, doc_id)
     if doc is None:
         raise _doc_not_found(doc_id)
@@ -171,25 +183,42 @@ async def update_section(
             fix="先调用 GET /api/agent/memory-docs/{id} 确认段 id",
             detail={"doc_id": doc_id, "section_id": section_id},
         )
-    if section.version != payload.expected_version:
+    now = _utcnow()
+    changed = await repository.update_section_if_version(
+        db_session,
+        doc_id=doc_id,
+        section_id=section_id,
+        expected_version=payload.expected_version,
+        content=payload.content,
+        title=payload.title,
+        updated_by=updated_by,
+        updated_at=now,
+    )
+    if not changed:
+        current = await repository.get_section(db_session, section_id)
+        current_version = current.version if current is not None else section.version
+        current_updater = current.updated_by if current is not None else section.updated_by
         raise ConflictError(
             problem="记忆文档段已被他人修改（版本冲突）",
             cause=(
-                f"段当前版本为 v{section.version}（{section.updated_by} 更新），"
+                f"段当前版本为 v{current_version}（{current_updater} 更新），"
                 f"请求基于 v{payload.expected_version}"
             ),
             fix="重新读取该段最新内容后再提交；agent 草案将基于新版本重新生成",
-            detail={"doc_id": doc_id, "section_id": section_id, "current_version": section.version},
+            detail={"doc_id": doc_id, "section_id": section_id, "current_version": current_version},
         )
+    if commit:
+        await db_session.commit()
+    else:
+        await db_session.flush()
     section.content = payload.content
     if payload.title is not None:
         section.title = payload.title
-    section.version += 1
+    section.version = payload.expected_version + 1
     section.updated_by = updated_by
-    section.updated_at = _utcnow()
+    section.updated_at = now
     doc.version += 1
-    await repository.save_section(db_session, section)
-    await db_session.commit()
+    doc.updated_at = now
     return MemoryDocSectionRead(
         id=section.id,
         seq=section.seq,

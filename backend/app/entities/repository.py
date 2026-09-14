@@ -4,7 +4,7 @@
 """
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.entities.models import Entity
@@ -93,6 +93,19 @@ async def save(session: AsyncSession, entity: Entity) -> Entity:
     """
     await session.flush()
     return entity
+
+
+async def update_if_version(
+    session: AsyncSession, entity_id: str, expected_version: int, values: dict[str, object]
+) -> bool:
+    """按版本条件更新实体；rowcount=0 表示对象已被其他提交推进。"""
+    result = await session.execute(
+        update(Entity)
+        .where(Entity.id == entity_id, Entity.version == expected_version)
+        .values(**values, version=expected_version + 1)
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
 
 
 async def delete(session: AsyncSession, entity: Entity) -> None:
