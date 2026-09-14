@@ -53,6 +53,7 @@ describe("agentStore（FU1）", () => {
       messagesBySession: {},
       messagesLoading: false,
       streamingSessionId: null,
+      activeRunBySession: {},
       toolActivity: null,
       sessionErrors: {},
       usageBySession: {},
@@ -447,5 +448,79 @@ describe("agentStore（FU1）", () => {
     vi.stubGlobal("fetch", failing);
     await useAgentStore.getState().rejectPendingWrites("conv-1", ["pw-9"]);
     expect(useAgentStore.getState().sessionErrors["conv-1"]?.problem).toBe("会话不存在");
+  });
+
+  it("D1: loadMessages 同时恢复服务端 pending 确认卡", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/messages")) return jsonResponse([]);
+      if (url.includes("/pending-writes")) return jsonResponse([PENDING_ITEM]);
+      if (url.includes("/runs/latest")) return jsonResponse(null);
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await useAgentStore.getState().loadMessages("conv-1", true);
+
+    expect(useAgentStore.getState().pendingBySession["conv-1"]).toEqual([PENDING_ITEM]);
+  });
+
+  it("D2: SSE 在 done 前 EOF 时查询运行并按序补回终态", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/chat")) {
+        return sseResponse([
+          { event: "message_start", data: { run_id: "run-1", seq: 1 } },
+          { event: "token", data: { run_id: "run-1", seq: 2, text: "已保存" } },
+        ]);
+      }
+      if (url.includes("/agent/runs/run-1/events")) {
+        return jsonResponse([
+          {
+            run_id: "run-1",
+            seq: 3,
+            event: "done",
+            data: { run_id: "run-1", seq: 3, message_id: "msg-2" },
+            created_at: "2026-09-14T00:00:00Z",
+          },
+        ]);
+      }
+      if (url.endsWith("/agent/runs/run-1")) {
+        return jsonResponse({ id: "run-1", status: "completed" });
+      }
+      if (url.includes("/messages")) {
+        return jsonResponse([
+          { id: "msg-1", conversation_id: "conv-1", role: "user", content: "继续", created_at: "2026-09-14T00:00:00Z" },
+          { id: "msg-2", conversation_id: "conv-1", role: "assistant", content: "已保存", created_at: "2026-09-14T00:00:01Z" },
+        ]);
+      }
+      if (url.includes("/pending-writes")) return jsonResponse([]);
+      if (url.includes("/runs/latest")) return jsonResponse(null);
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await useAgentStore.getState().sendMessage("conv-1", "继续", "author");
+
+    expect(useAgentStore.getState().messagesBySession["conv-1"]?.at(-1)?.content).toBe("已保存");
+    expect(useAgentStore.getState().streamingSessionId).toBeNull();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/events?after_seq=2"))).toBe(true);
+  });
+
+  it("D3: stopStreaming 同时请求服务端持久取消", async () => {
+    const fetchMock = routeFetch((url) => {
+      if (url.includes("/agent/runs/run-stop/cancel")) {
+        return jsonResponse({ id: "run-stop", status: "cancelled" });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useAgentStore.setState({
+      streamingSessionId: "conv-1",
+      activeRunBySession: { "conv-1": "run-stop" },
+    });
+
+    useAgentStore.getState().stopStreaming("conv-1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/run-stop/cancel"))).toBe(true);
   });
 });

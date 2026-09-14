@@ -54,15 +54,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await assets_service.init_database()
     async with db.get_session_factory()() as session:
         await projects_service.ensure_default_project(session)
+    await agent_service.initialize_resources()
     app.mount("/static/assets", StaticFiles(directory=settings.asset_dir), name="assets")
     observability.emit_lifecycle("ready", data={"asset_dir": settings.asset_dir})
     try:
         yield
     finally:
         observability.emit_lifecycle("shutdown")
-        await agent_service.dispose_resources()
-        await assets_service.shutdown_engine()
-        await db.dispose_engine()
+        resources = (
+            ("agent", agent_service.dispose_resources),
+            ("assets", assets_service.shutdown_engine),
+            ("database", db.dispose_engine),
+        )
+        for owner, dispose in resources:
+            try:
+                await dispose()
+            except Exception as result:  # noqa: BLE001 - every remaining owner must still close
+                observability.emit_event(
+                    "resource_shutdown_failed",
+                    component="app.main",
+                    data={"owner": owner, "error": type(result).__name__},
+                )
 
 
 def create_app() -> FastAPI:

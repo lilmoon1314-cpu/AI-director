@@ -5,9 +5,9 @@ memory documents, and confirmed writes.
 
 For a code-level assessment of the current guarantees and their limitations, see
 [the 2026-09-12 engineering assessment](agent-engineering-assessment-2026-09-12.md). Its improvement
-plan is active; A supplied contracts and fault baselines, and B implements context partitioning,
-request admission and execution limits. Semantic summary coverage, database-atomic version checks,
-and atomic approval/effect persistence remain work for later slices.
+plan is active; A supplied contracts and fault baselines, B implements context partitioning and
+execution limits, C implements atomic versioned confirmations, and D implements durable chat runs,
+event replay, cancellation, and refresh recovery. Semantic summary coverage remains slice E work.
 
 ## Context boundary
 
@@ -62,8 +62,29 @@ Rolling summaries are maintenance data. A failed or empty summary leaves the pri
 unchanged. Provider failures are translated at the Agent boundary rather than leaking SDK exceptions.
 Provider streams are explicitly closed; total turn and tool timeouts abort current work without
 automatically retrying pending writes. Missing final provider turns, invalid/duplicate tool-call IDs,
-and tool calls after disabling tools become errors. Persistent run status and disconnect recovery are
-still slice D work; a transport ending is not a durable completion guarantee.
+and tool calls after disabling tools become errors.
+
+Chat execution has its own `AgentRun`; Workflow `ExecutionRun` remains the owner of creative-stage
+skill execution because its scope, input/output, and lifecycle have different semantics. A request
+transaction saves the user message and queued run together. A partial unique index permits only one
+queued/running run per conversation, while `(conversation_id, request_id)` makes retries idempotent.
+The provider worker is independent from the HTTP response generator, so a browser disconnect does not
+cancel it. The response replays `AgentRunEvent` rows and follows newly committed frames by contiguous
+sequence. Terminal status and terminal event commit together. The assistant message stores its run id;
+startup reconciliation can therefore finish the small crash gap after answer commit, while other
+queued/running rows become visibly failed and are never automatically replayed.
+
+Explicit stop persists cancellation before cancelling the in-process task. Provider generators are
+closed by the chat owner's `aclosing` boundary. Shutdown cancels Agent tasks first, then closes the
+provider; application cleanup continues independently through assets and the primary database even if
+one owner reports a close error. Terminal event rows have a configurable retention period, defaulting
+to seven days, and are pruned at startup.
+
+Pending write ORM insertion is deferred until final answer commit for durable runs. This preserves C's
+answer/pending transaction while preventing a flushed pending row from holding SQLite's write lock
+during later provider waits or independent event commits. Rolling summary maintenance starts only
+after the answer, pending writes, terminal event, and run outcome are durable; failure rolls back only
+the maintenance transaction.
 
 ## Memory documents
 
@@ -105,7 +126,8 @@ pending-operation path.
 
 `agent/contracts.py` defines strict, immutable metadata models. Unknown fields are rejected. These are
 internal contracts rather than optional policy hooks. ContextScope, ContextManifest, SourceRef metadata
-and ToolResult are used by B; RunEvent and SummaryCoverage await D/E runtime integration. Passing
+and ToolResult are used by B; the D persistence models enforce RunEvent identity/sequence semantics,
+while SummaryCoverage awaits E runtime integration. Passing
 their validation does not prove that a source exists, that its content is visible, or that a summary
 is semantically accurate. The participating services must supply and verify those facts at runtime.
 
@@ -138,8 +160,10 @@ the author considers a proposal. Workflow creative-stage runs remain separate ob
 terminal outcomes cannot be rewritten. A replay carries original IDs/sequence numbers: consumers
 deduplicate already seen events and query persisted status when a gap or EOF occurs. Cancellation after
 completion reports completion rather than claiming rollback. Persistence, idempotent turn creation,
-restart reconciliation, cancellation, and event replay are work for slice D; the current SSE loop does
-not yet implement them.
+restart reconciliation, cancellation, and event replay are implemented by `agent/runs.py`. The frontend
+keeps the active run id outside component lifetimes, queries status on premature EOF, replays after its
+last sequence, reloads pending writes with messages, and ignores finalizers that no longer own the
+current project/run generation.
 
 ### Baseline evidence and intended failure semantics
 

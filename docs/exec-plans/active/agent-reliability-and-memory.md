@@ -44,7 +44,7 @@
 - [x] 2026-09-13 11:35–11:47 (+08:00) A / P0：建立权限与故障行为基线，定义运行状态和来源契约。20 项契约测试通过；6 项目标故障真实复现，仍为 strict xfail；2 项 UI 风险有明确静态证据。契约尚未接入运行链路。
 - [x] 2026-09-13 12:12–17:17 (+08:00) B / P0：全链路视角隔离与模型请求硬预算、工具执行硬配额。用户明确要求仅继续 B，结束后交付详细分模块报告，完成后停在 C 边界。
 - [x] 2026-09-14（完成于 12:30 +08:00）C / P0：原子批准、真实读取版本、幂等和并发冲突。业务效果与决定状态进入同一事务；pending/Skill 重放幂等；Entity、文档段和 Artifact 使用数据库条件更新保护旧基线；真实用户库完成增量升级并保全 435 行旧数据。
-- [ ] D / P1：持久运行、可恢复流与摘要维护解耦。
+- [x] 2026-09-14 17:15–17:46 (+08:00) D / P1：持久运行、可恢复流与摘要维护解耦。聊天轮与连续 SSE 事件持久化；请求重放幂等，同会话活动轮数据库互斥；EOF 查询/回放、刷新恢复 pending/活动轮、服务端取消和启动恢复完成；摘要已移出回答事务。
 - [ ] E / P1：可追溯摘要、关键状态覆盖与原文恢复。
 - [ ] F / P1：有来源的长期记忆、跨会话召回、冲突与遗忘。
 - [ ] G / P1：受控单块编辑、Skill 强校验与聊天适配。
@@ -161,6 +161,9 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 - C：实际用户库从 `b071c2d3e4f5` 升级到 `c184d5e6f7a8`。升级前没有 positioning/style 指导文档重复；29 张既有业务表共 435 行的全部旧列哈希一致，完整性与外键检查通过。
 - C：部分领域服务原先会自行提交。为保持公开 API 的独立事务习惯，同时允许 Agent/Skill 组成原子事务，新增 `commit=False` 参与模式，由最外层决定一次提交或回滚。
 - C：Entity 的 `expected_version` 在公开更新 schema 中暂为可选，以兼容旧客户端；当前 Agent 与前端编辑器都会发送真实读取版本。缺少真实读取基线的 Agent 写入会直接拒绝。
+- D：Workflow `ExecutionRun` 的字段和状态属于创作 stage/skill，不适合聊天轮的请求幂等、消息和 SSE 序号，因此新增独立 `AgentRun`/`AgentRunEvent`，没有强迫跨域复用。
+- D：持久事件使用独立短事务后，写工具若在主轮次提前 flush pending，会持有 SQLite 写锁并阻塞自己的下一帧。durable run 改为内存登记，到回答提交点才统一插入，保留 C 原子性且网络等待不占写锁。
+- D：真实用户库从 `c184d5e6f7a8` 升级到 `d295e6f7a8b9`。副本演练与实际升级均保持 4/194/208/7/17/1/4/0 的既有表行数，完整性通过、外键错误 0；升级前备份和演练副本使用 `agent-d-20260914-1736-*` 前缀。
 
 ## Decision Log
 
@@ -178,21 +181,24 @@ protected spans 从服务器保存的原文/锚点中验证候选正文；facts 
 - C：pending/candidate 先以条件状态迁移取得决定权，但过渡状态只存在于未提交事务中；业务效果、最终状态与可重放结果随后一次提交。失败会整体回滚，重试可安全重新取得 pending。
 - C：读取工具把实际返回给模型的 Entity/文档段版本记录在本轮上下文中；写入从该记录取基线。数据库 CAS 再防止读取后的用户修改被旧申请覆盖。
 - C：Artifact revision 既是内容历史，也是 Skill 候选的基线；接受候选前必须仍指向候选执行时的 revision。重复同一决定返回已保存结果，相反决定返回冲突。
+- D：HTTP 连接只订阅持久事件，provider worker 独立存活；相同 `(conversation_id, request_id)` 返回同一 run，不同内容冲突。同会话活动 run 由数据库部分唯一索引串行，不能只依赖浏览器全局锁。
+- D：终态事件与 run 状态同事务；assistant message 带 run id，启动时可把“回复已提交、终态未提交”的 crash gap 收口为 completed。其他遗留活动轮显式 failed，绝不自动重放模型或未确认写入。
+- D：服务端取消先持久化 cancelled 再取消 task；完成后的取消返回 completed。事件默认保留七天并在启动时清理，原始消息和 run 终态继续保留。
 
 ## Outcomes / Retrospective
 
-A、B、C 已完成；D–H 尚未实施，整体计划保持 Active。C 已把业务效果、pending/candidate 最终决定与稳定结果放入同一事务，并把实际读取版本贯穿到 Entity、文档段、Artifact 与 Skill。A 阶段的六项目标故障现在全部是普通通过的回归测试，没有保留 xfail。
+A、B、C、D 已完成；E–H 尚未实施，整体计划保持 Active。D 已把聊天运行和 SSE 事件持久化，完成请求幂等、断线回放、刷新恢复、服务端取消、重启协调和摘要事务解耦。C 的业务效果/pending 原子性与真实读取版本约束继续保持。
 
-C 定向验证合计 298 项后端通过、0 项 xfail，3 个前端文件共 22 项通过；Ruff check/format、55 个后端源文件 mypy、16 条 import-linter 规则、前端 TypeScript 和定向 ESLint 均通过。只运行参与边界所需测试，未跑全仓、mutation、benchmark 或真实模型，未修改 feature 状态。
+D 收口验证为全部 Agent 后端单元/集成/迁移/E2E 220 项通过，前端 Agent store/integration 41 项通过；Ruff check/format、Agent/main/config mypy、16 条 import-linter、前端 TypeScript/定向 ESLint、OpenAPI 再生成一致性和 diff check 均通过。只运行参与边界所需测试，未跑全仓、mutation、benchmark 或真实模型，未修改 feature 状态。
 
-面向技术新手的最新报告见 [C 阶段详细分析报告](../../reports/agent-improvement-slice-c-2026-09-14.md)，包含分模块目录、事务与 CAS 原理、选择原因、重难点、异常稳定性、数据库恢复文件与证据限制。[B 阶段报告](../../reports/agent-improvement-slice-b-2026-09-13.md) 和 [A 阶段报告](../../reports/agent-improvement-slice-a-2026-09-13.md) 保留为历史证据。
+面向技术新手的最新报告见 [D 阶段详细分析报告](../../reports/agent-improvement-slice-d-2026-09-14.md)，包含运行状态、SSE 回放、取消、SQLite 锁、摘要解耦、迁移恢复和验证限制。A–C 报告保留为历史证据。
 
 经验：边界必须检查真实请求和逐次工具执行，不能只限制循环次数；原文在数据库里不等于已进入模型。并发安全必须在数据库条件更新处裁决，应用层先查询只能改善提示，不能防止竞态。数据升级必须以实际数据库 revision 为起点验证，不能只验证代码最新一跳。
 
 ## Recovery / restart point
 
-本次按用户要求完成 C 并停在 D 边界，不自动推进。用户后续要求继续时，从 D 的聊天 run 持久化、SSE 查询/回放、取消与刷新恢复开始；先读本计划 D、`agent-system.md` 的运行恢复部分，再定位 chat/API/store 及最近测试。不要重复读取完整历史审阅或重跑 A–C 的历史全仓基线。
+本次按用户要求完成 D 并停在 E 边界，不自动推进。用户后续要求继续时，从 E 的摘要版本、covered message range/source IDs、关键约束结构化提取和原文恢复开始；先读本计划 E、`agent-system.md` 的摘要边界，再定位 context/contracts/models 及 D 的 run/message 来源关联。不要重复读取完整历史审阅或重跑 A–D 的历史基线。
 
-C 已完成的验收与命令见 C 报告。实际数据库已升级到 `c184d5e6f7a8`，无待执行迁移操作，不要重复升级或自动 downgrade。升级前备份位于 `backend/data/backups/agent-c-20260914-122119-328323-before.db`，同前缀的 rehearsal 与 verification 文件记录副本演练、旧列哈希、行数及升级检查；恢复应另行评估升级后的新增数据，不直接覆盖现库。
+D 已完成的验收与命令见 D 报告。实际数据库已升级到 `d295e6f7a8b9`，无待执行迁移操作，不要重复升级或自动 downgrade。升级前备份位于 `backend/data/backups/agent-d-20260914-1736-before.db`，演练副本为同前缀 `rehearsal.db`；恢复应另行评估升级后的新增 run/message，不直接覆盖现库。
 
-A–C 修改均未提交 Git；未启动后台任务，未调用真实计费模型，C 未修改实际 `.env`。整体计划不归档、不标为完成。D–H 必须按后续用户请求逐阶段推进并更新报告。
+A–D 修改均未提交 Git；无遗留运行中的测试后台任务，未调用真实计费模型，D 未修改实际 `.env`。整体计划不归档、不标为完成。E–H 必须按后续用户请求逐阶段推进并更新报告。

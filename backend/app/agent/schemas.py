@@ -39,6 +39,18 @@ def generate_message_id() -> str:
     return f"msg-{_short_uuid()}"
 
 
+def generate_run_id() -> str:
+    return f"run-{_short_uuid()}"
+
+
+def generate_run_event_id() -> str:
+    return f"revt-{_short_uuid()}"
+
+
+def generate_chat_request_id() -> str:
+    return f"req-{uuid.uuid4().hex}"
+
+
 def generate_memory_doc_id() -> str:
     """生成记忆文档 id（创建后不可变）。
 
@@ -86,6 +98,7 @@ class ChatRequest(BaseModel):
     """
 
     conversation_id: str = Field(min_length=1)
+    request_id: str = Field(default_factory=generate_chat_request_id, min_length=1, max_length=100)
     message: str = Field(min_length=1, max_length=8000)
     perspective: Perspective = "author"
     character_id: str = ""
@@ -125,6 +138,34 @@ class MessageRead(BaseModel):
     reasoning: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    created_at: datetime
+
+
+RunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
+
+
+class AgentRunRead(BaseModel):
+    id: str
+    conversation_id: str
+    project_id: str
+    request_id: str
+    status: RunStatus
+    user_message_id: str
+    final_message_id: str | None = None
+    error_code: str | None = None
+    error_problem: str | None = None
+    error_fix: str | None = None
+    cancel_requested: bool
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class AgentRunEventRead(BaseModel):
+    run_id: str
+    seq: int
+    event: str
+    data: dict[str, Any]
     created_at: datetime
 
 

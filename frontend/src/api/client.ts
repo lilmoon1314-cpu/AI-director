@@ -33,6 +33,8 @@ export type MemoryDocSectionRead = components["schemas"]["MemoryDocSectionRead"]
 export type PendingWriteRead = components["schemas"]["PendingWriteRead"];
 export type ApproveResponse = components["schemas"]["ApproveResponse"];
 export type RejectResponse = components["schemas"]["RejectResponse"];
+export type AgentRunRead = components["schemas"]["AgentRunRead"];
+export type AgentRunEventRead = components["schemas"]["AgentRunEventRead"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -199,6 +201,19 @@ export const api = {
     ),
   listMessages: (conversationId: string) =>
     apiFetch<MessageRead[]>(`/agent/sessions/${conversationId}/messages`),
+  latestAgentRun: (conversationId: string) =>
+    apiFetch<AgentRunRead | null>(`/agent/sessions/${conversationId}/runs/latest`),
+  lookupAgentRun: (conversationId: string, requestId: string) =>
+    apiFetch<AgentRunRead>(
+      `/agent/runs/lookup?${new URLSearchParams({ conversation_id: conversationId, request_id: requestId }).toString()}`,
+    ),
+  getAgentRun: (runId: string) => apiFetch<AgentRunRead>(`/agent/runs/${runId}`),
+  getAgentRunEvents: (runId: string, afterSeq = 0) =>
+    apiFetch<AgentRunEventRead[]>(
+      `/agent/runs/${runId}/events?${new URLSearchParams({ after_seq: String(afterSeq) }).toString()}`,
+    ),
+  cancelAgentRun: (runId: string) =>
+    apiFetch<AgentRunRead>(`/agent/runs/${runId}/cancel`, { method: "POST" }),
   /** 删除会话（消息经后端级联清理；204；会话不存在 404）。 */
   deleteSession: (conversationId: string) =>
     apiFetch<void>(`/agent/sessions/${conversationId}`, { method: "DELETE" }),
@@ -255,4 +270,9 @@ export const api = {
 /** Agent 对话 SSE 端点路径（fetch 流式读取用；POST + body 不适用 EventSource）。 */
 export function agentChatPath(): string {
   return joinUrl(API_BASE, "/agent/chat");
+}
+
+export function agentRunStreamPath(runId: string, afterSeq = 0): string {
+  const query = new URLSearchParams({ after_seq: String(afterSeq) }).toString();
+  return joinUrl(API_BASE, `/agent/runs/${runId}/stream?${query}`);
 }

@@ -14,6 +14,16 @@ This specification owns the behavior visible to creators using project-scoped Ag
 - Conversation deletion requires an explicit user action and removes its messages and pending writes.
 - Provider or validation failures remain visible as recoverable errors and do not erase a user message
   that was already submitted.
+- Each submitted turn has a client request id and a durable server run id. Repeating the same request
+  id with the same content reuses that run and does not duplicate the user or assistant message;
+  reusing it for different content is a conflict.
+- Stream frames carry the run id and a contiguous sequence. If a connection ends before a terminal
+  frame, the client queries persisted status and resumes from its last sequence. Refreshing a session
+  restores both unfinished runs and pending confirmation cards from the server.
+- Stop is a server-side cancellation, not merely a closed browser connection. Completed work is
+  reported as completed rather than retroactively cancelled; a cancelled or failed run keeps the
+  already-saved user message. Runs interrupted by restart fail visibly and are never automatically
+  replayed. Replay events are retained for the configured bounded period (seven days by default).
 
 ## Context and memory
 
@@ -64,6 +74,8 @@ This specification owns the behavior visible to creators using project-scoped Ag
   that baseline is rejected and asks the Agent to reread. Artifact skill candidates retain their source
   revision and are rejected when that source is no longer current.
 - Applied world-model and document changes refresh their corresponding views.
+- A successful answer and its pending operations commit before rolling-summary maintenance begins.
+  Summary failure is logged and leaves the completed answer and confirmations available.
 
 ## Planned acceptance
 

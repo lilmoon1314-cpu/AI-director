@@ -19,10 +19,12 @@ import { create } from "zustand";
 import {
   api,
   agentChatPath,
+  agentRunStreamPath,
   ApiError,
   type DraftItem,
   type MemoryDocBrief,
   type PendingWriteRead,
+  type AgentRunRead,
   type SessionRead,
 } from "../api/client";
 import { useGraphStore } from "./graphStore";
@@ -109,6 +111,8 @@ interface AgentState {
   messagesLoading: boolean;
   /** 正在流式输出的会话（全局唯一：同一时刻至多一轮对话）。 */
   streamingSessionId: string | null;
+  /** 会话当前服务端持久运行 id；取消与旧流归属检查都以它为准。 */
+  activeRunBySession: Record<string, string>;
   /** 检索行为指示（tool 事件驱动：「正在检索图谱…」）。 */
   toolActivity: { name: string; phase: "start" | "done" } | null;
   /** SSE error 事件 / 请求失败的三要素错误（按会话隔离）。 */
@@ -133,6 +137,7 @@ interface AgentState {
   /** 删除会话（消息经后端级联清理；本地缓存一并移除）。 */
   deleteSession: (conversationId: string) => Promise<void>;
   loadMessages: (conversationId: string, force?: boolean) => Promise<void>;
+  resumeRun: (conversationId: string, run: AgentRunRead) => Promise<void>;
   /** 发送一条消息并消费 SSE 事件流（会话级生命周期，可 stopStreaming 中断）。 */
   sendMessage: (
     conversationId: string,
@@ -181,6 +186,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   messagesBySession: {},
   messagesLoading: false,
   streamingSessionId: null,
+  activeRunBySession: {},
   toolActivity: null,
   sessionErrors: {},
   usageBySession: {},
@@ -217,6 +223,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   deleteSession: async (conversationId) => {
     // 删除命中流式中的会话先中断 SSE（会话不复存在，流必须停；审查 P2-2）
     if (get().streamingSessionId === conversationId) {
+      const runId = get().activeRunBySession[conversationId];
+      if (runId) await api.cancelAgentRun(runId).catch(() => undefined);
       abortControllers.get(conversationId)?.abort();
     }
     try {
@@ -243,7 +251,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     if (!force && get().streamingSessionId === conversationId) return;
     set({ messagesLoading: true });
     try {
-      const rows = await api.listMessages(conversationId);
+      const [rows, pendingResult, latestResult] = await Promise.all([
+        api.listMessages(conversationId),
+        api.listPendingWrites(conversationId).catch(() => null),
+        api.latestAgentRun(conversationId).catch(() => null),
+      ]);
       set({
         messagesBySession: {
           ...get().messagesBySession,
@@ -256,9 +268,99 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             completionTokens: m.completion_tokens ?? null,
           })),
         },
+        ...(pendingResult
+          ? {
+              pendingBySession: {
+                ...get().pendingBySession,
+                [conversationId]: pendingResult.filter((item) => item.status === "pending"),
+              },
+            }
+          : {}),
       });
+      if (
+        latestResult &&
+        (latestResult.status === "queued" || latestResult.status === "running") &&
+        !get().streamingSessionId
+      ) {
+        void get().resumeRun(conversationId, latestResult);
+      }
     } finally {
       set({ messagesLoading: false });
+    }
+  },
+
+  resumeRun: async (conversationId, run) => {
+    if (get().streamingSessionId) return;
+    const controller = new AbortController();
+    abortControllers.set(conversationId, controller);
+    const ownerProjectId = get().sessionsProjectId;
+    const assistantLocalId = localId("msg");
+    let streamed = "";
+    let reasoning = "";
+    set({
+      streamingSessionId: conversationId,
+      activeRunBySession: { ...get().activeRunBySession, [conversationId]: run.id },
+      messagesBySession: {
+        ...get().messagesBySession,
+        [conversationId]: [
+          ...(get().messagesBySession[conversationId] ?? []),
+          { id: assistantLocalId, role: "assistant", content: "", streaming: true },
+        ],
+      },
+    });
+    try {
+      const response = await fetch(agentRunStreamPath(run.id), { signal: controller.signal });
+      if (!response.ok || !response.body) throw new ApiError(response.status, {});
+      for await (const { event, data } of parseSse(response)) {
+        if (get().sessionsProjectId !== ownerProjectId) return;
+        if (event === "token") streamed += String(data.text ?? "");
+        if (event === "reasoning") reasoning += String(data.text ?? "");
+        if (event === "token" || event === "reasoning") {
+          const list = get().messagesBySession[conversationId] ?? [];
+          set({
+            messagesBySession: {
+              ...get().messagesBySession,
+              [conversationId]: list.map((item) =>
+                item.id === assistantLocalId
+                  ? { ...item, content: streamed, reasoning: reasoning || null }
+                  : item,
+              ),
+            },
+          });
+        } else if (event === "error") {
+          set({
+            sessionErrors: {
+              ...get().sessionErrors,
+              [conversationId]: {
+                problem: String(data.problem ?? "对话处理失败"),
+                fix: String(data.fix ?? "重新加载会话后重试"),
+              },
+            },
+          });
+        } else if (event === "done") {
+          // Stream completion is reconciled from the message endpoint below.
+        }
+      }
+      if (get().sessionsProjectId === ownerProjectId) {
+        await get().loadMessages(conversationId, true);
+      }
+    } catch (cause) {
+      if (!(cause instanceof DOMException && cause.name === "AbortError")) {
+        set({
+          sessionErrors: {
+            ...get().sessionErrors,
+            [conversationId]: toErrorState(cause, "恢复回复流失败"),
+          },
+        });
+      }
+    } finally {
+      if (abortControllers.get(conversationId) === controller) abortControllers.delete(conversationId);
+      if (
+        get().sessionsProjectId === ownerProjectId &&
+        get().activeRunBySession[conversationId] === run.id
+      ) {
+        set({ streamingSessionId: null, toolActivity: null });
+      }
     }
   },
 
@@ -298,12 +400,80 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     // 思考耗时：首条 reasoning 至首个 token 的墙钟差（「已思考 N 秒」数据源）
     let reasoningStartedAt: number | null = null;
     let reasoningSeconds: number | undefined;
+    const requestId = `req-${globalThis.crypto?.randomUUID?.() ?? localId("request")}`;
+    const ownerProjectId = get().sessionsProjectId;
+    let runId: string | null = null;
+    let lastSeq = 0;
+    let terminalSeen = false;
+
+    const handleEvent = async (event: string, data: Record<string, unknown>) => {
+      const eventRunId = typeof data.run_id === "string" ? data.run_id : null;
+      const seq = typeof data.seq === "number" ? data.seq : 0;
+      if (eventRunId) {
+        runId = eventRunId;
+        set({ activeRunBySession: { ...get().activeRunBySession, [conversationId]: eventRunId } });
+      }
+      if (seq > 0) {
+        if (seq <= lastSeq) return;
+        lastSeq = seq;
+      }
+      if (get().sessionsProjectId !== ownerProjectId) return;
+      if (event === "token") {
+        if (reasoningStartedAt !== null && reasoningSeconds === undefined) {
+          reasoningSeconds = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000));
+        }
+        streamed += String(data.text ?? "");
+        patchAssistant({ content: streamed, reasoning: reasoningBuf || null, reasoningSeconds });
+      } else if (event === "reasoning") {
+        if (reasoningStartedAt === null) reasoningStartedAt = Date.now();
+        reasoningBuf += String(data.text ?? "");
+        patchAssistant({ reasoning: reasoningBuf });
+      } else if (event === "usage") {
+        set({
+          usageBySession: {
+            ...get().usageBySession,
+            [conversationId]: {
+              promptTokens: (data.prompt_tokens as number | null | undefined) ?? null,
+              completionTokens: (data.completion_tokens as number | null | undefined) ?? null,
+              contextMaxTokens: (data.context_max_tokens as number | null | undefined) ?? null,
+              contextRatio: (data.context_ratio as number | null | undefined) ?? null,
+            },
+          },
+        });
+      } else if (event === "tool") {
+        set({ toolActivity: { name: String(data.name ?? ""), phase: "start" } });
+      } else if (event === "error") {
+        terminalSeen = true;
+        set({
+          sessionErrors: {
+            ...get().sessionErrors,
+            [conversationId]: {
+              problem: String(data.problem ?? "对话处理失败"),
+              fix: String(data.fix ?? "重试；持续失败请检查服务端日志"),
+            },
+          },
+        });
+      } else if (event === "done") {
+        terminalSeen = true;
+        const pending = data.pending_writes as PendingWriteRead[] | undefined;
+        if (pending && pending.length > 0) {
+          set({
+            pendingBySession: {
+              ...get().pendingBySession,
+              [conversationId]: [...(get().pendingBySession[conversationId] ?? []), ...pending],
+            },
+          });
+        }
+        await get().loadMessages(conversationId, true);
+      }
+    };
     try {
       const resp = await fetch(agentChatPath(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversation_id: conversationId,
+          request_id: requestId,
           message,
           perspective,
           character_id: characterId ?? "",
@@ -319,60 +489,38 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
         throw new ApiError(resp.status, body);
       }
-      for await (const { event, data } of parseSse(resp)) {
-        if (event === "token") {
-          if (reasoningStartedAt !== null && reasoningSeconds === undefined) {
-            reasoningSeconds = Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000));
-          }
-          streamed += String(data.text ?? "");
-          patchAssistant({
-            content: streamed,
-            reasoning: reasoningBuf || null,
-            reasoningSeconds,
-          });
-        } else if (event === "reasoning") {
-          if (reasoningStartedAt === null) reasoningStartedAt = Date.now();
-          reasoningBuf += String(data.text ?? "");
-          patchAssistant({ reasoning: reasoningBuf });
-        } else if (event === "usage") {
-          set({
-            usageBySession: {
-              ...get().usageBySession,
-              [conversationId]: {
-                promptTokens: (data.prompt_tokens as number | null | undefined) ?? null,
-                completionTokens: (data.completion_tokens as number | null | undefined) ?? null,
-                contextMaxTokens: (data.context_max_tokens as number | null | undefined) ?? null,
-                contextRatio: (data.context_ratio as number | null | undefined) ?? null,
-              },
-            },
-          });
-        } else if (event === "tool") {
-          set({ toolActivity: { name: String(data.name ?? ""), phase: "start" } });
-        } else if (event === "error") {
+      for await (const frame of parseSse(resp)) await handleEvent(frame.event, frame.data);
+      if (!terminalSeen) {
+        const recovered = runId
+          ? await api.getAgentRun(runId)
+          : await api.lookupAgentRun(conversationId, requestId);
+        runId = recovered.id;
+        const replay = await api.getAgentRunEvents(recovered.id, lastSeq);
+        for (const frame of replay) await handleEvent(frame.event, frame.data);
+        if (!terminalSeen && recovered.status === "completed") {
+          terminalSeen = true;
+          await get().loadMessages(conversationId, true);
+        } else if (
+          !terminalSeen &&
+          (recovered.status === "failed" || recovered.status === "cancelled")
+        ) {
+          terminalSeen = true;
           set({
             sessionErrors: {
               ...get().sessionErrors,
               [conversationId]: {
-                problem: String(data.problem ?? "对话处理失败"),
-                fix: String(data.fix ?? "重试；持续失败请检查服务端日志"),
+                problem: recovered.error_problem ?? "对话未完成",
+                fix: recovered.error_fix ?? "重新加载会话后重试",
               },
             },
           });
-        } else if (event === "done") {
-          // F14：done 携带本轮待写入清单（无写入时无该键）——累积进确认卡
-          const pending = data.pending_writes as PendingWriteRead[] | undefined;
-          if (pending && pending.length > 0) {
-            set({
-              pendingBySession: {
-                ...get().pendingBySession,
-                [conversationId]: [...(get().pendingBySession[conversationId] ?? []), ...pending],
-              },
-            });
-          }
-          // 以服务端落库结果为准回读（标题/消息 id 对齐）
-          await get().loadMessages(conversationId, true);
+        } else if (!terminalSeen) {
+          const resumed = await fetch(agentRunStreamPath(recovered.id, lastSeq), {
+            signal: controller.signal,
+          });
+          if (!resumed.ok || !resumed.body) throw new ApiError(resumed.status, {});
+          for await (const frame of parseSse(resumed)) await handleEvent(frame.event, frame.data);
         }
-        // draft / doc_patch / ask_user：F14 预留事件——忽略（前向兼容）
       }
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
@@ -385,22 +533,40 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
     } finally {
       // 收尾：结束流式态；未回读成功（中断/错误）时保留本地缓冲但去掉 streaming 标记
-      abortControllers.delete(conversationId);
+      if (abortControllers.get(conversationId) === controller) abortControllers.delete(conversationId);
       const list = get().messagesBySession[conversationId] ?? [];
-      set({
-        streamingSessionId: null,
-        toolActivity: null,
-        messagesBySession: {
-          ...get().messagesBySession,
-          [conversationId]: list.map((m) =>
-            m.id === assistantLocalId && m.content === "" ? { ...m, content: "（未产生回复）", streaming: false } : { ...m, streaming: false },
-          ),
-        },
-      });
+      const stillOwned =
+        get().sessionsProjectId === ownerProjectId &&
+        (!runId || get().activeRunBySession[conversationId] === runId);
+      if (stillOwned) {
+        set({
+          ...(get().streamingSessionId === conversationId ? { streamingSessionId: null } : {}),
+          toolActivity: null,
+          messagesBySession: {
+            ...get().messagesBySession,
+            [conversationId]: list.map((m) =>
+              m.id === assistantLocalId && m.content === ""
+                ? { ...m, content: "（未产生回复）", streaming: false }
+                : { ...m, streaming: false },
+            ),
+          },
+        });
+      }
     }
   },
 
   stopStreaming: (conversationId) => {
+    const runId = get().activeRunBySession[conversationId];
+    if (runId) {
+      void api.cancelAgentRun(runId).catch((cause) => {
+        set({
+          sessionErrors: {
+            ...get().sessionErrors,
+            [conversationId]: toErrorState(cause, "服务端停止回复失败"),
+          },
+        });
+      });
+    }
     abortControllers.get(conversationId)?.abort();
   },
 
@@ -587,7 +753,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   resetProjectScoped: () => {
     // 项目切换即中断进行中的 SSE（DESIGN.md §7 重置矩阵：agentStore SSE abort 项）
     const active = get().streamingSessionId;
-    if (active) abortControllers.get(active)?.abort();
+    if (active) {
+      const runId = get().activeRunBySession[active];
+      if (runId) void api.cancelAgentRun(runId).catch(() => undefined);
+      abortControllers.get(active)?.abort();
+    }
     set({
       sessions: [],
       sessionsProjectId: null,
@@ -596,6 +766,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       messagesBySession: {},
       messagesLoading: false,
       streamingSessionId: null,
+      activeRunBySession: {},
       toolActivity: null,
       sessionErrors: {},
       usageBySession: {},

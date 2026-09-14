@@ -3,11 +3,15 @@
 事务约定: 本层不 commit/rollback（事务边界在 service 层，backend/CONSTRAINTS.md）。
 """
 
+from datetime import datetime
+
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.models import (
+    AgentRun,
+    AgentRunEvent,
     Conversation,
     ConversationPartition,
     MemoryDoc,
@@ -118,6 +122,99 @@ async def list_messages(session: AsyncSession, conversation_id: str) -> list[Mes
         .order_by(Message.created_at.asc(), Message.id)
     )
     return list(await session.scalars(stmt))
+
+
+async def get_message(session: AsyncSession, message_id: str) -> Message | None:
+    return await session.get(Message, message_id)
+
+
+async def get_assistant_message_by_run(session: AsyncSession, run_id: str) -> Message | None:
+    return await session.scalar(
+        select(Message).where(Message.run_id == run_id, Message.role == "assistant").limit(1)
+    )
+
+
+# ---- 持久聊天运行与事件 ----
+
+
+async def add_run(session: AsyncSession, run: AgentRun) -> AgentRun:
+    session.add(run)
+    await session.flush()
+    return run
+
+
+async def get_run(session: AsyncSession, run_id: str) -> AgentRun | None:
+    return await session.get(AgentRun, run_id)
+
+
+async def get_run_by_request(
+    session: AsyncSession, conversation_id: str, request_id: str
+) -> AgentRun | None:
+    return await session.scalar(
+        select(AgentRun).where(
+            AgentRun.conversation_id == conversation_id, AgentRun.request_id == request_id
+        )
+    )
+
+
+async def latest_run(session: AsyncSession, conversation_id: str) -> AgentRun | None:
+    return await session.scalar(
+        select(AgentRun)
+        .where(AgentRun.conversation_id == conversation_id)
+        .order_by(AgentRun.created_at.desc(), AgentRun.id.desc())
+        .limit(1)
+    )
+
+
+async def claim_run(session: AsyncSession, run_id: str, started_at: datetime) -> bool:
+    result = await session.execute(
+        update(AgentRun)
+        .where(AgentRun.id == run_id, AgentRun.status == "queued")
+        .values(status="running", started_at=started_at)
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
+
+
+async def next_run_event_seq(session: AsyncSession, run_id: str) -> int:
+    current = await session.scalar(
+        select(func.max(AgentRunEvent.seq)).where(AgentRunEvent.run_id == run_id)
+    )
+    return int(current or 0) + 1
+
+
+async def add_run_event(session: AsyncSession, event: AgentRunEvent) -> AgentRunEvent:
+    session.add(event)
+    await session.flush()
+    return event
+
+
+async def list_run_events(
+    session: AsyncSession, run_id: str, after_seq: int = 0
+) -> list[AgentRunEvent]:
+    return list(
+        await session.scalars(
+            select(AgentRunEvent)
+            .where(AgentRunEvent.run_id == run_id, AgentRunEvent.seq > after_seq)
+            .order_by(AgentRunEvent.seq.asc())
+        )
+    )
+
+
+async def request_run_cancel(session: AsyncSession, run_id: str) -> None:
+    await session.execute(
+        update(AgentRun)
+        .where(AgentRun.id == run_id, AgentRun.status.in_(("queued", "running")))
+        .values(cancel_requested=True)
+        .execution_options(synchronize_session=False)
+    )
+
+
+async def delete_expired_run_events(session: AsyncSession, cutoff: datetime) -> None:
+    terminal_runs = select(AgentRun.id).where(
+        AgentRun.completed_at.is_not(None), AgentRun.completed_at < cutoff
+    )
+    await session.execute(sa_delete(AgentRunEvent).where(AgentRunEvent.run_id.in_(terminal_runs)))
 
 
 # ---- 记忆文档与段 ----

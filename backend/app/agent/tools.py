@@ -87,6 +87,8 @@ class ToolContext:
     character_id: str = ""
     conversation_id: str = ""
     pending_writes: list[PendingWrite] = field(default_factory=list)
+    # Durable runs defer insertion until answer commit, avoiding a write lock during provider waits.
+    defer_pending_flush: bool = False
     continuations: dict[str, str] = field(default_factory=dict)
     # 仅记录本轮实际返回给模型的版本；写工具不得以登记瞬间的新版替代它。
     read_versions: dict[tuple[str, str], int] = field(default_factory=dict)
@@ -372,7 +374,8 @@ async def _register_pending(
         payload_json=json.dumps(payload, ensure_ascii=False),
         baseline_json=json.dumps(baseline, ensure_ascii=False) if baseline is not None else None,
     )
-    row = await repository.add_pending(ctx.session, row)
+    if not ctx.defer_pending_flush:
+        row = await repository.add_pending(ctx.session, row)
     ctx.pending_writes.append(row)
     return None
 

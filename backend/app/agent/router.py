@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import service
 from app.agent.schemas import (
+    AgentRunEventRead,
+    AgentRunRead,
     ApproveResponse,
     ChatRequest,
     ConfirmRequest,
@@ -90,18 +92,61 @@ async def chat(
     session: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     """SSE 流式对话（事件协议见 agent/ARCHITECTURE.md；会话不存在 404）。"""
-    await service.ensure_conversation(session, schema.conversation_id)
-    generator = service.stream_chat(
-        schema.conversation_id,
-        schema.message,
-        perspective=schema.perspective,
-        character_id=schema.character_id,
-    )
+    run = await service.create_or_get_run(session, schema)
+    if run.status == "queued":
+        service.start_run(run.id)
+    generator = service.stream_run_events(run.id)
     return StreamingResponse(
         (_sse_frame(evt["event"], evt["data"]) async for evt in generator),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/runs/lookup", response_model=AgentRunRead)
+async def lookup_run(
+    conversation_id: str = Query(min_length=1),
+    request_id: str = Query(min_length=1),
+    session: AsyncSession = Depends(get_session),
+) -> AgentRunRead:
+    return await service.get_run_by_request(session, conversation_id, request_id)
+
+
+@router.get("/sessions/{conversation_id}/runs/latest", response_model=AgentRunRead | None)
+async def latest_run(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> AgentRunRead | None:
+    return await service.get_latest_run(session, conversation_id)
+
+
+@router.get("/runs/{run_id}", response_model=AgentRunRead)
+async def get_run(run_id: str, session: AsyncSession = Depends(get_session)) -> AgentRunRead:
+    return await service.get_run(session, run_id)
+
+
+@router.get("/runs/{run_id}/events", response_model=list[AgentRunEventRead])
+async def get_run_events(
+    run_id: str,
+    after_seq: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> list[AgentRunEventRead]:
+    return await service.get_run_events(session, run_id, after_seq)
+
+
+@router.get("/runs/{run_id}/stream")
+async def stream_run(run_id: str, after_seq: int = Query(default=0, ge=0)) -> StreamingResponse:
+    generator = service.stream_run_events(run_id, after_seq=after_seq)
+    return StreamingResponse(
+        (_sse_frame(evt["event"], evt["data"]) async for evt in generator),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/runs/{run_id}/cancel", response_model=AgentRunRead)
+async def cancel_run(run_id: str, session: AsyncSession = Depends(get_session)) -> AgentRunRead:
+    return await service.cancel_run(session, run_id)
 
 
 @router.post("/propose", response_model=ProposeResponse)

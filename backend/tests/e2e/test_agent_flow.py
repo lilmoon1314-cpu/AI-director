@@ -13,7 +13,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.agent import llm as agent_llm
+from app.agent import service as agent_service
 from app.agent.llm import AssistantTurn, ToolCall
+from app.config import get_settings
 
 pytestmark = pytest.mark.e2e
 
@@ -200,6 +202,10 @@ def test_e3_write_tool_pending_then_approve_graph_refresh(
     跨组件理由: approve 落库改变图谱与文档数据，须验证 perspectives 图查询/
     文档读取与 projects 归属联动（agent+entities+perspectives+projects）。
     """
+    # This scenario verifies the cross-domain write flow, not B's deliberately conservative budget.
+    # The positioning document plus two tool schemas exceeds the small default test window.
+    settings = get_settings().model_copy(update={"agent_context_max_tokens": 12000})
+    monkeypatch.setattr(agent_service, "get_settings", lambda: settings)
     project = client.post("/api/projects", json={"name": "写入工具项目"}).json()
     pid = project["id"]
     session = client.post("/api/agent/sessions", params={"project_id": pid}, json={}).json()
@@ -223,6 +229,11 @@ def test_e3_write_tool_pending_then_approve_graph_refresh(
                     ),
                     ToolCall(
                         call_id="c2",
+                        name="read_doc_section",
+                        arguments=f'{{"doc_id": "{doc["id"]}", "seq": 1}}',
+                    ),
+                    ToolCall(
+                        call_id="c3",
                         name="write_doc_section",
                         arguments=(
                             f'{{"doc_id": "{doc["id"]}", "seq": 1, "content": "海难求生题材。"}}'

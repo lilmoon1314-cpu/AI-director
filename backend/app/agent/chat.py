@@ -46,12 +46,32 @@ async def stream_chat(
     perspective: Perspective,
     character_id: str = "",
     settings: Settings,
+    existing_user_message_id: str | None = None,
+    run_id: str | None = None,
+    maintain_summary: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one durable, bounded streaming turn and yield the established SSE events."""
     factory = db.get_session_factory()
     async with factory() as db_session:
         conversation = await conversations.load_conversation(db_session, conversation_id)
-        yield {"event": EVENT_MESSAGE_START, "data": {"conversation_id": conversation_id}}
+        user_row: Message | None = None
+        if existing_user_message_id is not None:
+            user_row = await repository.get_message(db_session, existing_user_message_id)
+            if (
+                user_row is None
+                or user_row.conversation_id != conversation_id
+                or user_row.role != "user"
+            ):
+                raise AgentError(
+                    problem="运行对应的用户消息不存在",
+                    cause="持久运行记录与消息记录不一致",
+                    fix="重新加载会话并创建新轮次",
+                )
+            message = user_row.content
+        yield {
+            "event": EVENT_MESSAGE_START,
+            "data": {"conversation_id": conversation_id, **({"run_id": run_id} if run_id else {})},
+        }
 
         violation = _review_text(message, settings)
         if violation:
@@ -79,18 +99,19 @@ async def stream_chat(
                 },
             }
             return
-        user_row = Message(
-            id=generate_message_id(),
-            conversation_id=conversation_id,
-            role="user",
-            context_key=key,
-            content=message,
-        )
-        await repository.add_message(db_session, user_row)
-        if not conversation.title:
-            conversation.title = message[:20]
-            await repository.save_conversation(db_session, conversation)
-        await db_session.commit()
+        if user_row is None:
+            user_row = Message(
+                id=generate_message_id(),
+                conversation_id=conversation_id,
+                role="user",
+                context_key=key,
+                content=message,
+            )
+            await repository.add_message(db_session, user_row)
+            if not conversation.title:
+                conversation.title = message[:20]
+                await repository.save_conversation(db_session, conversation)
+            await db_session.commit()
 
         limiter = TurnBudget.start(settings)
         budget_token = active_budget.set(limiter)
@@ -114,6 +135,7 @@ async def stream_chat(
                     perspective=perspective,
                     character_id=character_id,
                     conversation_id=conversation_id,
+                    defer_pending_flush=run_id is not None,
                 )
                 used = 0
                 failures: dict[str, int] = {}
@@ -255,6 +277,9 @@ async def stream_chat(
                         fix="重试一次；持续出现请更换 LLM_MODEL 或简化问题",
                     )
 
+                if tool_context.defer_pending_flush:
+                    for pending in tool_context.pending_writes:
+                        await repository.add_pending(db_session, pending)
                 assistant_row = Message(
                     id=generate_message_id(),
                     conversation_id=conversation_id,
@@ -264,15 +289,17 @@ async def stream_chat(
                     reasoning=final_reasoning or None,
                     prompt_tokens=(final_usage or {}).get("prompt_tokens"),
                     completion_tokens=(final_usage or {}).get("completion_tokens"),
+                    run_id=run_id,
                 )
                 await repository.add_message(db_session, assistant_row)
-                await context.maintain_rolling_summary(
-                    db_session,
-                    conversation,
-                    settings=settings,
-                    perspective=perspective,
-                    character_id=character_id,
-                )
+                if maintain_summary:
+                    await context.maintain_rolling_summary(
+                        db_session,
+                        conversation,
+                        settings=settings,
+                        perspective=perspective,
+                        character_id=character_id,
+                    )
                 pending_payload: dict[str, Any] | None = None
                 if tool_context.pending_writes:
                     pending_payload = {

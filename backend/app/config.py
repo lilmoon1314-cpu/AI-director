@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # 单轮对话允许登记的待写入（pending write）数量上限；超限后写入工具返回
     # 错误文本（模型可收敛），已登记项不受影响（F14 轮末统一确认）
     agent_max_pending_writes: int = 8
+    # 持久 SSE 回放的数据库轮询间隔；事件保存期限用于后续有界清理策略。
+    agent_run_event_poll_seconds: float = Field(default=0.05, gt=0, le=5)
+    agent_run_event_retention_days: int = Field(default=7, gt=0)
     # 单次工具输出注入上下文的截断上限（字符）
     agent_tool_output_max_chars: int = Field(default=2000, gt=0)
     # 内容合规 hook 开关（MVP 本地敏感词表实现，预留外部审核 API 位）
