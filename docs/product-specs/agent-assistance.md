@@ -75,7 +75,16 @@ This specification owns the behavior visible to creators using project-scoped Ag
   revision and are rejected when that source is no longer current.
 - Applied world-model and document changes refresh their corresponding views.
 - A successful answer and its pending operations commit before rolling-summary maintenance begins.
-  Summary failure is logged and leaves the completed answer and confirmations available.
+  Every summary attempt records its version, source-message coverage, model/strategy and validation
+  outcome. Summary failure is logged, leaves the previous verified version active, and leaves the
+  completed answer and confirmations available.
+- Summary compression never deletes or rewrites original messages. Critical constraints, decisions,
+  unanswered tasks, exact references and tool failures retain links to their source messages. A damaged
+  cursor is reported and recovered from a verified version or bounded original-message replay.
+- Each response exposes an expandable context note: which source IDs were supplied, which recoverable
+  sources were omitted, the active summary version, and whether bounded gap recovery was needed. The
+  Agent can page original messages by source ID or time range only within the current conversation and
+  perspective partition.
 
 ## Planned acceptance
 

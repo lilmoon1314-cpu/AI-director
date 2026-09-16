@@ -7,7 +7,7 @@
  * - F14 轮末统一确认：done 事件携带 pending_writes 清单 → pendingBySession
  *   （确认卡数据源）→ approve 服务端二次校验落库 → 图谱/文档失效刷新；
  * - confirm（legacy）成功后同样广播图谱失效（graphStore.loadGraph 重载）。
- * 事件协议（agent/ARCHITECTURE.md）：message_start/token/reasoning/usage/tool/
+ * 事件协议（agent/ARCHITECTURE.md）：message_start/context/token/reasoning/usage/tool/
  * done(含 pending_writes?)/error；draft/doc_patch/ask_user 为预留类型——本
  * store 忽略不渲染（前向兼容）。reasoning 增量累积进 assistant 消息
  * （ThinkingBlock 数据源），usage 写入 usageBySession（UsageBar 容量窗口）。
@@ -59,6 +59,14 @@ export interface TurnUsage {
   contextRatio: number | null;
 }
 
+export interface ContextDisclosure {
+  contextKey: string;
+  summaryVersion: number | null;
+  usedSourceIds: string[];
+  omittedRecoverableSourceIds: string[];
+  coverageGap: boolean;
+}
+
 export type PerspectiveValue = "author" | "character" | "audience";
 
 function toErrorState(cause: unknown, fallbackProblem: string): AgentErrorState {
@@ -66,6 +74,20 @@ function toErrorState(cause: unknown, fallbackProblem: string): AgentErrorState 
   return {
     problem: err?.problem ?? fallbackProblem,
     fix: err?.fix ?? "确认后端服务已启动后重试",
+  };
+}
+
+function toContextDisclosure(data: Record<string, unknown>): ContextDisclosure {
+  return {
+    contextKey: String(data.context_key ?? "author"),
+    summaryVersion: typeof data.summary_version === "number" ? data.summary_version : null,
+    usedSourceIds: Array.isArray(data.used_source_ids)
+      ? data.used_source_ids.map(String)
+      : [],
+    omittedRecoverableSourceIds: Array.isArray(data.omitted_recoverable_source_ids)
+      ? data.omitted_recoverable_source_ids.map(String)
+      : [],
+    coverageGap: data.coverage_gap === true,
   };
 }
 
@@ -119,6 +141,7 @@ interface AgentState {
   sessionErrors: Record<string, AgentErrorState | null>;
   /** 本轮 usage（usage 事件写入，done 后保留至下一轮覆盖；UsageBar 数据源）。 */
   usageBySession: Record<string, TurnUsage>;
+  contextBySession: Record<string, ContextDisclosure>;
   draftsBySession: Record<string, DraftItem[]>;
   confirming: boolean;
   /** F14 待写入确认：done 事件清单按会话累积（确认卡数据源）。 */
@@ -190,6 +213,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   toolActivity: null,
   sessionErrors: {},
   usageBySession: {},
+  contextBySession: {},
   draftsBySession: {},
   confirming: false,
   pendingBySession: {},
@@ -327,6 +351,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               ),
             },
           });
+        } else if (event === "context") {
+          set({
+            contextBySession: {
+              ...get().contextBySession,
+              [conversationId]: toContextDisclosure(data),
+            },
+          });
         } else if (event === "error") {
           set({
             sessionErrors: {
@@ -428,6 +459,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         if (reasoningStartedAt === null) reasoningStartedAt = Date.now();
         reasoningBuf += String(data.text ?? "");
         patchAssistant({ reasoning: reasoningBuf });
+      } else if (event === "context") {
+        set({
+          contextBySession: {
+            ...get().contextBySession,
+            [conversationId]: toContextDisclosure(data),
+          },
+        });
       } else if (event === "usage") {
         set({
           usageBySession: {
@@ -770,6 +808,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       toolActivity: null,
       sessionErrors: {},
       usageBySession: {},
+      contextBySession: {},
       draftsBySession: {},
       confirming: false,
       pendingBySession: {},

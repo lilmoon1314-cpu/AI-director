@@ -674,4 +674,5 @@ def test_tool_specs_cover_read_write_and_pagination_tools() -> None:
         "write_doc_section",
         "list_context_directory",
         "continue_tool_result",
+        "read_conversation_sources",
     }, f"工具集必须为九件: {names}"

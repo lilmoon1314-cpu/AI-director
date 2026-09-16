@@ -21,6 +21,7 @@ EVENT_MESSAGE_START = "message_start"
 EVENT_TOKEN = "token"
 EVENT_REASONING = "reasoning"
 EVENT_USAGE = "usage"
+EVENT_CONTEXT = "context"
 EVENT_TOOL = "tool"
 EVENT_DRAFT = "draft"
 EVENT_DOC_PATCH = "doc_patch"
@@ -129,6 +130,7 @@ async def stream_chat(
                     if settings.agent_max_tool_calls_per_turn
                     else None,
                 )
+                yield {"event": EVENT_CONTEXT, "data": messages.disclosure}
                 tool_context = tools.ToolContext(
                     session=db_session,
                     project_id=conversation.project_id,

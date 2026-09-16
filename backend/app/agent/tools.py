@@ -18,6 +18,7 @@ import json
 import secrets
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,6 +29,7 @@ from app.agent import repository
 from app.agent.models import PendingWrite
 from app.agent.prompts import render_entity_details
 from app.agent.schemas import Perspective, generate_pending_write_id
+from app.agent.scope import context_key
 from app.agent.templates import DOC_TEMPLATES, GUIDE_KINDS
 from app.agent.tool_specs import TOOL_SPECS
 from app.config import get_settings
@@ -167,6 +169,48 @@ async def _tool_list_directory(ctx: ToolContext, args: dict[str, Any]) -> str:
         {
             "items": entries[offset : offset + size],
             "next_offset": offset + size if offset + size < len(entries) else None,
+        },
+        ensure_ascii=False,
+    )
+
+
+async def _tool_read_conversation_sources(ctx: ToolContext, args: dict[str, Any]) -> str:
+    """Recover immutable message text without crossing conversation or perspective scope."""
+    offset = args.get("offset", 0)
+    if type(offset) is not int or offset < 0:
+        return _error_result("原文页码无效", "offset 必须是非负整数", "从 offset=0 开始")
+    raw_ids = args.get("source_ids", [])
+    if not isinstance(raw_ids, list) or len(raw_ids) > 50:
+        return _error_result("来源 id 无效", "source_ids 必须是不超过 50 项的数组", "缩小来源范围")
+    wanted = {str(value) for value in raw_ids if str(value)}
+    try:
+        start = datetime.fromisoformat(str(args["start_time"])) if args.get("start_time") else None
+        end = datetime.fromisoformat(str(args["end_time"])) if args.get("end_time") else None
+    except ValueError:
+        return _error_result("时间范围无效", "时间必须是 ISO-8601 格式", "使用完整日期时间后重试")
+    key = context_key(ctx.perspective, ctx.character_id)
+    rows = await repository.list_messages_for_scope(ctx.session, ctx.conversation_id, key)
+    selected = [
+        row
+        for row in rows
+        if (not wanted or row.id in wanted)
+        and (start is None or row.created_at >= start)
+        and (end is None or row.created_at <= end)
+    ]
+    size = get_settings().agent_source_page_size
+    page = selected[offset : offset + size]
+    return json.dumps(
+        {
+            "items": [
+                {
+                    "source_id": row.id,
+                    "role": row.role,
+                    "created_at": row.created_at.isoformat(),
+                    "content": row.content,
+                }
+                for row in page
+            ],
+            "next_offset": offset + size if offset + size < len(selected) else None,
         },
         ensure_ascii=False,
     )
@@ -606,6 +650,7 @@ async def _tool_write_doc_section(ctx: ToolContext, args: dict[str, Any]) -> str
 _TOOL_IMPLS = {
     "continue_tool_result": _tool_continue_result,
     "list_context_directory": _tool_list_directory,
+    "read_conversation_sources": _tool_read_conversation_sources,
     "search_entities": _tool_search_entities,
     "get_entity_detail": _tool_get_entity_detail,
     "get_neighborhood": _tool_get_neighborhood,

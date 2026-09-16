@@ -706,6 +706,7 @@ def test_chat_sse_emits_reasoning_and_usage_events(
 
     assert names == [
         "message_start",
+        "context",
         "reasoning",
         "reasoning",
         "token",

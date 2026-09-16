@@ -71,9 +71,9 @@ def test_populated_c_upgrade_preserves_messages_and_adds_run_constraints(tmp_pat
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
-def test_fresh_d_migration_has_one_head(tmp_path: Path) -> None:
+def test_fresh_d_migration_reaches_d_revision(tmp_path: Path) -> None:
     path = tmp_path / "fresh-d.db"
-    _upgrade(path, "head")
+    _upgrade(path, "d295e6f7a8b9")
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
             "d295e6f7a8b9",

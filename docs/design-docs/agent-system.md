@@ -7,7 +7,8 @@ For a code-level assessment of the current guarantees and their limitations, see
 [the 2026-09-12 engineering assessment](agent-engineering-assessment-2026-09-12.md). Its improvement
 plan is active; A supplied contracts and fault baselines, B implements context partitioning and
 execution limits, C implements atomic versioned confirmations, and D implements durable chat runs,
-event replay, cancellation, and refresh recovery. Semantic summary coverage remains slice E work.
+event replay, cancellation, and refresh recovery. E adds verified summary coverage and scoped original
+message recovery; cross-session semantic memory remains slice F work.
 
 ## Context boundary
 
@@ -58,8 +59,14 @@ owned by the conversation store rather than a dock component, allowing presentat
 aborting the response. Project switching and explicit stop are cancellation boundaries. Only one turn
 streams globally at a time to prevent concurrent UI ownership of the same interaction channel.
 
-Rolling summaries are maintenance data. A failed or empty summary leaves the prior summary and cursor
-unchanged. Provider failures are translated at the Agent boundary rather than leaking SDK exceptions.
+Rolling summaries are maintenance data. Each attempt is an immutable `SummaryVersion` carrying its
+ordered cumulative source-message IDs, previous/next cursor, model and strategy version, bounded input
+and output sizes, extracted critical items, and verified/failed outcome. Only a verified version becomes
+active. A failed or empty attempt remains auditable and leaves the prior summary and cursor unchanged.
+If the mutable cursor disagrees with a still-valid immutable version it is repaired from that version;
+an invalid version causes bounded critical-message/recent-tail recovery from original messages and an
+explicit coverage-gap disclosure rather than a `tail[-window:]` skip. Provider failures are translated
+at the Agent boundary rather than leaking SDK exceptions.
 Provider streams are explicitly closed; total turn and tool timeouts abort current work without
 automatically retrying pending writes. Missing final provider turns, invalid/duplicate tool-call IDs,
 and tool calls after disabling tools become errors.
@@ -127,7 +134,7 @@ pending-operation path.
 `agent/contracts.py` defines strict, immutable metadata models. Unknown fields are rejected. These are
 internal contracts rather than optional policy hooks. ContextScope, ContextManifest, SourceRef metadata
 and ToolResult are used by B; the D persistence models enforce RunEvent identity/sequence semantics,
-while SummaryCoverage awaits E runtime integration. Passing
+and E integrates SummaryCoverage into summary advancement. Passing
 their validation does not prove that a source exists, that its content is visible, or that a summary
 is semantically accurate. The participating services must supply and verify those facts at runtime.
 
@@ -146,7 +153,19 @@ is semantically accurate. The participating services must supply and verify thos
   a string token by itself is not authorization. Unknown write outcomes must be queried, not retried.
 - `SummaryCoverage` checks an exact ordered source range and its last-source cursor. A failed check
   cannot authorize cursor advancement. Source existence, old-cursor continuity, exact-value retention,
-  and human evaluation of semantic quality remain separate runtime checks for slice E.
+  are checked by the runtime. Natural-language semantic quality still requires separate human/model
+  evaluation and is not presented as a mathematical guarantee.
+
+Critical summary state is source-backed rather than trusted from model prose. Constraints, decisions,
+open tasks, exact references, and tool failures retain a source message ID; detected numbers and quoted
+values must still be exact substrings of that original. Original messages are never rewritten by
+compression. `read_conversation_sources` can recover them by source ID or ISO time range with bounded
+pagination, and always filters by the current conversation and exact context key.
+
+Every durable turn emits a replayable `context` event containing source IDs used in the prompt and IDs
+of recoverable material omitted for budget/recovery reasons, without message bodies. The UI exposes this
+as an expandable provenance view. This event is an explanation of selection, not proof that the model
+semantically used every included source.
 
 ### Run and confirmation state are separate
 

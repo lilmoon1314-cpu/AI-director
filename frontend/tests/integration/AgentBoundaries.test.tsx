@@ -40,3 +40,28 @@ describe("B request rejection reaches the creator", () => {
     expect(useAgentStore.getState().streamingSessionId).toBeNull();
   });
 });
+
+describe("E context provenance", () => {
+  it("shows used and recoverable source counts plus coverage recovery", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { headers: { "Content-Type": "application/json" } })),
+    );
+    useAgentStore.setState({
+      contextBySession: {
+        "conv-e": {
+          contextKey: "author",
+          summaryVersion: 3,
+          usedSourceIds: ["m1", "m2"],
+          omittedRecoverableSourceIds: ["m0"],
+          coverageGap: true,
+        },
+      },
+    });
+    render(<SessionView conversationId="conv-e" />);
+    const disclosure = screen.getByTestId("agent-context-disclosure");
+    expect(disclosure).toHaveTextContent("使用 2 个来源");
+    expect(disclosure).toHaveTextContent("省略 1 个可恢复来源");
+    expect(disclosure).toHaveTextContent("已从原文做有界回补");
+  });
+});

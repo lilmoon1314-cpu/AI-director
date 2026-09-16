@@ -27,6 +27,7 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
   const busyElsewhere = useAgentStore((s) => s.streamingSessionId !== null && s.streamingSessionId !== conversationId);
   const toolActivity = useAgentStore((s) => s.toolActivity);
   const usage = useAgentStore((s) => s.usageBySession[conversationId] ?? null);
+  const contextDisclosure = useAgentStore((s) => s.contextBySession[conversationId] ?? null);
   const error = useAgentStore((s) => s.sessionErrors[conversationId] ?? null);
   const drafts = useAgentStore((s) => s.draftsBySession[conversationId] ?? EMPTY_DRAFTS);
   const confirming = useAgentStore((s) => s.confirming);
@@ -66,6 +67,27 @@ export function SessionView({ conversationId, testId = "agent-input" }: { conver
       <p className="px-3 py-1 text-xs text-slate-500" data-testid="agent-context-scope">
         各视角及角色分别保留对话上下文；记忆文档仅供作者视角使用。
       </p>
+      {contextDisclosure ? (
+        <details className="mx-3 mb-1 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300" data-testid="agent-context-disclosure">
+          <summary className="cursor-pointer">
+            本轮上下文：使用 {contextDisclosure.usedSourceIds.length} 个来源
+            {contextDisclosure.omittedRecoverableSourceIds.length > 0
+              ? `，省略 ${contextDisclosure.omittedRecoverableSourceIds.length} 个可恢复来源`
+              : "，无省略来源"}
+          </summary>
+          <p className="mt-2 break-all">
+            分区 {contextDisclosure.contextKey}；摘要版本 {contextDisclosure.summaryVersion ?? "无"}。
+            {contextDisclosure.coverageGap
+              ? " 检测到摘要覆盖缺口，已从原文做有界回补。"
+              : " 摘要覆盖校验正常。"}
+          </p>
+          {contextDisclosure.omittedRecoverableSourceIds.length > 0 ? (
+            <p className="mt-1 break-all">
+              可恢复来源：{contextDisclosure.omittedRecoverableSourceIds.join("、")}
+            </p>
+          ) : null}
+        </details>
+      ) : null}
       <PendingWritesCard
         items={pendingItems}
         approving={approving}

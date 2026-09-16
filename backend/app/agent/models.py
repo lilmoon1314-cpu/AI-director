@@ -43,6 +43,7 @@ class Conversation(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # 摘要覆盖游标：summary 已覆盖到该消息 id（含）；之后的消息仍以全文注入
     summary_until_id: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    summary_version_id: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
@@ -218,6 +219,33 @@ class ConversationPartition(Base):
     context_key: Mapped[str] = mapped_column(String, primary_key=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     summary_until_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    summary_version_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class SummaryVersion(Base):
+    """Immutable summary attempt with machine-checkable source coverage."""
+
+    __tablename__ = "agent_summary_versions"
+    __table_args__ = (UniqueConstraint("conversation_id", "context_key", "version"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    context_key: Mapped[str] = mapped_column(String, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    previous_cursor: Mapped[str | None] = mapped_column(String, nullable=True)
+    next_cursor: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    key_items_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    strategy_version: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str] = mapped_column(String, nullable=False)
+    validation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
 
 
 class MemoryDocSection(Base):

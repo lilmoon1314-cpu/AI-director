@@ -44,6 +44,22 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "read_conversation_sources",
+            "description": "分页恢复当前作用域原文；可传 source_ids、ISO 时间范围或 offset。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_ids": {"type": "array", "items": {"type": "string"}},
+                    "start_time": {"type": "string"},
+                    "end_time": {"type": "string"},
+                    "offset": {"type": "integer"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_entities",
             "description": "按名称或别名检索项目内当前视角可见的实体，返回完整详情。",
             "parameters": {

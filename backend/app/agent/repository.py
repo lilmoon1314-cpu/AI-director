@@ -18,6 +18,7 @@ from app.agent.models import (
     MemoryDocSection,
     Message,
     PendingWrite,
+    SummaryVersion,
 )
 
 
@@ -126,6 +127,39 @@ async def list_messages(session: AsyncSession, conversation_id: str) -> list[Mes
 
 async def get_message(session: AsyncSession, message_id: str) -> Message | None:
     return await session.get(Message, message_id)
+
+
+async def list_messages_for_scope(
+    session: AsyncSession, conversation_id: str, context_key: str
+) -> list[Message]:
+    stmt = (
+        select(Message)
+        .where(Message.conversation_id == conversation_id, Message.context_key == context_key)
+        .order_by(Message.created_at.asc(), Message.id)
+    )
+    return list(await session.scalars(stmt))
+
+
+async def add_summary_version(session: AsyncSession, row: SummaryVersion) -> SummaryVersion:
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def get_summary_version(session: AsyncSession, version_id: str) -> SummaryVersion | None:
+    return await session.get(SummaryVersion, version_id)
+
+
+async def next_summary_version(
+    session: AsyncSession, conversation_id: str, context_key: str
+) -> int:
+    value = await session.scalar(
+        select(func.max(SummaryVersion.version)).where(
+            SummaryVersion.conversation_id == conversation_id,
+            SummaryVersion.context_key == context_key,
+        )
+    )
+    return int(value or 0) + 1
 
 
 async def get_assistant_message_by_run(session: AsyncSession, run_id: str) -> Message | None:

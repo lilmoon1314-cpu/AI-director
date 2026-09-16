@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # --- Agent（F10 对话底座）---
     # 请求预算含协议和输出预留；强制上下文无法容纳时明确拒绝发送。
-    agent_context_max_tokens: int = Field(default=8000, gt=0)
+    agent_context_max_tokens: int = Field(default=9000, gt=0)
     # UTF-8 byte fallback is deliberately conservative, not provider-exact tokenization.
     agent_output_reserve_tokens: int = Field(default=1024, gt=0)
     agent_protocol_reserve_tokens: int = Field(default=128, ge=0)
@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     agent_directory_page_size: int = Field(default=12, gt=0, le=100)
     # 近期消息全量注入窗口（条）；超窗最旧消息压缩进会话摘要
     agent_history_window_messages: int = Field(default=20, gt=0)
+    # 摘要维护每次只处理一个有界批次，输入/输出分别设硬上限。
+    agent_summary_batch_messages: int = Field(default=20, gt=0, le=200)
+    agent_summary_input_max_chars: int = Field(default=24000, gt=0)
+    agent_summary_output_max_chars: int = Field(default=4000, gt=0)
+    agent_source_page_size: int = Field(default=12, gt=0, le=100)
     # 受控 ReAct：每条用户消息允许的工具调用配额
     agent_max_tool_calls_per_turn: int = Field(default=4, ge=0)
     # 单轮对话允许登记的待写入（pending write）数量上限；超限后写入工具返回

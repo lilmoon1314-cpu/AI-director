@@ -62,6 +62,7 @@ class Store:
         self.docs_by_project: dict[str, list[Any]] = {}
         self.sections_by_doc: dict[str, list[Any]] = {}
         self.pendings: dict[str, Any] = {}
+        self.summary_versions: dict[str, Any] = {}
         self._n = 0
 
     def next_id(self, prefix: str) -> str:
@@ -107,6 +108,23 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
 
     async def fake_list_messages(_s: Any, conversation_id: str) -> list[Any]:
         return list(store.messages.get(conversation_id, []))
+
+    async def fake_get_summary_version(_s: Any, version_id: str) -> Any:
+        return store.summary_versions.get(version_id)
+
+    async def fake_next_summary_version(_s: Any, conversation_id: str, context_key: str) -> int:
+        rows = [
+            row
+            for row in store.summary_versions.values()
+            if row.conversation_id == conversation_id and row.context_key == context_key
+        ]
+        return max((row.version for row in rows), default=0) + 1
+
+    async def fake_add_summary_version(_s: Any, row: Any) -> Any:
+        if getattr(row, "created_at", None) is None:
+            row.created_at = datetime.now(UTC)
+        store.summary_versions[row.id] = row
+        return row
 
     async def fake_delete_conversation(_s: Any, conversation: Any) -> None:
         store.conversations.pop(conversation.id, None)
@@ -236,6 +254,9 @@ def _install(store: Store, monkeypatch: pytest.MonkeyPatch, settings: Any = None
     monkeypatch.setattr(repository, "delete_conversation", fake_delete_conversation)
     monkeypatch.setattr(repository, "add_message", fake_add_message)
     monkeypatch.setattr(repository, "list_messages", fake_list_messages)
+    monkeypatch.setattr(repository, "get_summary_version", fake_get_summary_version)
+    monkeypatch.setattr(repository, "next_summary_version", fake_next_summary_version)
+    monkeypatch.setattr(repository, "add_summary_version", fake_add_summary_version)
     monkeypatch.setattr(repository, "list_docs", fake_list_docs)
     monkeypatch.setattr(repository, "find_doc_by_kind", fake_find_doc_by_kind)
     monkeypatch.setattr(repository, "add_doc", fake_add_doc)
@@ -860,6 +881,7 @@ async def test_stream_chat_reasoning_usage_events_and_persist(
     names = [e["event"] for e in events]
     assert names == [
         "message_start",
+        "context",
         "reasoning",
         "reasoning",
         "token",
