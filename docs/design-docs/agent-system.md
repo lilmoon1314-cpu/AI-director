@@ -107,6 +107,36 @@ World-model facts remain in entities and relationships. Memory documents hold cr
 working material, not a second copy of graph facts. Dynamic document content is escaped before HTML
 rendering.
 
+Long-term project memory is a separate source-backed layer, not another document format and not a copy
+of world-model facts. `ProjectMemory` stores bounded creative guidance with one exact context partition,
+a normalized subject, applicability interval, author/model origin, optimistic version, and the state
+machine `proposed → accepted | disputed → accepted | superseded → deleted`. A direct creator entry starts
+accepted; deterministic extraction from a real user message starts proposed. Extraction deliberately
+recognizes only explicit constraint/decision/preference/open-task/exact-value cues and never uses
+assistant reasoning as a source.
+
+`ProjectMemorySource` references original messages or explicit manual decisions without copying message
+text. On each turn, accepted and currently applicable memories are queried from the primary database;
+there is no durable memory cache to invalidate. The prompt carries memory and source IDs, and the
+existing scoped source tool can resolve an accepted memory ID to still-existing original messages only
+when project and exact perspective/character partition match. Basic directory and text search use the
+primary table; fingerprint uniqueness provides deterministic deduplication without introducing a vector
+store.
+
+Acceptance first claims the expected version in the database transaction. A different active memory
+with the same normalized subject and different content moves both alternatives to disputed, so
+last-write-wins cannot turn a contradiction into guidance. Explicit resolution accepts the selected
+item and supersedes the alternatives. Only accepted items enter prompts; proposed, disputed,
+superseded, and deleted rows remain outside effective guidance.
+
+Forgetting redacts the derived content and records a fingerprint tombstone. Candidate maintenance checks
+that tombstone before extraction, preventing later summary or replay work from recreating the forgotten
+item. Conversation deletion first removes its source links: accepted guidance survives independently,
+multi-source items survive while another source remains, and unaccepted single-source derivations are
+redacted and tombstoned. Project deletion removes memories and tombstones through the Agent service
+boundary. Original conversation text and separately owned works are never deleted by a memory-forget
+operation.
+
 ## Confirmed writes
 
 Write-tool execution only records a pending operation in the conversation transaction. Approval is a

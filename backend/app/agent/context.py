@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent import llm, repository
+from app.agent import llm, memories, repository
 from app.agent.budget import BudgetError, check_request
 from app.agent.contracts import ContextFragment, ContextManifest, SourceRef, SummaryCoverage
 from app.agent.models import Conversation, Message, SummaryVersion
@@ -193,6 +193,29 @@ async def assemble_chat_context(
         )
 
     key = context_key(perspective, character_id)
+    accepted_memories = await memories.accepted_for_context(
+        db_session, conversation.project_id, key
+    )
+    memory_sources = {
+        row.id: await repository.list_project_memory_sources(db_session, row.id)
+        for row in accepted_memories
+    }
+    memory_text = "\n".join(
+        f"- {row.kind} / {row.subject_key} / {row.id} v{row.version}"
+        f" / sources:{','.join(source.source_id for source in memory_sources[row.id]) or 'none'}"
+        f": {row.content}"
+        for row in accepted_memories
+    )
+    fragments.extend(
+        ContextFragment(
+            source=SourceRef(scope=scope, kind="memory", source_id=row.id, version=row.version),
+            reason="author-accepted cross-session project memory",
+            estimated_tokens=len(row.content.encode("utf-8")),
+            disposition="included",
+            required=True,
+        )
+        for row in accepted_memories
+    )
     state = await repository.summary_partition(db_session, conversation, key)
     rows = [
         row
@@ -339,7 +362,8 @@ async def assemble_chat_context(
         + "\n"
         + graph_directory,
         doc_directory=render_doc_directory(doc_dir_entries[: settings.agent_directory_page_size]),
-        summary=wrap_data(f"分区 {key} 摘要，覆盖至 {cursor}", summary) if summary else "",
+        summary=(wrap_data("已接受的跨会话项目记忆", memory_text) + "\n" if memory_text else "")
+        + (wrap_data(f"分区 {key} 摘要，覆盖至 {cursor}", summary) if summary else ""),
         history=history,
         budget=settings.agent_context_max_tokens,
     )
@@ -356,7 +380,8 @@ async def assemble_chat_context(
             )
             + "\n目录因预算省略，可用 list_context_directory 分页读取。",
             doc_directory="目录因预算省略，可用 list_context_directory 分页读取。",
-            summary=wrap_data(f"分区 {key} 摘要，覆盖至 {cursor}", summary) if summary else "",
+            summary=(wrap_data("已接受的跨会话项目记忆", memory_text) + "\n" if memory_text else "")
+            + (wrap_data(f"分区 {key} 摘要，覆盖至 {cursor}", summary) if summary else ""),
             history=history,
             budget=settings.agent_context_max_tokens,
         )
@@ -406,6 +431,7 @@ async def assemble_chat_context(
             if fragment.disposition == "omitted"
         ],
         "coverage_gap": coverage_gap,
+        "memory_ids": [row.id for row in accepted_memories],
     }
     return CompiledContext(compiled, disclosure)
 

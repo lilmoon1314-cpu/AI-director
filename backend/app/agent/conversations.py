@@ -2,7 +2,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent import repository
+from app.agent import memories, repository
 from app.agent.models import Conversation, Message
 from app.agent.schemas import (
     MessageRead,
@@ -91,6 +91,7 @@ async def get_messages(db_session: AsyncSession, conversation_id: str) -> list[M
 @checkpoint
 async def delete_conversation(db_session: AsyncSession, conversation_id: str) -> None:
     conversation = await load_conversation(db_session, conversation_id)
+    await memories.prepare_conversation_delete(db_session, conversation_id)
     await repository.delete_conversation(db_session, conversation)
     await db_session.commit()
 

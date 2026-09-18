@@ -20,12 +20,18 @@ from app.agent.schemas import (
     ChatRequest,
     ConfirmRequest,
     ConfirmResponse,
+    ConversationMemoryDeletionPreview,
+    MemoryDeletionPreview,
     MemoryDocBrief,
     MemoryDocRead,
     MemoryDocSectionRead,
     MessageRead,
     PendingWriteActionRequest,
     PendingWriteRead,
+    ProjectMemoryCreate,
+    ProjectMemoryDecision,
+    ProjectMemoryRead,
+    ProjectMemoryUpdate,
     ProposeRequest,
     ProposeResponse,
     RejectResponse,
@@ -84,6 +90,18 @@ async def delete_session(
     """删除会话（消息经级联清理；204；会话不存在 404）。"""
     await service.delete_conversation(session, conversation_id)
     return Response(status_code=204)
+
+
+@router.get(
+    "/sessions/{conversation_id}/memory-deletion-preview",
+    response_model=ConversationMemoryDeletionPreview,
+)
+async def session_memory_deletion_preview(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> ConversationMemoryDeletionPreview:
+    await service.ensure_conversation(session, conversation_id)
+    return await service.conversation_memory_deletion_preview(session, conversation_id)
 
 
 @router.post("/chat")
@@ -255,3 +273,73 @@ async def update_memory_doc_section(
 ) -> MemoryDocSectionRead:
     """段级更新（CAS 乐观锁：expected_version 不符 409；用户手改优先）。"""
     return await service.update_section(session, doc_id, section_id, schema, updated_by=updated_by)
+
+
+@router.get("/memories", response_model=list[ProjectMemoryRead])
+async def list_project_memories(
+    project_id: str = Query(default=""),
+    context_key: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    query: str = Query(default="", max_length=200),
+    session: AsyncSession = Depends(get_session),
+) -> list[ProjectMemoryRead]:
+    return await service.list_memories(
+        session, project_id, context_key=context_key, status=status, query=query
+    )
+
+
+@router.post("/memories", response_model=ProjectMemoryRead, status_code=201)
+async def create_project_memory(
+    schema: ProjectMemoryCreate,
+    project_id: str = Query(default=""),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectMemoryRead:
+    schema.project_id = project_id or schema.project_id
+    return await service.create_memory(session, schema)
+
+
+@router.patch("/memories/{memory_id}", response_model=ProjectMemoryRead)
+async def update_project_memory(
+    memory_id: str,
+    schema: ProjectMemoryUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectMemoryRead:
+    return await service.update_memory(session, memory_id, schema)
+
+
+@router.post("/memories/{memory_id}/accept", response_model=ProjectMemoryRead)
+async def accept_project_memory(
+    memory_id: str,
+    schema: ProjectMemoryDecision,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectMemoryRead:
+    return await service.accept_memory(session, memory_id, schema)
+
+
+@router.post("/memories/{memory_id}/resolve", response_model=ProjectMemoryRead)
+async def resolve_project_memory(
+    memory_id: str,
+    schema: ProjectMemoryDecision,
+    session: AsyncSession = Depends(get_session),
+) -> ProjectMemoryRead:
+    return await service.resolve_memory(session, memory_id, schema)
+
+
+@router.get("/memories/{memory_id}/deletion-preview", response_model=MemoryDeletionPreview)
+async def project_memory_deletion_preview(
+    memory_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> MemoryDeletionPreview:
+    return await service.memory_deletion_preview(session, memory_id)
+
+
+@router.delete("/memories/{memory_id}", status_code=204)
+async def forget_project_memory(
+    memory_id: str,
+    expected_version: int = Query(ge=1),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await service.forget_memory(
+        session, memory_id, ProjectMemoryDecision(expected_version=expected_version)
+    )
+    return Response(status_code=204)

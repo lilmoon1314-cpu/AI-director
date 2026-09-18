@@ -176,6 +176,8 @@ async def _tool_list_directory(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 async def _tool_read_conversation_sources(ctx: ToolContext, args: dict[str, Any]) -> str:
     """Recover immutable message text without crossing conversation or perspective scope."""
+    if args.get("memory_id"):
+        return await _tool_read_project_memory_sources(ctx, args)
     offset = args.get("offset", 0)
     if type(offset) is not int or offset < 0:
         return _error_result("原文页码无效", "offset 必须是非负整数", "从 offset=0 开始")
@@ -214,6 +216,61 @@ async def _tool_read_conversation_sources(ctx: ToolContext, args: dict[str, Any]
         },
         ensure_ascii=False,
     )
+
+
+async def _tool_read_project_memory_sources(ctx: ToolContext, args: dict[str, Any]) -> str:
+    memory_id = str(args.get("memory_id", ""))
+    row = await repository.get_project_memory(ctx.session, memory_id)
+    key = context_key(ctx.perspective, ctx.character_id)
+    if (
+        row is None
+        or row.project_id != ctx.project_id
+        or row.context_key != key
+        or row.status not in {"accepted", "disputed"}
+    ):
+        return _error_result(
+            "项目记忆不可读取",
+            "记忆不存在、未获接受或不属于当前项目与视角作用域",
+            "使用上下文中列出的可见 memory_id",
+        )
+    items: list[dict[str, Any]] = []
+    for source in await repository.list_project_memory_sources(ctx.session, memory_id):
+        if source.context_key != key:
+            continue
+        if source.source_kind == "message":
+            message = await repository.get_message(ctx.session, source.source_id)
+            conversation = (
+                await repository.get_conversation(ctx.session, source.conversation_id)
+                if source.conversation_id
+                else None
+            )
+            if (
+                message is None
+                or conversation is None
+                or conversation.project_id != ctx.project_id
+                or message.context_key != key
+            ):
+                items.append({"source_id": source.source_id, "available": False})
+                continue
+            items.append(
+                {
+                    "source_id": message.id,
+                    "conversation_id": conversation.id,
+                    "role": message.role,
+                    "created_at": message.created_at.isoformat(),
+                    "content": message.content,
+                    "available": True,
+                }
+            )
+        else:
+            items.append(
+                {
+                    "source_id": source.source_id,
+                    "source_kind": source.source_kind,
+                    "available": source.source_kind == "manual",
+                }
+            )
+    return json.dumps({"memory_id": memory_id, "items": items}, ensure_ascii=False)
 
 
 def _error_result(problem: str, cause: str, fix: str) -> str:

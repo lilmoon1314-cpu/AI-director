@@ -86,6 +86,18 @@ def generate_pending_write_id() -> str:
     return f"pw-{_short_uuid()}"
 
 
+def generate_project_memory_id() -> str:
+    return f"mem-{_short_uuid()}"
+
+
+def generate_project_memory_source_id() -> str:
+    return f"msrc-{_short_uuid()}"
+
+
+def generate_project_memory_tombstone_id() -> str:
+    return f"mtomb-{_short_uuid()}"
+
+
 # ---- 会话与消息 ----
 
 
@@ -205,6 +217,76 @@ class MemoryDocRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     sections: list[MemoryDocSectionRead] = Field(default_factory=list)
+
+
+MemoryStatus = Literal["proposed", "accepted", "superseded", "disputed", "deleted"]
+MemoryKind = Literal["constraint", "decision", "preference", "open_task", "exact_reference"]
+
+
+class ProjectMemorySourceRead(BaseModel):
+    id: str
+    source_kind: Literal["message", "section", "artifact_revision", "manual"]
+    source_id: str
+    conversation_id: str | None = None
+    context_key: str
+    source_version: int | None = None
+
+
+class ProjectMemoryRead(BaseModel):
+    id: str
+    project_id: str
+    context_key: str
+    kind: MemoryKind
+    subject_key: str
+    content: str
+    status: MemoryStatus
+    origin: Literal["model_suggestion", "author_decision"]
+    version: int
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    sources: list[ProjectMemorySourceRead] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectMemoryCreate(BaseModel):
+    project_id: str = ""
+    context_key: str = Field(
+        default="author", pattern=r"^(author|audience|character:.+)$", max_length=240
+    )
+    kind: MemoryKind
+    subject_key: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=4000)
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+
+
+class ProjectMemoryDecision(BaseModel):
+    expected_version: int = Field(ge=1)
+
+
+class ProjectMemoryUpdate(BaseModel):
+    expected_version: int = Field(ge=1)
+    content: str = Field(min_length=1, max_length=4000)
+    subject_key: str = Field(min_length=1, max_length=200)
+    kind: MemoryKind
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+
+
+class MemoryDeletionPreview(BaseModel):
+    memory_id: str
+    source_count: int
+    source_conversation_ids: list[str]
+    will_create_tombstone: bool = True
+    effect: str
+
+
+class ConversationMemoryDeletionPreview(BaseModel):
+    conversation_id: str
+    accepted_retained: list[str] = Field(default_factory=list)
+    derived_deleted: list[str] = Field(default_factory=list)
+    multi_source_retained: list[str] = Field(default_factory=list)
 
 
 class SectionUpdate(BaseModel):

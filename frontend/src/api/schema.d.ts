@@ -622,6 +622,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/sessions/{conversation_id}/memory-deletion-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Session Memory Deletion Preview */
+        get: operations["session_memory_deletion_preview_api_agent_sessions__conversation_id__memory_deletion_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/chat": {
         parameters: {
             query?: never;
@@ -930,6 +947,93 @@ export interface paths {
          * @description 段级更新（CAS 乐观锁：expected_version 不符 409；用户手改优先）。
          */
         patch: operations["update_memory_doc_section_api_agent_memory_docs__doc_id__sections__section_id__patch"];
+        trace?: never;
+    };
+    "/api/agent/memories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Memories */
+        get: operations["list_project_memories_api_agent_memories_get"];
+        put?: never;
+        /** Create Project Memory */
+        post: operations["create_project_memory_api_agent_memories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memories/{memory_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Forget Project Memory */
+        delete: operations["forget_project_memory_api_agent_memories__memory_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Project Memory */
+        patch: operations["update_project_memory_api_agent_memories__memory_id__patch"];
+        trace?: never;
+    };
+    "/api/agent/memories/{memory_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Project Memory */
+        post: operations["accept_project_memory_api_agent_memories__memory_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memories/{memory_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Project Memory */
+        post: operations["resolve_project_memory_api_agent_memories__memory_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/memories/{memory_id}/deletion-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Memory Deletion Preview */
+        get: operations["project_memory_deletion_preview_api_agent_memories__memory_id__deletion_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/artifacts": {
@@ -1920,6 +2024,17 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** ConversationMemoryDeletionPreview */
+        ConversationMemoryDeletionPreview: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Accepted Retained */
+            accepted_retained?: string[];
+            /** Derived Deleted */
+            derived_deleted?: string[];
+            /** Multi Source Retained */
+            multi_source_retained?: string[];
+        };
         /**
          * CoverSet
          * @description 设置封面请求体（PUT /general/{id}/cover）。
@@ -2383,6 +2498,22 @@ export interface components {
              */
             created_at: string;
         };
+        /** MemoryDeletionPreview */
+        MemoryDeletionPreview: {
+            /** Memory Id */
+            memory_id: string;
+            /** Source Count */
+            source_count: number;
+            /** Source Conversation Ids */
+            source_conversation_ids: string[];
+            /**
+             * Will Create Tombstone
+             * @default true
+             */
+            will_create_tombstone: boolean;
+            /** Effect */
+            effect: string;
+        };
         /**
          * MemoryDocBrief
          * @description 记忆文档卡片摘要（列表视图：名称+更新时间+首行摘要，DESIGN §5.4）。
@@ -2630,6 +2761,119 @@ export interface components {
              * @default
              */
             description: string;
+        };
+        /** ProjectMemoryCreate */
+        ProjectMemoryCreate: {
+            /**
+             * Project Id
+             * @default
+             */
+            project_id: string;
+            /**
+             * Context Key
+             * @default author
+             */
+            context_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "constraint" | "decision" | "preference" | "open_task" | "exact_reference";
+            /** Subject Key */
+            subject_key: string;
+            /** Content */
+            content: string;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
+        };
+        /** ProjectMemoryDecision */
+        ProjectMemoryDecision: {
+            /** Expected Version */
+            expected_version: number;
+        };
+        /** ProjectMemoryRead */
+        ProjectMemoryRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Context Key */
+            context_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "constraint" | "decision" | "preference" | "open_task" | "exact_reference";
+            /** Subject Key */
+            subject_key: string;
+            /** Content */
+            content: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "accepted" | "superseded" | "disputed" | "deleted";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "model_suggestion" | "author_decision";
+            /** Version */
+            version: number;
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
+            /** Sources */
+            sources?: components["schemas"]["ProjectMemorySourceRead"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ProjectMemorySourceRead */
+        ProjectMemorySourceRead: {
+            /** Id */
+            id: string;
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "message" | "section" | "artifact_revision" | "manual";
+            /** Source Id */
+            source_id: string;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Context Key */
+            context_key: string;
+            /** Source Version */
+            source_version?: number | null;
+        };
+        /** ProjectMemoryUpdate */
+        ProjectMemoryUpdate: {
+            /** Expected Version */
+            expected_version: number;
+            /** Content */
+            content: string;
+            /** Subject Key */
+            subject_key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "constraint" | "decision" | "preference" | "open_task" | "exact_reference";
+            /** Valid From */
+            valid_from?: string | null;
+            /** Valid Until */
+            valid_until?: string | null;
         };
         /**
          * ProjectRead
@@ -4479,6 +4723,37 @@ export interface operations {
             };
         };
     };
+    session_memory_deletion_preview_api_agent_sessions__conversation_id__memory_deletion_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationMemoryDeletionPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     chat_api_agent_chat_post: {
         parameters: {
             query?: never;
@@ -5045,6 +5320,242 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryDocSectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_memories_api_agent_memories_get: {
+        parameters: {
+            query?: {
+                project_id?: string;
+                context_key?: string | null;
+                status?: string | null;
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemoryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_memory_api_agent_memories_post: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMemoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_project_memory_api_agent_memories__memory_id__delete: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_memory_api_agent_memories__memory_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMemoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_project_memory_api_agent_memories__memory_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMemoryDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_project_memory_api_agent_memories__memory_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectMemoryDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectMemoryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    project_memory_deletion_preview_api_agent_memories__memory_id__deletion_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memory_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryDeletionPreview"];
                 };
             };
             /** @description Validation Error */

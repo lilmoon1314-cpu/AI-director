@@ -208,16 +208,14 @@
       "id": "F15",
       "title": "长期记忆体系",
       "category": "agent",
-      "acceptance_intent": "Provide distinct guide and work documents, transparent editable global preferences, and cross-session summary retrieval.",
-      "status": "not_started",
+      "acceptance_intent": "Provide distinct guide and work documents, transparent editable project-scoped preferences, and source-backed cross-session recall.",
+      "status": "passing",
       "product_spec": "docs/product-specs/agent-assistance.md",
       "verification": {
         "commands": [
-          "pytest tests/unit/test_agent_service.py tests/unit/test_agent_memory_docs.py",
-          "pytest tests/integration -k agent",
-          "pytest tests/e2e -k agent",
-          "pnpm test:unit",
-          "pnpm test:integration"
+          "pytest tests/unit/test_agent_contracts.py tests/integration/test_agent_project_memory.py",
+          "pytest tests/integration/test_agent_memory_migration.py",
+          "pnpm exec vitest run tests/integration/AgentMemory.test.tsx"
         ]
       }
     },

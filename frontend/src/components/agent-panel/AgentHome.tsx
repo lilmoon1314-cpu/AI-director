@@ -13,6 +13,7 @@ import { GlassPanel } from "../ui/GlassPanel";
 import { ErrorStrip } from "../ui/ErrorStrip";
 import { Button } from "../ui/Button";
 import { MemoryDocsArea } from "./MemoryDocsArea";
+import { ProjectMemoriesArea } from "./ProjectMemoriesArea";
 import { SessionList } from "./SessionList";
 import { SessionView } from "./SessionView";
 import { useAgentStore, type PerspectiveValue } from "../../stores/agentStore";
@@ -33,6 +34,7 @@ export function AgentHome() {
   const loadSessions = useAgentStore((s) => s.loadSessions);
   const createSession = useAgentStore((s) => s.createSession);
   const loadDocs = useAgentStore((s) => s.loadDocs);
+  const loadMemories = useAgentStore((s) => s.loadMemories);
   const createDoc = useAgentStore((s) => s.createDoc);
   const deleteSession = useAgentStore((s) => s.deleteSession);
   const deleteDoc = useAgentStore((s) => s.deleteDoc);
@@ -48,7 +50,8 @@ export function AgentHome() {
     if (cached !== null && cached !== projectId) resetProjectScoped();
     void loadSessions(projectId);
     void loadDocs(projectId);
-  }, [projectId, loadSessions, loadDocs, resetProjectScoped]);
+    void loadMemories(projectId);
+  }, [projectId, loadSessions, loadDocs, loadMemories, resetProjectScoped]);
 
   const createAndOpen = async (): Promise<string | null> => {
     setCreatingSession(true);
@@ -108,6 +111,7 @@ export function AgentHome() {
           creating={creatingDoc}
           projectId={projectId}
         />
+        <ProjectMemoriesArea projectId={projectId} />
       </GlassPanel>
 
       {/* 右栏 */}

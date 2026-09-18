@@ -45,7 +45,7 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "read_conversation_sources",
-            "description": "分页恢复当前作用域原文；可传 source_ids、ISO 时间范围或 offset。",
+            "description": "恢复当前作用域原文；可按当前会话来源或已接受项目记忆 id 读取。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -53,6 +53,7 @@ TOOL_SPECS: list[dict[str, Any]] = [
                     "start_time": {"type": "string"},
                     "end_time": {"type": "string"},
                     "offset": {"type": "integer"},
+                    "memory_id": {"type": "string"},
                 },
             },
         },

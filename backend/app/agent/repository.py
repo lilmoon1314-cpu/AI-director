@@ -18,6 +18,9 @@ from app.agent.models import (
     MemoryDocSection,
     Message,
     PendingWrite,
+    ProjectMemory,
+    ProjectMemorySource,
+    ProjectMemoryTombstone,
     SummaryVersion,
 )
 
@@ -480,4 +483,149 @@ async def delete_by_project(session: AsyncSession, project_id: str) -> list[str]
     )
     await session.execute(sa_delete(Conversation).where(Conversation.project_id == project_id))
     await session.execute(sa_delete(MemoryDoc).where(MemoryDoc.project_id == project_id))
+    await session.execute(sa_delete(ProjectMemory).where(ProjectMemory.project_id == project_id))
+    await session.execute(
+        sa_delete(ProjectMemoryTombstone).where(ProjectMemoryTombstone.project_id == project_id)
+    )
     return conv_ids
+
+
+# ---- 跨会话项目记忆 ----
+
+
+async def add_project_memory(session: AsyncSession, row: ProjectMemory) -> ProjectMemory:
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def get_project_memory(session: AsyncSession, memory_id: str) -> ProjectMemory | None:
+    return await session.get(ProjectMemory, memory_id)
+
+
+async def claim_project_memory_version(
+    session: AsyncSession, memory_id: str, expected_version: int, updated_at: datetime
+) -> bool:
+    result = await session.execute(
+        update(ProjectMemory)
+        .where(
+            ProjectMemory.id == memory_id,
+            ProjectMemory.version == expected_version,
+            ProjectMemory.status != "deleted",
+        )
+        .values(version=expected_version + 1, updated_at=updated_at)
+        .execution_options(synchronize_session=False)
+    )
+    return bool(getattr(result, "rowcount", 0) == 1)
+
+
+async def list_project_memories(
+    session: AsyncSession,
+    project_id: str,
+    *,
+    context_key: str | None = None,
+    statuses: tuple[str, ...] | None = None,
+    query: str = "",
+) -> list[ProjectMemory]:
+    stmt = select(ProjectMemory).where(ProjectMemory.project_id == project_id)
+    if context_key is not None:
+        stmt = stmt.where(ProjectMemory.context_key == context_key)
+    if statuses:
+        stmt = stmt.where(ProjectMemory.status.in_(statuses))
+    if query:
+        pattern = f"%{query}%"
+        stmt = stmt.where(
+            ProjectMemory.content.like(pattern) | ProjectMemory.subject_key.like(pattern)
+        )
+    stmt = stmt.order_by(ProjectMemory.updated_at.desc(), ProjectMemory.id)
+    return list(await session.scalars(stmt))
+
+
+async def find_project_memory_by_fingerprint(
+    session: AsyncSession, project_id: str, context_key: str, fingerprint: str
+) -> ProjectMemory | None:
+    return await session.scalar(
+        select(ProjectMemory).where(
+            ProjectMemory.project_id == project_id,
+            ProjectMemory.context_key == context_key,
+            ProjectMemory.fingerprint == fingerprint,
+        )
+    )
+
+
+async def active_memories_for_subject(
+    session: AsyncSession,
+    project_id: str,
+    context_key: str,
+    subject_key: str,
+    *,
+    exclude_id: str | None = None,
+) -> list[ProjectMemory]:
+    stmt = select(ProjectMemory).where(
+        ProjectMemory.project_id == project_id,
+        ProjectMemory.context_key == context_key,
+        ProjectMemory.subject_key == subject_key,
+        ProjectMemory.status.in_(("accepted", "disputed")),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(ProjectMemory.id != exclude_id)
+    return list(await session.scalars(stmt.order_by(ProjectMemory.created_at.asc())))
+
+
+async def add_project_memory_source(
+    session: AsyncSession, row: ProjectMemorySource
+) -> ProjectMemorySource:
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def list_project_memory_sources(
+    session: AsyncSession, memory_id: str
+) -> list[ProjectMemorySource]:
+    return list(
+        await session.scalars(
+            select(ProjectMemorySource)
+            .where(ProjectMemorySource.memory_id == memory_id)
+            .order_by(ProjectMemorySource.created_at.asc(), ProjectMemorySource.id)
+        )
+    )
+
+
+async def list_memory_sources_for_conversation(
+    session: AsyncSession, conversation_id: str
+) -> list[ProjectMemorySource]:
+    return list(
+        await session.scalars(
+            select(ProjectMemorySource).where(
+                ProjectMemorySource.conversation_id == conversation_id
+            )
+        )
+    )
+
+
+async def delete_project_memory_source(session: AsyncSession, row: ProjectMemorySource) -> None:
+    await session.delete(row)
+    await session.flush()
+
+
+async def has_memory_tombstone(
+    session: AsyncSession, project_id: str, context_key: str, fingerprint: str
+) -> bool:
+    return bool(
+        await session.scalar(
+            select(ProjectMemoryTombstone.id).where(
+                ProjectMemoryTombstone.project_id == project_id,
+                ProjectMemoryTombstone.context_key == context_key,
+                ProjectMemoryTombstone.fingerprint == fingerprint,
+            )
+        )
+    )
+
+
+async def add_memory_tombstone(
+    session: AsyncSession, row: ProjectMemoryTombstone
+) -> ProjectMemoryTombstone:
+    session.add(row)
+    await session.flush()
+    return row

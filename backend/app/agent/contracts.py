@@ -39,6 +39,7 @@ class SourceRef(Contract):
         "graph_projection",
         "project_metadata",
         "summary",
+        "memory",
     ]
     source_id: str = Field(min_length=1)
     version: int | None = Field(default=None, ge=1)

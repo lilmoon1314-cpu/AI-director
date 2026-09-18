@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent import chat, conversations, documents, llm, repository, runs, tools, writes
+from app.agent import chat, conversations, documents, llm, memories, repository, runs, tools, writes
 from app.agent.prompts import wrap_data
 from app.agent.schemas import (
     ConfirmRequest,
@@ -50,6 +50,16 @@ get_doc = documents.get_doc
 delete_doc = documents.delete_doc
 update_section = documents.update_section
 render_page = documents.render_page
+
+# Stable long-term project-memory service contract.
+list_memories = memories.list_memories
+create_memory = memories.create_memory
+accept_memory = memories.accept_memory
+update_memory = memories.update_memory
+resolve_memory = memories.resolve_memory
+memory_deletion_preview = memories.deletion_preview
+forget_memory = memories.forget_memory
+conversation_memory_deletion_preview = memories.conversation_deletion_preview
 
 # Stable confirmed-write service contract.
 confirm_write = writes.confirm_write
@@ -124,6 +134,7 @@ __all__ = [
     "create_conversation",
     "create_or_get_run",
     "create_doc",
+    "create_memory",
     "delete_conversation",
     "delete_doc",
     "delete_project_data",
@@ -131,6 +142,13 @@ __all__ = [
     "ensure_conversation",
     "get_doc",
     "get_messages",
+    "list_memories",
+    "accept_memory",
+    "update_memory",
+    "resolve_memory",
+    "memory_deletion_preview",
+    "forget_memory",
+    "conversation_memory_deletion_preview",
     "get_latest_run",
     "get_run",
     "get_run_by_request",

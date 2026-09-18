@@ -85,8 +85,26 @@ This specification owns the behavior visible to creators using project-scoped Ag
   sources were omitted, the active summary version, and whether bounded gap recovery was needed. The
   Agent can page original messages by source ID or time range only within the current conversation and
   perspective partition.
+- Project long-term memory is separate from conversation summaries and memory documents. Critical user
+  statements may create source-backed `proposed` candidates, but candidates do not enter another
+  conversation until the creator accepts them. The UI distinguishes Agent suggestions from direct
+  creator decisions and exposes source identifiers.
+- Accepted memory is recalled only inside the same project and exact perspective/character partition.
+  The Agent may recover a still-existing original message through the source-reading tool by an
+  accepted memory ID. Character dialogue and temporary hypotheses are not promoted to global author
+  preferences.
+- A contradictory memory with the same subject is `disputed`; neither alternative silently wins or is
+  injected as current guidance. The creator can select one alternative, which becomes accepted while
+  the others become superseded. All decisions carry versions, and stale actions receive a conflict.
+- Forgetting first shows the number and conversations of its sources. Confirmed forgetting redacts the
+  derived memory and creates a non-content tombstone so maintenance cannot recreate it from the same
+  source. Deleting a conversation removes its unaccepted single-source derivations, retains accepted
+  project guidance, and preserves a multi-source derivation when another source remains. It does not
+  delete separately accepted work or project documents.
 
-## Planned acceptance
+## Long-term-memory acceptance
 
-`feature_list.json` records future acceptance intent for long-term/global memory. This document does
-not describe that behavior as implemented until its feature has been objectively verified.
+F15 is accepted only when cross-session recall, source recovery, proposed-versus-accepted separation,
+project/partition isolation, explicit conflict resolution, deletion preview, and tombstone-backed
+non-resurrection pass their recorded backend and frontend checks. Vector retrieval and cross-project
+global preferences are not part of this behavior.

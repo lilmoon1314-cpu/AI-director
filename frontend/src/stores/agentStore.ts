@@ -24,6 +24,7 @@ import {
   type DraftItem,
   type MemoryDocBrief,
   type PendingWriteRead,
+  type ProjectMemoryRead,
   type AgentRunRead,
   type SessionRead,
 } from "../api/client";
@@ -151,6 +152,9 @@ interface AgentState {
   docs: MemoryDocBrief[];
   docsLoading: boolean;
   docsError: AgentErrorState | null;
+  memories: ProjectMemoryRead[];
+  memoriesLoading: boolean;
+  memoriesError: AgentErrorState | null;
   /** AgentDock 侧边栏开合（全局：页签间保持状态）。 */
   dockOpen: boolean;
   openDock: () => void;
@@ -192,6 +196,19 @@ interface AgentState {
     content: string,
     expectedVersion: number,
   ) => Promise<void>;
+  loadMemories: (projectId: string, force?: boolean, query?: string) => Promise<void>;
+  createMemory: (
+    projectId: string,
+    input: { kind: string; subject_key: string; content: string },
+  ) => Promise<void>;
+  updateMemory: (
+    projectId: string,
+    memory: ProjectMemoryRead,
+    input: { kind: string; subject_key: string; content: string },
+  ) => Promise<void>;
+  acceptMemory: (projectId: string, memory: ProjectMemoryRead) => Promise<void>;
+  resolveMemory: (projectId: string, memory: ProjectMemoryRead) => Promise<void>;
+  forgetMemory: (projectId: string, memory: ProjectMemoryRead) => Promise<void>;
   resetProjectScoped: () => void;
 }
 
@@ -221,6 +238,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   docs: [],
   docsLoading: false,
   docsError: null,
+  memories: [],
+  memoriesLoading: false,
+  memoriesError: null,
   dockOpen: false,
   openDock: () => set({ dockOpen: true }),
   closeDock: () => set({ dockOpen: false }),
@@ -788,6 +808,63 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     await get().loadDocs(useProjectStore.getState().currentProjectId ?? "", true);
   },
 
+  loadMemories: async (projectId, force = false, query = "") => {
+    if (!force && !query && get().memories.length > 0 && get().sessionsProjectId === projectId) return;
+    set({ memoriesLoading: true, memoriesError: null });
+    try {
+      set({ memories: await api.listProjectMemories(projectId, query) });
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "长期记忆加载失败") });
+    } finally {
+      set({ memoriesLoading: false });
+    }
+  },
+
+  createMemory: async (projectId, input) => {
+    try {
+      await api.createProjectMemory(projectId, { ...input, context_key: "author" });
+      await get().loadMemories(projectId, true);
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "长期记忆创建失败") });
+    }
+  },
+
+  updateMemory: async (projectId, memory, input) => {
+    try {
+      await api.updateProjectMemory(memory.id, { ...input, expected_version: memory.version });
+      await get().loadMemories(projectId, true);
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "长期记忆更新失败") });
+    }
+  },
+
+  acceptMemory: async (projectId, memory) => {
+    try {
+      await api.acceptProjectMemory(memory.id, memory.version);
+      await get().loadMemories(projectId, true);
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "长期记忆接受失败") });
+    }
+  },
+
+  resolveMemory: async (projectId, memory) => {
+    try {
+      await api.resolveProjectMemory(memory.id, memory.version);
+      await get().loadMemories(projectId, true);
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "记忆冲突处理失败") });
+    }
+  },
+
+  forgetMemory: async (projectId, memory) => {
+    try {
+      await api.forgetProjectMemory(memory.id, memory.version);
+      await get().loadMemories(projectId, true);
+    } catch (cause) {
+      set({ memoriesError: toErrorState(cause, "长期记忆遗忘失败") });
+    }
+  },
+
   resetProjectScoped: () => {
     // 项目切换即中断进行中的 SSE（DESIGN.md §7 重置矩阵：agentStore SSE abort 项）
     const active = get().streamingSessionId;
@@ -816,6 +893,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       docs: [],
       docsLoading: false,
       docsError: null,
+      memories: [],
+      memoriesLoading: false,
+      memoriesError: null,
       dockOpen: false,
     });
   },

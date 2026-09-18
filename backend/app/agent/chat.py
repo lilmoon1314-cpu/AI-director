@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import aclosing
 from typing import Any
 
-from app.agent import context, conversations, llm, repository, tools, writes
+from app.agent import context, conversations, llm, memories, repository, tools, writes
 from app.agent.budget import LimitError, TurnBudget, active_budget, check_request
 from app.agent.models import Message
 from app.agent.prompts import wrap_data
@@ -294,6 +294,14 @@ async def stream_chat(
                     run_id=run_id,
                 )
                 await repository.add_message(db_session, assistant_row)
+                await memories.extract_candidate(
+                    db_session,
+                    project_id=conversation.project_id,
+                    conversation_id=conversation_id,
+                    context_key=key,
+                    source_message_id=user_row.id,
+                    content=user_row.content,
+                )
                 if maintain_summary:
                     await context.maintain_rolling_summary(
                         db_session,

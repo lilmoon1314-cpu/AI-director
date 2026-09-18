@@ -64,6 +64,7 @@ const server = setupServer(
   }),
   http.get("*/api/agent/sessions/:id/messages", () => HttpResponse.json([])),
   http.get("*/api/agent/memory-docs", () => HttpResponse.json([DOC])),
+  http.get("*/api/agent/memories", () => HttpResponse.json([])),
   http.post("*/api/agent/memory-docs", () => {
     docCreates += 1;
     return HttpResponse.json(

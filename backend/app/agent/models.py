@@ -276,3 +276,62 @@ class MemoryDocSection(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+
+
+class ProjectMemory(Base):
+    """Source-backed project guidance recalled across conversations."""
+
+    __tablename__ = "agent_project_memories"
+    __table_args__ = (
+        Index("ix_agent_project_memories_scope_status", "project_id", "context_key", "status"),
+        UniqueConstraint("project_id", "context_key", "fingerprint"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    context_key: Mapped[str] = mapped_column(String, nullable=False, default="author")
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    subject_key: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="proposed", index=True)
+    origin: Mapped[str] = mapped_column(String, nullable=False, default="model_suggestion")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    valid_from: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+
+class ProjectMemorySource(Base):
+    """Reference to an authoritative source; source text is never copied here."""
+
+    __tablename__ = "agent_project_memory_sources"
+    __table_args__ = (UniqueConstraint("memory_id", "source_kind", "source_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    memory_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_project_memories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_kind: Mapped[str] = mapped_column(String, nullable=False)
+    source_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    conversation_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    context_key: Mapped[str] = mapped_column(String, nullable=False)
+    source_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
+
+
+class ProjectMemoryTombstone(Base):
+    """Non-content marker preventing forgotten derivations from being recreated."""
+
+    __tablename__ = "agent_project_memory_tombstones"
+    __table_args__ = (UniqueConstraint("project_id", "context_key", "fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    context_key: Mapped[str] = mapped_column(String, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)

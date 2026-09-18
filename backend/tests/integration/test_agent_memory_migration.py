@@ -1,4 +1,4 @@
-"""E migration acceptance: populated D data survives additive summary metadata."""
+"""F migration acceptance: populated E data survives additive project-memory tables."""
 
 import os
 import sqlite3
@@ -20,39 +20,47 @@ def _upgrade(path: Path, revision: str) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_populated_d_upgrade_preserves_original_messages_and_adds_summary_audit(tmp_path: Path):
-    path = tmp_path / "populated-d.db"
-    _upgrade(path, "d295e6f7a8b9")
+def test_populated_e_upgrade_preserves_conversation_and_adds_memory_tables(tmp_path: Path) -> None:
+    path = tmp_path / "populated-e.db"
+    _upgrade(path, "e3a6f7b8c9d0")
     with sqlite3.connect(path) as connection:
         connection.execute(
             "INSERT INTO projects "
             "(id,name,description,entity_count,relation_count,created_at,updated_at) "
             "VALUES (?,?,?,?,?,?,?)",
-            ("p", "项目", "", 0, 0, "2026-09-14", "2026-09-14"),
+            ("p", "项目", "", 0, 0, "2026-09-18", "2026-09-18"),
         )
         connection.execute(
             "INSERT INTO conversations "
-            "(id,project_id,title,summary,summary_until_id,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            ("c", "p", "会话", "旧摘要", "m", "2026-09-14", "2026-09-14"),
+            "(id,project_id,title,summary,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+            ("c", "p", "会话", "旧摘要", "2026-09-18", "2026-09-18"),
         )
         connection.execute(
             "INSERT INTO messages (id,conversation_id,role,context_key,content,created_at) "
             "VALUES (?,?,?,?,?,?)",
-            ("m", "c", "user", "author", "不可删除的原文", "2026-09-14"),
+            ("m", "c", "user", "author", "保留原文", "2026-09-18"),
         )
         connection.commit()
 
-    _upgrade(path, "e3a6f7b8c9d0")
+    _upgrade(path, "head")
     with sqlite3.connect(path) as connection:
         assert connection.execute(
-            "SELECT summary,summary_until_id,summary_version_id FROM conversations WHERE id='c'"
-        ).fetchone() == ("旧摘要", "m", None)
+            "SELECT title,summary FROM conversations WHERE id='c'"
+        ).fetchone() == ("会话", "旧摘要")
         assert connection.execute("SELECT content FROM messages WHERE id='m'").fetchone() == (
-            "不可删除的原文",
+            "保留原文",
         )
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {
+            "agent_project_memories",
+            "agent_project_memory_sources",
+            "agent_project_memory_tombstones",
+        } <= tables
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "e3a6f7b8c9d0",
+            "f4b7c8d9e0a1",
         )
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []

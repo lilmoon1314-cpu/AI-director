@@ -64,6 +64,9 @@ describe("agentStore（FU1）", () => {
       docs: [],
       docsLoading: false,
       docsError: null,
+      memories: [],
+      memoriesLoading: false,
+      memoriesError: null,
       dockOpen: false,
     });
     useProjectStore.setState({ projects: [], currentProjectId: "project-x" });

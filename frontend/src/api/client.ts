@@ -35,6 +35,8 @@ export type ApproveResponse = components["schemas"]["ApproveResponse"];
 export type RejectResponse = components["schemas"]["RejectResponse"];
 export type AgentRunRead = components["schemas"]["AgentRunRead"];
 export type AgentRunEventRead = components["schemas"]["AgentRunEventRead"];
+export type ProjectMemoryRead = components["schemas"]["ProjectMemoryRead"];
+export type MemoryDeletionPreview = components["schemas"]["MemoryDeletionPreview"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
 export function joinUrl(base: string, path: string): string {
@@ -247,6 +249,39 @@ export const api = {
     ),
   /** 记忆文档 HTML 页地址（iframe 预览用，不 fetch——后端返回 text/html）。 */
   memoryDocPageUrl: (id: string) => joinUrl(API_BASE, `/agent/memory-docs/${id}/page`),
+  listProjectMemories: (projectId: string, query = "") =>
+    apiFetch<ProjectMemoryRead[]>(
+      `/agent/memories?${new URLSearchParams({ project_id: projectId, ...(query ? { query } : {}) }).toString()}`,
+    ),
+  createProjectMemory: (
+    projectId: string,
+    body: { context_key: string; kind: string; subject_key: string; content: string },
+  ) =>
+    apiFetch<ProjectMemoryRead>(
+      `/agent/memories?${new URLSearchParams({ project_id: projectId }).toString()}`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  updateProjectMemory: (
+    id: string,
+    body: { expected_version: number; kind: string; subject_key: string; content: string },
+  ) => apiFetch<ProjectMemoryRead>(`/agent/memories/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  acceptProjectMemory: (id: string, expectedVersion: number) =>
+    apiFetch<ProjectMemoryRead>(`/agent/memories/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ expected_version: expectedVersion }),
+    }),
+  resolveProjectMemory: (id: string, expectedVersion: number) =>
+    apiFetch<ProjectMemoryRead>(`/agent/memories/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ expected_version: expectedVersion }),
+    }),
+  projectMemoryDeletionPreview: (id: string) =>
+    apiFetch<MemoryDeletionPreview>(`/agent/memories/${id}/deletion-preview`),
+  forgetProjectMemory: (id: string, expectedVersion: number) =>
+    apiFetch<void>(
+      `/agent/memories/${id}?${new URLSearchParams({ expected_version: String(expectedVersion) }).toString()}`,
+      { method: "DELETE" },
+    ),
   // ---- 待写入确认（F14 轮末统一确认，OQ-8）----
   /** 会话全部待写入登记（确认卡回读；含全部状态，时间升序）。 */
   listPendingWrites: (conversationId: string) =>
