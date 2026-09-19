@@ -3223,6 +3223,8 @@ Production Rail shell
 
 ## V4-R2 — Lifecycle + Lineage + Change Proposal
 
+状态：2026-09-19 已完成 R2 后端/API 阶段。执行与验收记录：`docs/exec-plans/completed/v4-r2-lineage.md`；报告：`docs/reports/v4-r2-lineage-2026-09-19.md`。停在 R3 边界。
+
 实现：
 
 - approval/freshness 分离；

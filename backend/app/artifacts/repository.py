@@ -8,7 +8,6 @@ from app.artifacts.models import (
     Artifact,
     ArtifactBlock,
     ArtifactBlockRevision,
-    ArtifactDependency,
     ArtifactRevision,
 )
 
@@ -40,7 +39,19 @@ async def advance_revision_if_current(
 
 
 async def get_artifact(session: AsyncSession, artifact_id: str) -> Artifact | None:
-    return await session.get(Artifact, artifact_id)
+    return await session.scalar(
+        select(Artifact).where(Artifact.id == artifact_id).execution_options(populate_existing=True)
+    )
+
+
+async def lock_artifact(session: AsyncSession, artifact_id: str) -> None:
+    """Serialize lifecycle confirmation with content revisions in SQLite."""
+    await session.execute(
+        update(Artifact)
+        .where(Artifact.id == artifact_id)
+        .values(updated_at=Artifact.updated_at)
+        .execution_options(synchronize_session=False)
+    )
 
 
 async def get_block(session: AsyncSession, block_id: str) -> ArtifactBlock | None:
@@ -71,22 +82,6 @@ async def list_revision_blocks(
         .order_by(ArtifactBlockRevision.position, ArtifactBlockRevision.block_id)
     )
     return list((await session.execute(stmt)).tuples())
-
-
-async def get_dependency(session: AsyncSession, dependency_id: str) -> ArtifactDependency | None:
-    return await session.get(ArtifactDependency, dependency_id)
-
-
-async def list_dependencies_for_blocks(
-    session: AsyncSession, block_ids: list[str]
-) -> list[ArtifactDependency]:
-    if not block_ids:
-        return []
-    stmt = select(ArtifactDependency).where(
-        ArtifactDependency.source_block_id.in_(block_ids),
-        ArtifactDependency.is_stale.is_(False),
-    )
-    return list(await session.scalars(stmt))
 
 
 async def delete_by_project(session: AsyncSession, project_id: str) -> None:

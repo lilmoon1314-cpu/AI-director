@@ -32,6 +32,7 @@ FORBIDDEN_IN_CORE = (
     "app.workflow",
     "app.production",
     "app.skills",
+    "app.lineage",
 )
 
 pytestmark = pytest.mark.architecture

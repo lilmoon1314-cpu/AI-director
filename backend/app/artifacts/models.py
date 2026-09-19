@@ -2,7 +2,16 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, UTCDateTime
@@ -16,12 +25,18 @@ class Artifact(Base):
     """Stable identity and current state of one structured creative artifact."""
 
     __tablename__ = "artifacts"
+    __table_args__ = (
+        CheckConstraint("approval_status IN ('draft','review','approved','archived')"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    approval_status: Mapped[str] = mapped_column(
+        String, nullable=False, default="draft", server_default="draft"
+    )
     current_revision_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -75,7 +90,7 @@ class ArtifactBlockRevision(Base):
 
 
 class ArtifactDependency(Base):
-    """Directed dependency from a source block/revision baseline to a dependent artifact."""
+    """Frozen legacy dependency table; runtime reads/writes use Lineage after V4-R2."""
 
     __tablename__ = "artifact_dependencies"
     __table_args__ = (

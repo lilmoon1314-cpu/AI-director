@@ -75,13 +75,13 @@ root_packages = ["app"]
 name = "core 零业务依赖"
 type = "forbidden"
 source_modules = ["app.core"]
-forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.projects", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills", "app.lineage"]
 
 [[tool.importlinter.contracts]]
 name = "projects 业务层零领域依赖"
 type = "forbidden"
 source_modules = ["app.projects.service", "app.projects.repository", "app.projects.models", "app.projects.schemas"]
-forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills"]
+forbidden_modules = ["app.entities", "app.relations", "app.perspectives", "app.assets", "app.agent", "app.artifacts", "app.narrative_state", "app.workflow", "app.production", "app.skills", "app.lineage"]
 # 例外：projects.router 为请求级组合层，编排跨模块级联删除（业务规则仍在各领域 service）
 
 [[tool.importlinter.contracts]]
@@ -226,4 +226,18 @@ forbidden_modules = [
     "app.narrative_state.models",
     "app.narrative_state.schemas",
 ]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "lineage internals private"
+type = "forbidden"
+source_modules = ["app.core", "app.main", "app.projects", "app.artifacts", "app.production", "app.workflow", "app.skills", "app.agent", "app.narrative_state", "app.entities", "app.relations", "app.assets", "app.perspectives"]
+forbidden_modules = ["app.lineage.repository", "app.lineage.models", "app.lineage.schemas", "app.lineage.proposals"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "lineage uses owner services"
+type = "forbidden"
+source_modules = ["app.lineage"]
+forbidden_modules = ["app.artifacts.repository", "app.artifacts.models", "app.artifacts.schemas", "app.production.repository", "app.production.models", "app.production.schemas", "app.projects.repository", "app.projects.models", "app.projects.schemas"]
 allow_indirect_imports = true

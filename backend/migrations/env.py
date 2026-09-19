@@ -14,6 +14,7 @@ from sqlalchemy.engine import Connection
 
 import app.agent.models  # noqa: F401 — 注册表元数据（F10/F13/F14）
 import app.artifacts.models  # noqa: F401 — 注册表元数据（R2）
+import app.lineage.models  # noqa: F401
 import app.entities.models  # noqa: F401 — 注册表元数据
 import app.narrative_state.models  # noqa: F401 — 注册表元数据（R3）
 import app.projects.models  # noqa: F401 — 注册表元数据（F11）

@@ -1155,6 +1155,144 @@ export interface paths {
         patch: operations["edit_block_api_artifacts__artifact_id__blocks__block_id__patch"];
         trace?: never;
     };
+    "/api/artifacts/{artifact_id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Approval */
+        post: operations["set_approval_api_artifacts__artifact_id__approval_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/artifacts/{artifact_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert */
+        post: operations["revert_api_artifacts__artifact_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/edges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Edges */
+        get: operations["list_edges_api_projects__project_id__lineage_edges_get"];
+        put?: never;
+        /** Create Edge */
+        post: operations["create_edge_api_projects__project_id__lineage_edges_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Impact */
+        post: operations["impact_api_projects__project_id__lineage_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/edges/{edge_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review */
+        post: operations["review_api_projects__project_id__lineage_edges__edge_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reviews */
+        get: operations["reviews_api_projects__project_id__lineage_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Proposals */
+        get: operations["list_proposals_api_projects__project_id__lineage_proposals_get"];
+        put?: never;
+        /** Create Proposal */
+        post: operations["create_proposal_api_projects__project_id__lineage_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/projects/{project_id}/lineage/proposals/{proposal_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide */
+        post: operations["decide_api_projects__project_id__lineage_proposals__proposal_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/narrative-state/timepoints": {
         parameters: {
             query?: never;
@@ -1737,6 +1875,18 @@ export interface components {
             title: string;
             /** Status */
             status: string;
+            /**
+             * Approval Status
+             * @default draft
+             * @enum {string}
+             */
+            approval_status: "draft" | "review" | "approved" | "archived";
+            /**
+             * Freshness
+             * @default VALID
+             * @enum {string}
+             */
+            freshness: "VALID" | "STALE" | "BLOCKED";
             current_revision: components["schemas"]["ArtifactRevisionRead"];
             /**
              * Created At
@@ -1860,6 +2010,30 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** AuditRead */
+        AuditRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Subject Id */
+            subject_id: string;
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
+            /** Details Json */
+            details_json: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** BlockEdit */
         BlockEdit: {
@@ -2149,6 +2323,82 @@ export interface components {
              * @description 给作者看的一句话摘要
              */
             summary: string;
+        };
+        /** EdgeCreate */
+        EdgeCreate: {
+            upstream: components["schemas"]["Reference"];
+            downstream: components["schemas"]["Reference"];
+            /**
+             * Dependency Type
+             * @default semantic
+             * @enum {string}
+             */
+            dependency_type: "structural" | "semantic" | "timing" | "visual" | "state" | "spatial" | "media" | "generation_input" | "reference";
+            /**
+             * Invalidation Policy
+             * @default hard_stale
+             * @enum {string}
+             */
+            invalidation_policy: "hard_stale" | "review_required" | "timing_revalidate" | "compatibility_check" | "notice_only" | "none";
+            /** Compatibility Validator */
+            compatibility_validator?: ("content_equal" | "timing_equal") | null;
+        };
+        /** EdgeRead */
+        EdgeRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Upstream Type */
+            upstream_type: string;
+            /** Upstream Id */
+            upstream_id: string;
+            /** Upstream Revision Ref */
+            upstream_revision_ref: string;
+            /** Downstream Type */
+            downstream_type: string;
+            /** Downstream Id */
+            downstream_id: string;
+            /** Downstream Revision Ref */
+            downstream_revision_ref: string;
+            /** Dependency Type */
+            dependency_type: string;
+            /** Invalidation Policy */
+            invalidation_policy: string;
+            /** Compatibility Validator */
+            compatibility_validator: string | null;
+            /** State */
+            state: string;
+            /** Stale Cause Ref */
+            stale_cause_ref: string | null;
+            /** Supersedes Id */
+            supersedes_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** EdgeReview */
+        EdgeReview: {
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
+            /** Expected Upstream Revision Ref */
+            expected_upstream_revision_ref: string;
+            /** Expected Downstream Revision Ref */
+            expected_downstream_revision_ref: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "still_valid" | "rebase";
         };
         /**
          * EntityAssetCard
@@ -2476,6 +2726,19 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImpactRead */
+        ImpactRead: {
+            /** Edges */
+            edges: components["schemas"]["EdgeRead"][];
+            /** Blocked Artifact Ids */
+            blocked_artifact_ids: string[];
+        };
+        /** ImpactRequest */
+        ImpactRequest: {
+            source: components["schemas"]["Reference"];
+            /** Changed Block Ids */
+            changed_block_ids?: string[];
+        };
         /** KnowledgeStateCreate */
         KnowledgeStateCreate: {
             /** Project Id */
@@ -2534,6 +2797,20 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** LifecycleRequest */
+        LifecycleRequest: {
+            /**
+             * Approval Status
+             * @enum {string}
+             */
+            approval_status: "draft" | "review" | "approved" | "archived";
+            /** Expected Revision Id */
+            expected_revision_id: string;
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
         };
         /** MemoryDeletionPreview */
         MemoryDeletionPreview: {
@@ -2955,6 +3232,81 @@ export interface components {
             /** Description */
             description?: string | null;
         };
+        /** ProposalCreate */
+        ProposalCreate: {
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
+            origin: components["schemas"]["Reference"];
+            target: components["schemas"]["Reference"];
+            /** Content */
+            content: string;
+            /** Semantic */
+            semantic?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProposalDecision */
+        ProposalDecision: {
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject" | "supersede";
+        };
+        /** ProposalRead */
+        ProposalRead: {
+            /** Id */
+            id: string;
+            /** Project Id */
+            project_id: string;
+            /** Origin Type */
+            origin_type: string;
+            /** Origin Id */
+            origin_id: string;
+            /** Origin Revision Ref */
+            origin_revision_ref: string;
+            /** Target Type */
+            target_type: string;
+            /** Target Id */
+            target_id: string;
+            /** Target Base Revision Ref */
+            target_base_revision_ref: string;
+            /** Proposal Kind */
+            proposal_kind: string;
+            /** Patch Json */
+            patch_json: {
+                [key: string]: unknown;
+            };
+            /** Rationale */
+            rationale: string;
+            /** Evidence Json */
+            evidence_json: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+            /** Committed Ref */
+            committed_ref: string | null;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+        };
         /**
          * ProposeRequest
          * @description 生成草案请求。
@@ -2985,6 +3337,18 @@ export interface components {
             session_id: string;
             /** Drafts */
             drafts?: components["schemas"]["DraftItem"][];
+        };
+        /** Reference */
+        Reference: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "artifact" | "artifact_block";
+            /** Id */
+            id: string;
+            /** Revision Ref */
+            revision_ref: string;
         };
         /**
          * RejectResponse
@@ -3179,6 +3543,17 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** RevertRequest */
+        RevertRequest: {
+            /** Revision Id */
+            revision_id: string;
+            /** Expected Revision Id */
+            expected_revision_id: string;
+            /** Actor */
+            actor: string;
+            /** Rationale */
+            rationale: string;
         };
         /** RevisionDiffEntry */
         RevisionDiffEntry: {
@@ -5823,6 +6198,346 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_approval_api_artifacts__artifact_id__approval_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LifecycleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_api_artifacts__artifact_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_edges_api_projects__project_id__lineage_edges_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_edge_api_projects__project_id__lineage_edges_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    impact_api_projects__project_id__lineage_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImpactRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_projects__project_id__lineage_edges__edge_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                edge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EdgeReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EdgeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reviews_api_projects__project_id__lineage_reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_api_projects__project_id__lineage_proposals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_proposal_api_projects__project_id__lineage_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_projects__project_id__lineage_proposals__proposal_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
                 };
             };
             /** @description Validation Error */

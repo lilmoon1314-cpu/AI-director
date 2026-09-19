@@ -9,7 +9,6 @@ from app.artifacts.models import (
     Artifact,
     ArtifactBlock,
     ArtifactBlockRevision,
-    ArtifactDependency,
     ArtifactRevision,
     _utcnow,
 )
@@ -27,6 +26,7 @@ from app.artifacts.schemas import (
 )
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.observability import checkpoint
+from app.lineage import service as lineage_service
 from app.projects import service as projects_service
 
 
@@ -97,15 +97,18 @@ async def _current_revision(
     return revision, _states(await repository.list_revision_blocks(session, revision.id))
 
 
-def _artifact_read(
-    artifact: Artifact, revision: ArtifactRevision, states: list[_BlockState]
+async def _artifact_read(
+    session: AsyncSession, artifact: Artifact, revision: ArtifactRevision, states: list[_BlockState]
 ) -> ArtifactRead:
+    freshness = await lineage_service.freshness(session, artifact.project_id, artifact.id)
     return ArtifactRead(
         id=artifact.id,
         project_id=artifact.project_id,
         type=artifact.type,
         title=artifact.title,
-        status=artifact.status,
+        status="stale" if freshness != "VALID" else "draft",
+        approval_status=artifact.approval_status,
+        freshness=freshness,
         current_revision=_revision_read(revision, states),
         created_at=artifact.created_at,
         updated_at=artifact.updated_at,
@@ -160,6 +163,7 @@ async def create(
         type=schema.type,
         title=schema.title,
         status="draft",
+        approval_status="draft",
         current_revision_no=1,
         created_at=now,
         updated_at=now,
@@ -199,7 +203,7 @@ async def create(
     await projects_service.touch(session, project_id)
     if commit:
         await session.commit()
-    return _artifact_read(artifact, revision, states)
+    return await _artifact_read(session, artifact, revision, states)
 
 
 @checkpoint
@@ -208,7 +212,7 @@ async def get(session: AsyncSession, artifact_id: str) -> ArtifactRead:
     if artifact is None:
         raise _not_found("artifact", artifact_id)
     revision, states = await _current_revision(session, artifact)
-    return _artifact_read(artifact, revision, states)
+    return await _artifact_read(session, artifact, revision, states)
 
 
 @checkpoint
@@ -323,19 +327,18 @@ async def edit_block(
 
     entries = _diff_entries(old_states, new_states)
     changed_ids = [entry.block_id for entry in entries if entry.kind != "unchanged"]
-    dependencies = await repository.list_dependencies_for_blocks(session, changed_ids)
-    for dependency in dependencies:
-        dependency.is_stale = True
-        dependency.updated_at = now
-        dependent = await repository.get_artifact(session, dependency.dependent_artifact_id)
-        if dependent is not None:
-            dependent.status = "stale"
-            dependent.updated_at = now
+    artifact.approval_status = "draft"
+    await lineage_service.advance_downstream(
+        session, artifact.project_id, artifact.id, new_revision.id
+    )
+    await lineage_service.invalidate_artifact(
+        session, artifact.project_id, artifact.id, new_revision.id, changed_ids
+    )
     await repository.flush(session)
     await projects_service.touch(session, artifact.project_id)
     if commit:
         await session.commit()
-    return _artifact_read(artifact, new_revision, new_states)
+    return await _artifact_read(session, artifact, new_revision, new_states)
 
 
 @checkpoint
@@ -386,31 +389,24 @@ async def create_dependency(
             source_artifact_id=source.id,
             source_revision_id=schema.source_revision_id,
         )
-    now = _utcnow()
-    dependency = ArtifactDependency(
-        id=generate_id("dep"),
+    result = await lineage_service.create_legacy_dependency(
+        session,
         project_id=source.project_id,
         source_artifact_id=source.id,
-        source_block_id=block.id,
-        source_revision_id=revision.id,
+        block_id=block.id,
+        revision_id=revision.id,
         dependent_artifact_id=dependent.id,
         dependency_type=schema.dependency_type,
-        is_stale=False,
-        created_at=now,
-        updated_at=now,
+        commit=commit,
     )
-    await repository.add(session, dependency)
-    if commit:
-        await session.commit()
-    return DependencyRead.model_validate(dependency)
+    return DependencyRead.model_validate(result)
 
 
 @checkpoint
 async def get_dependency(session: AsyncSession, dependency_id: str) -> DependencyRead:
-    dependency = await repository.get_dependency(session, dependency_id)
-    if dependency is None:
-        raise _not_found("dependency", dependency_id)
-    return DependencyRead.model_validate(dependency)
+    return DependencyRead.model_validate(
+        await lineage_service.get_legacy_dependency(session, dependency_id)
+    )
 
 
 @checkpoint
@@ -490,3 +486,171 @@ async def edit_structured_block(
         expected_revision_id=expected_revision_id,
         commit=commit,
     )
+
+
+async def resolve_lineage_ref(
+    session: AsyncSession, kind: str, resource_id: str, revision_id: str | None = None
+) -> dict[str, object]:
+    """Owner-validated reference data, without recursively loading freshness."""
+    artifact_id = resource_id
+    if kind == "artifact_block":
+        block = await repository.get_block(session, resource_id)
+        if block is None:
+            raise _not_found("block", resource_id)
+        artifact_id = block.artifact_id
+    elif kind != "artifact":
+        raise _invalid("Unsupported reference", kind, "Use a registered owner type")
+    artifact = await repository.get_artifact(session, artifact_id)
+    if artifact is None:
+        raise _not_found("artifact", artifact_id)
+    revision, states = (
+        await _load_revision(session, artifact_id, revision_id)
+        if revision_id
+        else await _current_revision(session, artifact)
+    )
+    if kind == "artifact_block":
+        states = [item for item in states if item.id == resource_id]
+        if not states:
+            raise _not_found("block in revision", resource_id)
+    return {
+        "project_id": artifact.project_id,
+        "artifact_id": artifact_id,
+        "revision_id": revision.id,
+        "revision_no": revision.revision_no,
+        "blocks": [item.__dict__ for item in states],
+    }
+
+
+async def append_snapshot(
+    session: AsyncSession,
+    artifact_id: str,
+    expected_revision_id: str,
+    *,
+    restore_revision_id: str | None = None,
+    preserve_approval: bool = False,
+) -> ArtifactRead:
+    """Append content-identical rebase or historical revert; never rewrite old snapshots."""
+    artifact = await repository.get_artifact(session, artifact_id)
+    if artifact is None:
+        raise _not_found("artifact", artifact_id)
+    current, old = await _current_revision(session, artifact)
+    if current.id != expected_revision_id:
+        raise ConflictError(
+            "Artifact revision changed",
+            "Expected base is no longer current",
+            "Reload the artifact before confirming",
+        )
+    states = old
+    if restore_revision_id:
+        _, states = await _load_revision(session, artifact_id, restore_revision_id)
+    now = _utcnow()
+    if not await repository.advance_revision_if_current(
+        session, artifact_id, current.revision_no, current.revision_no + 1, now
+    ):
+        raise ConflictError("Concurrent artifact edit", "Base advanced", "Reload and retry")
+    artifact.current_revision_no = current.revision_no + 1
+    artifact.updated_at = now
+    if not preserve_approval:
+        artifact.approval_status = "draft"
+    revision = ArtifactRevision(
+        id=generate_id("rev"),
+        artifact_id=artifact_id,
+        revision_no=artifact.current_revision_no,
+        created_at=now,
+    )
+    await repository.add(session, revision)
+    for item in states:
+        await repository.add(
+            session,
+            ArtifactBlockRevision(
+                id=generate_id("brv"),
+                revision_id=revision.id,
+                block_id=item.id,
+                position=item.position,
+                content=item.content,
+                semantic_json=item.semantic,
+            ),
+        )
+    await lineage_service.advance_downstream(session, artifact.project_id, artifact_id, revision.id)
+    if restore_revision_id:
+        await lineage_service.mark_revert_for_review(
+            session, artifact.project_id, artifact_id, revision.id
+        )
+    changed = [item.block_id for item in _diff_entries(old, states) if item.kind != "unchanged"]
+    await lineage_service.invalidate_artifact(
+        session, artifact.project_id, artifact_id, revision.id, changed
+    )
+    await projects_service.touch(session, artifact.project_id)
+    return await _artifact_read(session, artifact, revision, states)
+
+
+async def set_approval(
+    session: AsyncSession,
+    artifact_id: str,
+    approval_status: str,
+    expected_revision_id: str,
+    actor: str,
+    rationale: str,
+) -> ArtifactRead:
+    await repository.lock_artifact(session, artifact_id)
+    artifact = await repository.get_artifact(session, artifact_id)
+    if artifact is None:
+        raise _not_found("artifact", artifact_id)
+    revision, states = await _current_revision(session, artifact)
+    if revision.id != expected_revision_id:
+        raise ConflictError("Artifact revision changed", "Approval base is outdated", "Reload")
+    transitions = {
+        "draft": {"review"},
+        "review": {"draft", "approved"},
+        "approved": {"archived"},
+        "archived": set(),
+    }
+    if approval_status not in transitions[artifact.approval_status]:
+        raise _invalid(
+            "Invalid approval transition",
+            artifact.approval_status,
+            "Follow draft → review → approved → archived; restore via a new revision",
+        )
+    if (
+        approval_status == "approved"
+        and await lineage_service.freshness(session, artifact.project_id, artifact_id) != "VALID"
+    ):
+        raise _invalid("Unresolved source changes", "Artifact is not valid", "Review sources first")
+    previous = artifact.approval_status
+    artifact.approval_status = approval_status
+    await lineage_service.audit(
+        session,
+        artifact.project_id,
+        artifact_id,
+        "approval_changed",
+        actor,
+        rationale,
+        {"from": previous, "to": approval_status, "revision_id": revision.id},
+    )
+    await session.commit()
+    return await _artifact_read(session, artifact, revision, states)
+
+
+async def revert(
+    session: AsyncSession,
+    artifact_id: str,
+    revision_id: str,
+    expected_revision_id: str,
+    actor: str,
+    rationale: str,
+) -> ArtifactRead:
+    async with session.begin_nested():
+        result = await append_snapshot(
+            session, artifact_id, expected_revision_id, restore_revision_id=revision_id
+        )
+        await lineage_service.audit(
+            session,
+            result.project_id,
+            artifact_id,
+            "artifact_reverted",
+            actor,
+            rationale,
+            {"restored_revision_id": revision_id, "revision_id": result.current_revision.id},
+        )
+    await session.commit()
+    return result

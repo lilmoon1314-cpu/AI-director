@@ -62,6 +62,8 @@ class ArtifactRead(BaseModel):
     type: ArtifactType
     title: str
     status: str
+    approval_status: Literal["draft", "review", "approved", "archived"] = "draft"
+    freshness: Literal["VALID", "STALE", "BLOCKED"] = "VALID"
     current_revision: ArtifactRevisionRead
     created_at: datetime
     updated_at: datetime
@@ -73,6 +75,22 @@ class BlockEdit(BaseModel):
     content: str = Field(max_length=100_000)
     semantic: dict[str, object] | None = None
     expected_revision_id: str | None = Field(default=None, min_length=1)
+
+
+class LifecycleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    approval_status: Literal["draft", "review", "approved", "archived"]
+    expected_revision_id: str
+    actor: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=10000)
+
+
+class RevertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision_id: str
+    expected_revision_id: str
+    actor: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=10000)
 
 
 class RevisionDiffEntry(BaseModel):

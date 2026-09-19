@@ -39,6 +39,8 @@ or rollout logs to analyze token use; token telemetry is owned by an observer ou
 
 ## Validation defaults
 
+- When final acceptance includes frontend layout or visual content, save screenshots by default to
+  `test/pic_test/` with descriptive task/page/viewport filenames and link them for human review.
 - Use the smallest sufficient validation nearest the change. Add integration/E2E evidence when behavior
   crosses real component boundaries. A full repository check is for broad changes, release/CI, or an
   explicit request—not a session ritual.

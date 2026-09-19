@@ -1,7 +1,7 @@
 # Artifact Core product behavior
 
 This specification owns observable structured-artifact, revision, diff, dependency, and stale
-behavior. R2 supports exactly one artifact type: `screenplay`.
+behavior. Supported artifact kinds are defined by the current Artifact API schema.
 
 ## Screenplay and revisions
 
@@ -17,8 +17,8 @@ behavior. R2 supports exactly one artifact type: `screenplay`.
 
 ## Dependencies and stale state
 
-- A dependency is directed from a source screenplay block at a source revision baseline to a
-  dependent screenplay artifact in the same project.
+- A dependency is directed from a source artifact block at a source revision baseline to a
+  dependent artifact in the same project.
 - Editing a block marks only fresh dependencies sourced from that changed block as stale and marks
   their dependent artifacts stale. Sibling-block dependencies and their dependent artifacts remain
   unaffected.
@@ -33,3 +33,17 @@ behavior. R2 supports exactly one artifact type: `screenplay`.
   part of the existing primary-database deletion transaction.
 - Agent memory documents remain a separate domain and are not converted to artifacts.
 
+
+## Approval, source review, and revert
+
+- Approval is draft → review → approved → archived. Review can return to draft. Content edits and
+  revert create a draft; rebase preserves approval because content is unchanged. An archived item is
+  restored through a new revision. Approval changes require the current revision and an audit reason.
+- Freshness is independent: an approved artifact can become STALE. Consumers of an unresolved source
+  are BLOCKED. New approval is refused while sources remain unresolved. Legacy `status` is a response
+  compatibility projection (`draft` or `stale`), not the approval authority.
+- Revert copies a selected historical snapshot into a new revision, retaining intermediate history.
+  Reverted downstream content keeps current source baselines and requires their review; it does not
+  silently inherit source approval that may belong to a different content version.
+- Policy-based impact previews, explicit reverse proposals, validated rebase, and review audit are
+  specified in `production-workspace.md` and designed in `../design-docs/lineage-and-change-management.md`.

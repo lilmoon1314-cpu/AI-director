@@ -199,3 +199,38 @@ async def create_from_payload(
     merged = dict(payload)
     merged["project_id"] = project_id
     return await create(session, ProductionDocumentCreate.model_validate(merged), commit=commit)
+
+
+async def validate_artifact_edit(
+    session: AsyncSession, artifact_id: str, block_id: str, patch: dict[str, object]
+) -> None:
+    """Validate reverse proposals against the bound production document's semantic contract."""
+    row = await repository.get_by_artifact(session, artifact_id)
+    if row is None:
+        return
+    artifact = await artifacts_service.get(session, artifact_id)
+    blocks = []
+    for block in artifact.current_revision.blocks:
+        blocks.append(
+            {
+                "block_type": block.block_type,
+                "content": patch["content"] if block.id == block_id else block.content,
+                "semantic": (
+                    patch.get("semantic")
+                    if block.id == block_id and patch.get("semantic") is not None
+                    else block.semantic
+                )
+                or {},
+            }
+        )
+    _validate_blocks(
+        ProductionDocumentCreate.model_validate(
+            {
+                "project_id": row.project_id,
+                "episode_id": row.episode_id,
+                "document_type": row.document_type,
+                "title": artifact.title,
+                "blocks": blocks,
+            }
+        )
+    )

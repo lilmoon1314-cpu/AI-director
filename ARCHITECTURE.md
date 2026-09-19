@@ -10,7 +10,7 @@ React + TypeScript + G6
   views/components → Zustand stores → generated API client
                          │ REST / SSE
 FastAPI modular monolith
-  projects  entities  relations  perspectives  assets  agent  artifacts  narrative_state  workflow  production  skills
+  projects  entities  relations  perspectives  assets  agent  artifacts  narrative_state  workflow  production  skills  lineage
                          ↓
   core: configuration, primary DB session, errors, observability
                          ↓
@@ -31,7 +31,8 @@ generated types—not by hand-maintained tables in this document.
 | Author/character/audience projections | `backend/app/perspectives/` | `docs/design-docs/world-model-and-perspectives.md` |
 | General assets, entity pages, image storage | `backend/app/assets/` | `docs/design-docs/projects-assets-and-workspace.md` |
 | Conversations, prompts, tools, memory, pending writes | `backend/app/agent/` | `docs/design-docs/agent-system.md` |
-| Screenplay artifacts, blocks, revisions, dependencies, stale | `backend/app/artifacts/` | `docs/design-docs/artifact-core.md` |
+| Structured artifacts, blocks, revisions, approval and revert | `backend/app/artifacts/` | `docs/design-docs/artifact-core.md` |
+| Cross-domain dependencies, impact, freshness, proposals and review audit | `backend/app/lineage/` | `docs/design-docs/lineage-and-change-management.md` |
 | Timepoints, temporal state, snapshots, claims, knowledge | `backend/app/narrative_state/` | `docs/design-docs/narrative-state-core.md` |
 | Requirements, series/episodes/scenes, gates, execution audit | `backend/app/workflow/` | `docs/design-docs/workflow-core.md` |
 | Production document order, episode binding, semantic contracts | `backend/app/production/` | `docs/design-docs/production-documents.md` |
@@ -60,7 +61,9 @@ back into assets.
 - Agent turn: persisted user message → visible project context → provider stream/tool loop → persisted
   response and pending operations → explicit user approval → owning domain service.
 - Artifact edit: stable block edit → immutable revision snapshot → block-local diff → only matching
-  directed dependencies and their dependent artifacts become stale.
+  Lineage edges become stale; transitive consumers are blocked. Approval remains independent.
+- Reverse change: explicit proposal decision → target-owner revision → validated origin rebase or
+  review-required freshness; revisions, edges, and audit share one database transaction.
 - Narrative state: ordered timepoint → append-only event with optional artifact provenance → versioned
   current projection → immutable scope snapshot; claims remain separate from character/audience belief.
 - Workflow: versioned requirement → series/episode/scene plan → deterministic gate evaluation → audited

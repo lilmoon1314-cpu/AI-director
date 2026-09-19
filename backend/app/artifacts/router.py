@@ -11,6 +11,8 @@ from app.artifacts.schemas import (
     BlockEdit,
     DependencyCreate,
     DependencyRead,
+    LifecycleRequest,
+    RevertRequest,
     RevisionDiffRead,
 )
 from app.core.db import get_session
@@ -73,3 +75,17 @@ async def edit_block(
     session: AsyncSession = Depends(get_session),
 ) -> ArtifactRead:
     return await service.edit_block(session, artifact_id, block_id, payload)
+
+
+@router.post("/{artifact_id}/approval", response_model=ArtifactRead)
+async def set_approval(
+    artifact_id: str, payload: LifecycleRequest, session: AsyncSession = Depends(get_session)
+) -> ArtifactRead:
+    return await service.set_approval(session, artifact_id, **payload.model_dump())
+
+
+@router.post("/{artifact_id}/revert", response_model=ArtifactRead)
+async def revert(
+    artifact_id: str, payload: RevertRequest, session: AsyncSession = Depends(get_session)
+) -> ArtifactRead:
+    return await service.revert(session, artifact_id, **payload.model_dump())

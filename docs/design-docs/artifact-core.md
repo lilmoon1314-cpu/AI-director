@@ -1,44 +1,39 @@
 # Artifact Core design
 
-This document owns the durable R2 boundary for structured creative artifacts. It deliberately excludes
-Narrative State, Agent tooling, workflow gates, regeneration, branching, merging, and collaboration.
+Artifact Core owns project-scoped structured artifact identities, stable blocks, immutable aggregate
+and block revision snapshots, diffs, approval lifecycle, and content revert. Supported kinds are owned
+by `artifacts.schemas`; Production owns type-specific semantics and episode bindings.
 
 ## Ownership and storage
 
-`backend/app/artifacts/` owns artifact identity, stable blocks, immutable revisions, revision diffing,
-directed dependencies, and stale propagation. Other domains may call only `artifacts.service`; the
-FastAPI composition root mounts the Artifact router, and the projects router calls the service during
-cross-domain project deletion.
+`artifacts`, `artifact_blocks`, `artifact_revisions`, and `artifact_block_revisions` retain their existing
+identity and snapshot meaning. Approval is stored as `approval_status` (draft/review/approved/archived).
+The old `status` column and `artifact_dependencies` table are retained migration history, not runtime
+write authorities. Lineage owns dependencies and freshness; see `lineage-and-change-management.md`.
+The old dependency HTTP API is an adapter to Lineage, including preserved legacy dependency IDs.
 
-The primary SQLite database stores five tables:
+## Revision transaction
 
-- `artifacts`: project-owned identity, the only admitted type (`screenplay`), current revision number,
-  and coarse `draft`/`stale` state.
-- `artifact_blocks`: stable block identity and block type. It intentionally stores no mutable content.
-- `artifact_revisions`: immutable aggregate revision identity and monotonic number per artifact.
-- `artifact_block_revisions`: immutable ordered content snapshots keyed by revision and stable block.
-- `artifact_dependencies`: directed source artifact/block/revision baseline to dependent artifact,
-  plus whether that edge has become stale.
+A block edit compares stable IDs, content, order, and semantic data, appends the next immutable revision
+with optimistic revision advancement, copies source baselines into new Lineage edges, and supersedes
+the prior revision's edges. Only changed source blocks (or a changed whole-artifact source) invalidate
+matching live edges. Source snapshots are compared against each edge's actual baseline, so an intervening
+unrelated block edit does not lose dependency tracking. New content resets approval to draft.
 
-Snapshotting every block in a revision is an intentional R2 tradeoff: it makes historical reads and
-block-local comparisons deterministic without event sourcing or a generic version-control framework.
-Content size and revision compaction are later concerns supported by evidence, not prebuilt here.
+Rebase appends a content-identical revision, preserves approval, and records new source baselines and
+review audit. Revert copies an old full snapshot to a new revision, resets approval, and retains current
+incoming baselines pending review. This conservative rule also supports revisions created before
+Lineage existed, when full historical source snapshots were unavailable. Intermediate revisions remain
+readable. No operation deletes a revision as an undo mechanism.
 
-## Edit, diff, and invalidation transaction
+## Boundaries
 
-A block edit loads the current immutable snapshot, rejects a no-op, appends the next revision and its
-snapshots, and computes a stable-ID diff. Only changed block IDs select dependency edges. Those edges
-and their dependent artifacts become stale in the same primary-database transaction; unrelated edges
-are not updated. Project activity time is touched in that transaction.
+Cross-domain callers use `artifacts.service`. `resolve_lineage_ref` validates artifact/block/revision
+ownership without recursively loading freshness. Lineage's snapshot reader uses that boundary; Artifact
+responses project freshness through `lineage.service`. Artifact internals never read Lineage tables.
+Project deletion is composed by the project router: Lineage records first, then Artifact-owned rows.
 
-Dependencies are artifact-local references rather than a universal polymorphic graph. Service
-validation requires source block/revision ownership and same-project source/dependent artifacts. A
-dependency baseline remains historical after invalidation so the stale cause is explainable.
-
-## Lifecycle and migration
-
-Artifact child tables use database cascade constraints below `artifacts`; project deletion is still
-explicitly composed through `projects.router`, matching existing domain lifecycle rules. Alembic
-registers both existing Agent models and Artifact models before autogeneration and renders the runtime
-UTC type as portable `DateTime` DDL, preventing unrelated-table drops and unresolved generated types.
-
+Approval confirmation serializes with content writes in SQLite and requires the reviewed current
+revision. Proposal acceptance, target revision, impact, origin rebase, and review audit are one outer
+transaction; nested failures roll the whole operation back. Production proposals also validate the
+production contract through its service before Artifact creates a revision.
