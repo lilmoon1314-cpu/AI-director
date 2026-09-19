@@ -25,6 +25,46 @@ from app.workflow.schemas import (
 router = APIRouter(prefix="/api/workflow", tags=["workflow"])
 
 
+@router.get("/series", response_model=list[SeriesRead])
+async def list_series(
+    project_id: str = Query(),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> list[SeriesRead]:
+    return await service.list_series(session, project_id, limit, offset)
+
+
+@router.get("/series/{series_id}", response_model=SeriesRead)
+async def get_series(
+    series_id: str,
+    project_id: str = Query(),
+    session: AsyncSession = Depends(get_session),
+) -> SeriesRead:
+    return await service.get_series(session, project_id, series_id)
+
+
+@router.get("/episodes", response_model=list[EpisodeRead])
+async def list_episodes(
+    project_id: str = Query(),
+    series_id: str = Query(),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    session: AsyncSession = Depends(get_session),
+) -> list[EpisodeRead]:
+    return await service.list_episodes(session, project_id, series_id, limit, offset)
+
+
+@router.get("/episodes/{episode_id}", response_model=EpisodeRead)
+async def get_episode(
+    episode_id: str,
+    project_id: str = Query(),
+    series_id: str = Query(),
+    session: AsyncSession = Depends(get_session),
+) -> EpisodeRead:
+    return await service.get_episode(session, project_id, series_id, episode_id)
+
+
 @router.post("/requirements", response_model=RequirementRead, status_code=status.HTTP_201_CREATED)
 async def create_requirement(
     payload: RequirementCreate, session: AsyncSession = Depends(get_session)

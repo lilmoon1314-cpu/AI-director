@@ -13,6 +13,7 @@ import { setupServer } from "msw/node";
 
 import { useProjectStore } from "../../src/stores/projectStore";
 import { DEFAULT_PROJECT_ID } from "../workbenchHarness";
+import { ProductionWorkspace } from "../../src/views/ProductionWorkspace";
 
 const PROJECTS = [
   {
@@ -51,6 +52,7 @@ let createdCount = 0;
 let deletedIds: string[] = [];
 
 const server = setupServer(
+  http.get("*/api/workflow/series", () => HttpResponse.json([])),
   http.get("*/api/projects", () => HttpResponse.json(projects)),
   // 图查询：任意项目返回空图（FU1 重置换机用例只需 loadedProjectId 成功落位）
   http.get("*/api/graph", () => HttpResponse.json({ nodes: [], edges: [] })),
@@ -182,7 +184,7 @@ describe("F11 FU2: 项目首屏", () => {
 });
 
 describe("F11 FU2: 工作台路由", () => {
-  it("卡片点击进入 /projects/:id/graph；页签切换 URL 变化（导航契约）", async () => {
+  it("卡片点击进入 /projects/:id/overview；页签切换 URL 变化（导航契约）", async () => {
     // 设计依据: DESIGN §4.1 路由表——URL 即状态
     const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
     const { render } = await import("@testing-library/react");
@@ -205,6 +207,7 @@ describe("F11 FU2: 工作台路由", () => {
         <Routes>
           <Route path="/projects" element={<ProjectPicker />} />
           <Route path="/projects/:projectId" element={<Workbench />}>
+            <Route path="overview" element={<ProductionWorkspace />} />
             <Route path="graph" element={<GraphView />} />
             <Route path="assets" element={<AssetLibrary />} />
           </Route>
@@ -215,7 +218,7 @@ describe("F11 FU2: 工作台路由", () => {
     // 点击卡片内层按钮（卡片容器 div 不承载点击；aria-label=进入项目 <名称>）
     const enterButton = await screen.findByRole("button", { name: "进入项目 长安怪谈" });
     await user.click(enterButton);
-    await waitFor(() => expect(currentPath).toBe("/projects/project-a/graph"));
+    await waitFor(() => expect(currentPath).toBe("/projects/project-a/overview"));
     await user.click(await screen.findByTestId("tab-assets"));
     await waitFor(() => expect(currentPath).toBe("/projects/project-a/assets"));
     await user.click(screen.getByTestId("tab-graph"));
@@ -238,6 +241,7 @@ describe("F11 FU2: 工作台路由", () => {
       <MemoryRouter initialEntries={[`/projects/${DEFAULT_PROJECT_ID}/graph`]}>
         <Routes>
           <Route path="/projects/:projectId" element={<Workbench />}>
+            <Route path="overview" element={<ProductionWorkspace />} />
             <Route path="graph" element={<GraphView />} />
           </Route>
         </Routes>
@@ -297,8 +301,8 @@ describe("F11 FU2: 工作台路由", () => {
     await user.click(screen.getByTestId("project-switcher-button"));
     await user.click(screen.getByTestId("switch-to-project-a"));
     await waitFor(() => expect(useProjectStore.getState().currentProjectId).toBe("project-a"));
-    // 新项目图加载完成 → 重置换机已随挂载执行
-    await waitFor(() => expect(useGraphStore.getState().loadedProjectId).toBe("project-a"));
+    // 概览没有挂载图谱，也必须清掉前项目的交互状态。
+    expect(await screen.findByTestId("production-workspace")).toBeInTheDocument();
     expect(usePerspectiveStore.getState().perspective).toBe("author");
     expect(usePerspectiveStore.getState().characterId).toBeNull();
     expect(useSelectionStore.getState().panelOpen).toBe(false);
@@ -306,6 +310,8 @@ describe("F11 FU2: 工作台路由", () => {
     expect(useAssetStore.getState().entityCards).toHaveLength(0);
     // 全局缓存保留：通用参考库卡片跨项目复用（DESIGN §7 矩阵亮点）
     expect(useAssetStore.getState().generalCards).toHaveLength(1);
+    await user.click(screen.getByTestId("tab-graph"));
+    await waitFor(() => expect(useGraphStore.getState().loadedProjectId).toBe("project-a"));
   });
 
   it("无效项目 id → 错误页 + 返回首屏（等价类—无效路由）", async () => {
@@ -345,6 +351,7 @@ describe("F11 FU2: 工作台路由", () => {
         <LocationProbe />
         <Routes>
           <Route path="/projects/:projectId" element={<Workbench />}>
+            <Route path="overview" element={<ProductionWorkspace />} />
             <Route path="graph" element={<GraphView />} />
           </Route>
         </Routes>
@@ -356,6 +363,6 @@ describe("F11 FU2: 工作台路由", () => {
     await user.click(switcherButton);
     await screen.findByTestId("switch-to-project-a");
     await user.click(screen.getByTestId("switch-to-project-a"));
-    await waitFor(() => expect(currentPath).toBe("/projects/project-a/graph"));
+    await waitFor(() => expect(currentPath).toBe("/projects/project-a/overview"));
   });
 });

@@ -9,6 +9,11 @@
 - A scene plan captures the narrative planning fields needed to write one scene without mixing in
   production or provider instructions.
 - Hierarchy references and positions are project-isolated; duplicate positions conflict explicitly.
+- The product shell lists real series and ordered episodes in pages, and supports direct episode
+  links with a project/series/episode breadcrumb. Invalid hierarchy combinations fail explicitly.
+- Episode pages expose a production navigation rail and saved document records. Planning drafts are
+  not production approvals. Editing, generation, review, and playable timeline workspaces remain
+  explicitly unavailable in this shell stage; browser refresh/back restores the URL scope.
 
 ## Gates and execution trace
 

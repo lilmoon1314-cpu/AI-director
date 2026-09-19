@@ -113,7 +113,7 @@ export function ProjectPicker() {
             <ProjectCard
               key={project.id}
               project={project}
-              onOpen={() => navigate(`/projects/${project.id}/graph`)}
+              onOpen={() => navigate(`/projects/${project.id}/overview`)}
               onRename={() => setRenaming(project)}
               onDelete={() => setDeleting(project)}
             />
@@ -140,7 +140,7 @@ export function ProjectPicker() {
           onSubmit={async (name, description) => {
             const created = await useProjectStore.getState().createProject({ name, description });
             await loadProjects(true);
-            navigate(`/projects/${created.id}/graph`);
+            navigate(`/projects/${created.id}/overview`);
           }}
         />
       ) : null}

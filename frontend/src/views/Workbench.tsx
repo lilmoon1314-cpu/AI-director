@@ -1,7 +1,6 @@
 /**
  * 工作台壳层（F11 路由化，DESIGN.md §4.3；F10 Agent 页签 + AgentDock 挂载）：
- * - 顶栏 = logo（返回项目首屏）+ 项目切换器 + 主导航「图谱 | 资产管理 | Agent」（NavLink，
- *   testid tab-graph/tab-assets/tab-agent，e2e 锚点契约）；
+ * - 顶栏 = 项目切换 + 概览/创作/剧集/资料；保留图谱和 Agent 快捷入口与旧 testid；
  * - 路由参数 :projectId 为项目上下文事实源：挂载/变化即同步 projectStore（校验存在性），
  *   叶子视图（GraphView/AssetLibrary/AgentHome）从 store 读当前项目并按变化重置换机；
  * - 无效项目 id → 三要素错误页 +「返回项目首屏」；
@@ -9,8 +8,8 @@
  * - AgentDock 挂载于壳层——图谱/资产/Agent 任一页签均可唤起侧边栏（同一会话池）。
  */
 
-import { useEffect } from "react";
-import { Link, NavLink, Outlet, useParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom";
 
 import { AgentDock } from "../components/agent-panel/AgentDock";
 import { AssetHtmlViewer } from "../components/assets/AssetHtmlViewer";
@@ -18,17 +17,37 @@ import { ProjectSwitcher } from "../components/projects/ProjectSwitcher";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { Button } from "../components/ui/Button";
 import { useProjectStore } from "../stores/projectStore";
+import { useAssetStore } from "../stores/assetStore";
+import { useAgentStore } from "../stores/agentStore";
+import { usePerspectiveStore } from "../stores/perspectiveStore";
+import { useSelectionStore } from "../stores/selectionStore";
+import { useEntityIndexStore } from "../stores/entityIndexStore";
 
 const TABS = [
-  { key: "graph", label: "图谱", to: "graph" },
-  { key: "assets", label: "资产管理", to: "assets" },
-  { key: "agent", label: "Agent", to: "agent" },
+  { key: "overview", label: "概览", to: "overview" },
+  { key: "create", label: "创作", to: "create" },
+  { key: "series", label: "剧集", to: "series" },
+  { key: "assets", label: "资料", to: "assets" },
 ] as const;
 
 export function Workbench() {
   const { projectId } = useParams<{ projectId: string }>();
+  const { pathname } = useLocation();
   const routeInvalid = useProjectStore((s) => s.routeInvalid);
   const syncRoute = useProjectStore((s) => s.syncRoute);
+  const previousProject = useRef(useProjectStore.getState().currentProjectId);
+
+  // Switching now lands on Overview: shared project UI must reset without mounting GraphView.
+  useLayoutEffect(() => {
+    if (previousProject.current && previousProject.current !== projectId) {
+      usePerspectiveStore.getState().reset();
+      useSelectionStore.getState().clear();
+      useEntityIndexStore.getState().reset();
+      useAssetStore.getState().resetProjectScoped();
+      useAgentStore.getState().resetProjectScoped();
+    }
+    previousProject.current = projectId ?? null;
+  }, [projectId]);
 
   // 路由参数 → 项目上下文（校验存在；列表缓存后同参跳过）
   useEffect(() => {
@@ -58,14 +77,14 @@ export function Workbench() {
   return (
     <div className="flex h-screen w-full flex-col gap-3 bg-slate-100 p-4 dark:bg-slate-950">
       {/* z-30：backdrop-blur 形成层叠上下文，需整体置于内容区之上（项目切换器下拉不被拦截） */}
-      <GlassPanel className="z-30 flex shrink-0 items-center gap-4 px-4 py-2.5">
+      <GlassPanel className="z-30 flex shrink-0 flex-wrap items-center gap-4 px-4 py-2.5">
         <Link
           to="/projects"
           data-testid="logo-home"
           className="text-base font-semibold tracking-tight text-slate-900 transition-colors duration-150 hover:text-slate-600 dark:text-slate-100 dark:hover:text-slate-300"
           title="返回项目首屏"
         >
-          ✦ 影视世界观工作台
+          ✦ 影视创作工作台
         </Link>
         <ProjectSwitcher />
         <nav
@@ -79,7 +98,7 @@ export function Workbench() {
               data-testid={`tab-${key}`}
               className={({ isActive }) =>
                 `rounded-full px-4 py-1 transition-colors duration-150 ${
-                  isActive
+                  isActive || (key === "create" && pathname.endsWith("/graph"))
                     ? "bg-slate-800 font-medium text-white dark:bg-slate-200 dark:text-slate-900"
                     : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                 }`
@@ -89,6 +108,10 @@ export function Workbench() {
             </NavLink>
           ))}
         </nav>
+        <div className="ml-auto flex items-center gap-3 text-sm text-slate-600 dark:text-slate-300">
+          <Link to="graph" data-testid="tab-graph">图谱</Link>
+          <Link to="agent" data-testid="tab-agent">创作助手</Link>
+        </div>
       </GlassPanel>
 
       {/* key=项目 id：切换项目时整树重挂载，配合叶子视图的重置换机保证干净状态；

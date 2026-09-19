@@ -21,3 +21,8 @@ validated Atomic Skills while retaining the audit contract.
 
 `app.workflow` is the only owner of these records. Cross-domain callers use its service boundary, and
 project deletion composes cleanup in the projects router.
+
+The R1 product shell reads project-scoped series and episodes through paginated GET service operations.
+Series ordering is creation time plus stable ID; episode ordering is position plus stable ID. Detail
+reads require project identity, and episode detail additionally validates the series identity. These
+are read projections of existing planning rows, not stage progression or F16 completion.

@@ -36,7 +36,7 @@ generated types—not by hand-maintained tables in this document.
 | Requirements, series/episodes/scenes, gates, execution audit | `backend/app/workflow/` | `docs/design-docs/workflow-core.md` |
 | Production document order, episode binding, semantic contracts | `backend/app/production/` | `docs/design-docs/production-documents.md` |
 | Atomic Skill registry, validation, candidates, confirmed adapters | `backend/app/skills/`, `skills/` | `docs/design-docs/atomic-skills.md` |
-| Navigation, graph, asset, and Agent UI | `frontend/src/` | `docs/design-docs/projects-assets-and-workspace.md`, `docs/design-docs/agent-system.md` |
+| Project/production shell, graph, asset, and Agent UI | `frontend/src/` | `docs/design-docs/frontend-production-workspace.md`, `docs/design-docs/projects-assets-and-workspace.md`, `docs/design-docs/agent-system.md` |
 | Product acceptance state | `feature_list.json` | product specs referenced by each feature |
 | Development commands and feedback orchestration | `scripts/task.py` | `AGENTS.md` |
 

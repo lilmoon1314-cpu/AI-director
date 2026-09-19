@@ -32,6 +32,16 @@ REQUIRED_SEMANTIC_FIELDS = {
 SCREENPLAY_BLOCK_TYPES = {"scene_heading", "action", "dialogue", "parenthetical", "transition"}
 
 
+async def list_documents(
+    session: AsyncSession, project_id: str, episode_id: str, limit: int = 50, offset: int = 0
+) -> list[ProductionDocumentRead]:
+    await workflow_service.ensure_episode_owned(session, project_id, episode_id)
+    return [
+        _read(row)
+        for row in await repository.list_documents(session, project_id, episode_id, limit, offset)
+    ]
+
+
 def _read(row: ProductionDocument) -> ProductionDocumentRead:
     return ProductionDocumentRead(
         id=row.id,

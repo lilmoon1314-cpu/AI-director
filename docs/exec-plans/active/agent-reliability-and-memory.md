@@ -216,4 +216,4 @@ F 收口：F15 的新验收经验证脚本更新为 passing（后端 25+1 项、
 
 F 已完成的验收与命令见 F 报告。实际数据库已升级到 `f4b7c8d9e0a1`，无待执行迁移操作，不要重复升级或自动 downgrade。升级前备份位于 `backend/data/backups/agent-f-20260918-1517-before.db`，演练副本为同前缀 `rehearsal.db`；恢复应另行评估升级后的新增 memory/source/tombstone 和后续消息，不直接覆盖现库。
 
-A–F 修改均未提交 Git；无遗留运行中的测试后台任务，未调用真实计费模型，F 未修改实际 `.env`。整体计划不归档、不标为完成。G–H 必须按后续用户请求逐阶段推进并更新报告。
+2026-09-19 V4-R0 核对：当前 `main` HEAD 为 `764db247628153434f247548baf017c4856584e7`（agent长期记忆优化），A–F 已在当前提交历史中，原“A–F 修改均未提交 Git”描述已过时。R0 开始时已跟踪文件无修改，仅有用户未跟踪的 `CODEX_REFACTOR_MASTER_PLAN_V4.md`。本地库只读核对仍为 `f4b7c8d9e0a1`。F 收口时记录无遗留测试后台任务、未调用真实计费模型、未修改实际 `.env`；这些是 F 的历史记录。整体计划继续 Active，G–H 未完成，仍须按后续用户请求逐阶段推进；V4-R0 不构成 G/H 实施授权。核对证据见 [V4-R0 报告](../../reports/v4-r0-baseline-reconciliation-2026-09-19.md)。

@@ -22,8 +22,9 @@ test("FE1: 新建项目 → 建实体 → 顶栏切换隔离 → 首屏删除项
   await page.getByLabel(/一句话描述/).fill("民国悬疑世界");
   await page.getByTestId("project-form-submit").click();
 
-  // 创建并进入：URL 即状态（/projects/:id/graph）
-  await expect(page).toHaveURL(/\/projects\/project-[^/]+\/graph$/);
+  // 创建进入概览；图谱继续通过显式入口打开。
+  await expect(page).toHaveURL(/\/projects\/project-[^/]+\/overview$/);
+  await page.getByTestId("tab-graph").click();
   await expect(page.getByTestId("graph-stats")).toHaveText(/0 节点 · 0 边/);
   await shoot(page, "PR-02-进入新项目-空图谱");
 
@@ -37,7 +38,8 @@ test("FE1: 新建项目 → 建实体 → 顶栏切换隔离 → 首屏删除项
   // —— 剧本 B：顶栏切换默认项目 → 图谱隔离 ——
   await page.getByTestId("project-switcher-button").click();
   await page.getByTestId("switch-to-project-default").click();
-  await expect(page).toHaveURL(/\/projects\/project-default\/graph$/);
+  await expect(page).toHaveURL(/\/projects\/project-default\/overview$/);
+  await page.getByTestId("tab-graph").click();
   await expect(page.getByTestId("graph-stats")).toHaveText(/0 节点 · 0 边/); // 雾都旧事实体不泄露
   await shoot(page, "PR-03-切换默认项目-隔离为空");
 
@@ -45,6 +47,7 @@ test("FE1: 新建项目 → 建实体 → 顶栏切换隔离 → 首屏删除项
   await page.getByTestId("project-switcher-button").click();
   const fogItem = page.locator('[data-testid^="switch-to-project-"]', { hasText: "雾都旧事" });
   await fogItem.click();
+  await page.getByTestId("tab-graph").click();
   await expect(page.getByTestId("graph-stats")).toHaveText(/1 节点/);
 
   // —— 剧本 E：返回首屏删除项目（危险操作：输入项目名确认）——

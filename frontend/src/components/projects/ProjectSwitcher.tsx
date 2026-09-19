@@ -1,7 +1,7 @@
 /**
  * ProjectSwitcher：工作台顶栏项目切换器（F11，DESIGN.md §4.3）。
  * - 下拉列出全部项目（名称 + 实体数）+「＋ 新建项目」「管理全部项目」回首屏；
- * - 选中即切换（导航 /projects/:id/graph）；当前项目高亮标注，重复点击为无操作；
+ * - 选中即切换（导航 /projects/:id/overview）；当前项目高亮标注，重复点击为无操作；
  * - 切换项目的数据重置换机由目标项目页面挂载驱动（DESIGN.md §4.4/§7）。
  */
 
@@ -37,7 +37,7 @@ export function ProjectSwitcher() {
   const switchTo = (projectId: string) => {
     setOpen(false);
     if (projectId === currentProjectId) return; // 防误触：当前项目为无操作
-    void navigate(`/projects/${projectId}/graph`);
+    void navigate(`/projects/${projectId}/overview`);
   };
 
   return (

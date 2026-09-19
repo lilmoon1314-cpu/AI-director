@@ -36,6 +36,9 @@ export type RejectResponse = components["schemas"]["RejectResponse"];
 export type AgentRunRead = components["schemas"]["AgentRunRead"];
 export type AgentRunEventRead = components["schemas"]["AgentRunEventRead"];
 export type ProjectMemoryRead = components["schemas"]["ProjectMemoryRead"];
+export type SeriesRead = components["schemas"]["SeriesRead"];
+export type EpisodeRead = components["schemas"]["EpisodeRead"];
+export type ProductionDocumentRead = components["schemas"]["ProductionDocumentRead"];
 export type MemoryDeletionPreview = components["schemas"]["MemoryDeletionPreview"];
 
 /** 拼接 base 与 path（两侧冗余斜杠归一，边界：base 尾斜杠不影响结果）。 */
@@ -104,6 +107,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** 后端 REST 端点的类型化封装（路径总表见 backend/ARCHITECTURE.md §7）。 */
 export const api = {
+  listSeries: (projectId: string, offset = 0) =>
+    apiFetch<SeriesRead[]>(`/workflow/series?${new URLSearchParams({ project_id: projectId, limit: "20", offset: String(offset) })}`),
+  getSeries: (projectId: string, seriesId: string) =>
+    apiFetch<SeriesRead>(`/workflow/series/${encodeURIComponent(seriesId)}?${new URLSearchParams({ project_id: projectId })}`),
+  listEpisodes: (projectId: string, seriesId: string, offset = 0) =>
+    apiFetch<EpisodeRead[]>(`/workflow/episodes?${new URLSearchParams({ project_id: projectId, series_id: seriesId, limit: "20", offset: String(offset) })}`),
+  getEpisode: (projectId: string, seriesId: string, episodeId: string) =>
+    apiFetch<EpisodeRead>(`/workflow/episodes/${encodeURIComponent(episodeId)}?${new URLSearchParams({ project_id: projectId, series_id: seriesId })}`),
+  listProductionDocuments: (projectId: string, episodeId: string, offset = 0) =>
+    apiFetch<ProductionDocumentRead[]>(`/production/documents?${new URLSearchParams({ project_id: projectId, episode_id: episodeId, limit: "20", offset: String(offset) })}`),
   // ---- 项目（F11 多项目底座；DESIGN.md §8.4 查询参数渐进迁移）----
   /** 项目列表（按最近活跃倒序；项目首屏与顶栏切换器数据源）。 */
   listProjects: () => apiFetch<ProjectRead[]>("/projects"),

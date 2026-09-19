@@ -17,7 +17,7 @@ export async function resetWorld(request: APIRequestContext): Promise<void> {
 }
 
 /**
- * 进入默认项目工作台（F11 路由化：/ → /projects 首屏 → 点击默认项目卡片 → 图谱页）。
+ * 进入默认项目图谱（项目首屏 → 概览 → 显式图谱入口）。
  * 默认项目由后端 lifespan 恒定播种（id=project-default），作为既有场景的项目载体。
  */
 export async function openWorkbench(page: Page): Promise<void> {
@@ -27,5 +27,6 @@ export async function openWorkbench(page: Page): Promise<void> {
     .getByTestId("project-card-project-default")
     .getByRole("button", { name: /进入项目/ })
     .click();
+  await page.getByTestId("tab-graph").click();
   await expect(page.getByTestId("graph-stats")).toBeVisible();
 }

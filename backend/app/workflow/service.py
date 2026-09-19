@@ -111,6 +111,42 @@ async def create_series(session: AsyncSession, schema: SeriesCreate) -> SeriesRe
     return SeriesRead.model_validate(row)
 
 
+async def list_series(
+    session: AsyncSession, project_id: str, limit: int = 50, offset: int = 0
+) -> list[SeriesRead]:
+    await projects_service.ensure_exists(session, project_id)
+    return [
+        SeriesRead.model_validate(row)
+        for row in await repository.list_series(session, project_id, limit, offset)
+    ]
+
+
+async def get_series(session: AsyncSession, project_id: str, series_id: str) -> SeriesRead:
+    return SeriesRead.model_validate(
+        await _owned(session, WorkflowSeries, series_id, project_id, "series")
+    )
+
+
+async def list_episodes(
+    session: AsyncSession, project_id: str, series_id: str, limit: int = 50, offset: int = 0
+) -> list[EpisodeRead]:
+    await get_series(session, project_id, series_id)
+    return [
+        EpisodeRead.model_validate(row)
+        for row in await repository.list_episodes(session, project_id, series_id, limit, offset)
+    ]
+
+
+async def get_episode(
+    session: AsyncSession, project_id: str, series_id: str, episode_id: str
+) -> EpisodeRead:
+    await get_series(session, project_id, series_id)
+    row = await _owned(session, Episode, episode_id, project_id, "episode")
+    if row.series_id != series_id:
+        raise _missing("episode in series", episode_id)
+    return EpisodeRead.model_validate(row)
+
+
 async def create_episode(session: AsyncSession, schema: EpisodeCreate) -> EpisodeRead:
     await projects_service.ensure_exists(session, schema.project_id)
     await _owned(session, WorkflowSeries, schema.series_id, schema.project_id, "series")

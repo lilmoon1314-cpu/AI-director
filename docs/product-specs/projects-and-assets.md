@@ -11,6 +11,11 @@ This specification owns observable project, navigation, and asset-library behavi
 - Project routes identify the active project. Switching projects replaces project-scoped graph,
   selection, project-asset, conversation, and memory state while retaining global reference assets.
 - Invalid or deleted project routes produce a recoverable error and a route back to the picker.
+- Opening, creating, or switching to a project enters `overview`. The primary navigation is overview,
+  creation, episodes, and reference assets. Existing graph, asset subroutes, and Agent session deep
+  links remain available; the Agent dock remains accessible throughout the workspace.
+- Overview shows the available planning context, a next navigation action, and explicit unavailable
+  production capabilities. It never treats a saved document as approved or fabricates gate results.
 - Deleting a project removes its project-scoped world-model, conversation, memory, Artifact Core, and
   entity-asset data. Shared reference assets remain available.
 

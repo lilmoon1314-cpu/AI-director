@@ -53,3 +53,31 @@ async def steps_for_run(session: AsyncSession, run_id: str) -> list[ExecutionSte
 async def delete_project(session: AsyncSession, project_id: str) -> None:
     for model in (ExecutionRun, WorkflowGate, ScenePlan, Episode, WorkflowSeries, RequirementSpec):
         await session.execute(delete(model).where(model.project_id == project_id))
+
+
+async def list_series(
+    session: AsyncSession, project_id: str, limit: int, offset: int
+) -> list[WorkflowSeries]:
+    return list(
+        await session.scalars(
+            select(WorkflowSeries)
+            .where(WorkflowSeries.project_id == project_id)
+            .order_by(WorkflowSeries.created_at, WorkflowSeries.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+
+
+async def list_episodes(
+    session: AsyncSession, project_id: str, series_id: str, limit: int, offset: int
+) -> list[Episode]:
+    return list(
+        await session.scalars(
+            select(Episode)
+            .where(Episode.project_id == project_id, Episode.series_id == series_id)
+            .order_by(Episode.position, Episode.id)
+            .limit(limit)
+            .offset(offset)
+        )
+    )

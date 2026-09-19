@@ -1,0 +1,42 @@
+import { expect, test } from "@playwright/test";
+
+test("R1 real project → series → episode, refresh/back, legacy routes and project switch", async ({ page, request }, testInfo) => {
+  const project = await (await request.post("/api/projects", { data: { name: "希声 · 工作台验收" } })).json();
+  const series = await (await request.post("/api/workflow/series", { data: { project_id: project.id, title: "行歌" } })).json();
+  const episode = await (await request.post("/api/workflow/episodes", { data: { project_id: project.id, series_id: series.id, position: 0, title: "EP01 · 晨练", outline: "陈知澜来到修习场。" } })).json();
+  await request.post("/api/production/documents", { data: { project_id: project.id, episode_id: episode.id, document_type: "screenplay", title: "晨练剧本", blocks: [{ block_type: "action", content: "陈知澜撞上软柱。" }] } });
+  const base = `/projects/${project.id}`;
+  await page.goto(base);
+  await expect(page).toHaveURL(new RegExp(`${base}/overview$`));
+  await expect(page.getByRole("heading", { name: "项目概览" })).toBeVisible();
+  await page.getByRole("link", { name: /行歌.*查看剧集/ }).click();
+  await page.getByRole("link", { name: /剧集 1.*EP01/ }).click();
+  await expect(page.getByTestId("scope-bar")).toContainText("行歌");
+  await expect(page.getByText("陈知澜来到修习场。")).toBeVisible();
+  await expect(page.getByText(/已保存记录/)).toBeVisible();
+  await page.getByText("制作流程 · 概览").click();
+  await page.getByTestId("production-rail").getByRole("link", { name: "时间轴" }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "时间轴 · 浏览入口" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByText("陈知澜来到修习场。")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("episode-workspace.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.getByTestId("agent-dock-toggle")).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("episode-workspace-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.goto(`${base}/graph`);
+  await expect(page.getByTestId("graph-stats")).toContainText("0 节点");
+  await page.goto(`${base}/assets/project/character`);
+  await expect(page).toHaveURL(new RegExp(`${base}/assets/project/character$`));
+  await expect(page.getByTestId("section-project")).toBeVisible();
+  await page.goto(`${base}/agent`);
+  await expect(page.getByTestId("main-nav")).toBeVisible();
+  await page.getByTestId("project-switcher-button").click();
+  await page.getByTestId("switch-to-project-default").click();
+  await expect(page).toHaveURL(/\/projects\/project-default\/overview$/);
+  await expect(page.getByText(/当前项目还没有系列/)).toBeVisible();
+  await expect(page.getByTestId("production-rail")).toHaveCount(0);
+});
